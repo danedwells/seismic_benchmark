@@ -1,5 +1,9 @@
 import os
+import numpy as np
 import pandas as pd
+import requests
+from io import StringIO
+from datetime import datetime, timezone
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 
@@ -84,8 +88,8 @@ class BenchmarkRunner:
                 )
                 event.trigs.append(trig)
 
-            t, output_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
-            self.results[(event_id, version)] = (t, output_df)
+            t, _ = EPIC_locate_prelim.E2Location_locate(self.params, event)
+            self.results[(event_id, version)] = t
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break
@@ -124,6 +128,256 @@ class BenchmarkRunner:
                     last_update_time = event_time
 
             self.run_event(event_id)
+
+
+# ---------------------------------------------------------------------------
+# Catalog lookup
+# ---------------------------------------------------------------------------
+
+def load_reference_catalog(catalog_path):
+    """
+    Read a bEPIC testing catalog (tab-separated) and return a DataFrame that
+    maps postgres IDs to ANSS reference locations.
+
+    The catalog must contain at minimum the columns:
+        postgres id, ANSS ID, ANSS lat, ANSS lon, ANSS depth, ANSS mag
+
+    Parameters
+    ----------
+    catalog_path : str
+        Path to the catalog file (e.g. bEPIC_testing_catalog.txt).
+
+    Returns
+    -------
+    DataFrame with columns:
+        event_id   — postgres id (int); matches run file stems
+        anss_id    — USGS/ANSS event ID string (e.g. 'nc73093981')
+        usgs_lat   — ANSS catalog latitude
+        usgs_lon   — ANSS catalog longitude
+        usgs_depth — ANSS catalog depth (km)
+        usgs_mag   — ANSS catalog magnitude
+
+    Suitable for passing directly to compute_location_error().
+    """
+    raw = pd.read_csv(catalog_path, sep='\t')
+    return pd.DataFrame({
+        'event_id':   raw['postgres id'].astype(int),
+        'anss_id':    raw['ANSS ID'],
+        'usgs_lat':   raw['ANSS lat'],
+        'usgs_lon':   raw['ANSS lon'],
+        'usgs_depth': raw['ANSS depth'],
+        'usgs_mag':   raw['ANSS mag'],
+    })
+
+
+# ---------------------------------------------------------------------------
+# USGS / IRIS data retrieval (ported from download_usgs_event.py)
+# ---------------------------------------------------------------------------
+
+def get_usgs_event(anss_id):
+    """
+    Return the USGS ComCat GeoJSON for a given ANSS event ID.
+
+    Parameters
+    ----------
+    anss_id : str
+        USGS/ANSS event ID (e.g. 'nc73093981').
+    """
+    url = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+    r = requests.get(url, params={"eventid": anss_id, "format": "geojson"}, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_phases_df(geojson):
+    """
+    Download the phases.csv product from a USGS event GeoJSON.
+
+    Returns a DataFrame with columns:
+        Channel, Distance, Azimuth, Phase, Arrival Time, Status, Residual, Weight
+    or None if the product is unavailable.
+    """
+    products = geojson.get("properties", {}).get("products", {})
+    phase_products = products.get("phase-data", [])
+    if not phase_products:
+        return None
+    contents = phase_products[0].get("contents", {})
+    if "phases.csv" not in contents:
+        return None
+    url = contents["phases.csv"]["url"]
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    return pd.read_csv(StringIO(r.text))
+
+
+def get_station_coords(network, station, channel, origin_time_iso):
+    """
+    Query IRIS FDSNWS for the lat/lon of a station at the time of the event.
+
+    Returns (lat, lon) or (None, None) if not found.
+    """
+    url = "https://service.iris.edu/fdsnws/station/1/query"
+    params = {
+        "net":      network,
+        "sta":      station,
+        "cha":      channel,
+        "level":    "station",
+        "format":   "text",
+        "endafter": origin_time_iso[:10],
+    }
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        lines = [ln for ln in r.text.strip().split("\n") if not ln.startswith("#")]
+        if lines:
+            parts = lines[0].split("|")
+            return float(parts[2]), float(parts[3])
+    except Exception:
+        pass
+    return None, None
+
+
+def build_event_and_triggers(anss_id, max_dist_deg=5.0, phases_filter=None):
+    """
+    Download USGS phase data for a given ANSS event ID and return a populated
+    EPIC_locate_prelim.Event object ready for E2Location_locate().
+
+    To look up the ANSS ID from a postgres ID, use load_reference_catalog()
+    first and index into the returned DataFrame:
+        catalog_df = load_reference_catalog('bEPIC_testing_catalog.txt')
+        anss_id = catalog_df.set_index('event_id').loc[postgres_id, 'anss_id']
+
+    Parameters
+    ----------
+    anss_id : str
+        USGS/ANSS event ID (e.g. 'nc73093981').
+    max_dist_deg : float
+        Keep only phases with epicentral distance <= this many degrees.
+    phases_filter : list of str or None
+        Phase types to include. Defaults to ['P', 'Pn', 'Pg', 'Pb'].
+
+    Returns
+    -------
+    EPIC_locate_prelim.Event or None on failure.
+    """
+    if phases_filter is None:
+        phases_filter = ["P", "Pn", "Pg", "Pb"]
+
+    print(f"\nFetching event {anss_id} from USGS ComCat...")
+    geojson = get_usgs_event(anss_id)
+
+    props  = geojson["properties"]
+    coords = geojson["geometry"]["coordinates"]  # [lon, lat, depth_km]
+    evlon   = coords[0]
+    evlat   = coords[1]
+    evmag   = props["mag"]
+    evtime  = props["time"] / 1000.0   # ms → seconds since epoch
+    origin_iso = datetime.fromtimestamp(evtime, tz=timezone.utc).isoformat()
+
+    print(f"  Title : {props.get('title', anss_id)}")
+    print(f"  Origin: lat={evlat:.4f}  lon={evlon:.4f}  M={evmag}")
+
+    print("\nDownloading phases.csv from USGS...")
+    phases_df = get_phases_df(geojson)
+    if phases_df is None:
+        print("  ERROR: No phases.csv product found.")
+        return None
+
+    phases_df = phases_df[phases_df["Phase"].isin(phases_filter)].copy()
+    phases_df = phases_df[phases_df["Distance"] <= max_dist_deg].copy()
+    print(f"  Phases after filter: {len(phases_df)}")
+    if phases_df.empty:
+        print("  No phases remain after filtering.")
+        return None
+
+    def parse_channel(ch):
+        parts = ch.strip().split()
+        return parts[0], parts[1], parts[2], (parts[3] if len(parts) > 3 else "--")
+
+    parsed = phases_df["Channel"].apply(parse_channel)
+    phases_df["net"] = [p[0] for p in parsed]
+    phases_df["sta"] = [p[1] for p in parsed]
+    phases_df["cha"] = [p[2] for p in parsed]
+
+    event = EPIC_locate_prelim.Event(
+        lat=evlat, lon=evlon, time=evtime,
+        misfit_rms=0, misfit_ave=0, eventid=anss_id, version=0,
+    )
+
+    print("\nFetching station coordinates from IRIS FDSNWS...")
+    coord_cache = {}
+    seen = set()
+    for _, row in phases_df.iterrows():
+        key = (row["net"], row["sta"], row["cha"])
+        if key in seen:
+            continue
+        seen.add(key)
+
+        cache_key = (row["net"], row["sta"])
+        if cache_key in coord_cache:
+            sta_lat, sta_lon = coord_cache[cache_key]
+        else:
+            sta_lat, sta_lon = get_station_coords(row["net"], row["sta"], row["cha"], origin_iso)
+            coord_cache[cache_key] = (sta_lat, sta_lon)
+
+        if sta_lat is None:
+            print(f"  SKIP {row['net']}.{row['sta']}.{row['cha']} — coordinates not found")
+            continue
+
+        arrival_dt = datetime.fromisoformat(row["Arrival Time"].replace("Z", "+00:00"))
+        t = EPIC_locate_prelim.TriggerManager(
+            lon=sta_lon, lat=sta_lat,
+            sta=row["sta"], net=row["net"], chan=row["cha"],
+            trigger_time=arrival_dt.timestamp(),
+        )
+        event.trigs.append(t)
+        print(f"  ADD {row['net']}.{row['sta']}.{row['cha']:5s}  "
+              f"lat={sta_lat:.4f}  lon={sta_lon:.4f}  dist={row['Distance']:.2f}°")
+
+    print(f"\nTotal triggers added: {len(event.trigs)}")
+    return event
+
+
+def compute_location_error(results_df, catalog_df=None):
+    """
+    Adds a location_error_km column to results_df by comparing posterior
+    estimates against USGS catalog locations.
+
+    Parameters
+    ----------
+    results_df : DataFrame
+        Output from run_all / run_prior; must have columns
+        event_id, posterior_lat, posterior_lon.
+    catalog_df : DataFrame or None
+        Must have columns: event_id, usgs_lat, usgs_lon.
+        If None, results_df is returned unchanged.
+
+    Returns
+    -------
+    DataFrame with location_error_km column appended (NaN for events
+    not present in catalog_df).
+    """
+    from obspy.geodetics import gps2dist_azimuth
+
+    if catalog_df is None:
+        return results_df
+
+    merged = results_df.merge(
+        catalog_df[['event_id', 'usgs_lat', 'usgs_lon']],
+        on='event_id', how='left'
+    )
+
+    def _dist_km(row):
+        if pd.isna(row['usgs_lat']) or pd.isna(row['usgs_lon']):
+            return np.nan
+        m, _, _ = gps2dist_azimuth(
+            row['usgs_lat'], row['usgs_lon'],
+            row['posterior_lat'], row['posterior_lon']
+        )
+        return m / 1000.0
+
+    merged['location_error_km'] = merged.apply(_dist_km, axis=1)
+    return merged.drop(columns=['usgs_lat', 'usgs_lon'])
 
 
 def run_prior(args):
@@ -176,8 +430,9 @@ def run_prior(args):
     rows = [
         {'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
          'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
-         'best_like': t.best_like, 'best_prior': t.best_prior}
-        for (eid, ver), (t, _) in runner.results.items()
+         'best_like': t.best_like, 'best_prior': t.best_prior,
+         'frac_misfit': t.frac_misfit}
+        for (eid, ver), t in runner.results.items()
     ]
     os.makedirs(args['output_dir'], exist_ok=True)
     out_path = os.path.join(args['output_dir'], f"{prior_name.lower()}_benchmark_results.csv")
