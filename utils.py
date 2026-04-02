@@ -1,8 +1,9 @@
 import os
-from priors.prior_model import SeismicPrior
+import numpy as np
+from priors import SeismicPrior
 
 
-def build_and_cache_priors(cache_paths, data_dir):
+def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
     """
     Build and cache all prior .tt3 files.
 
@@ -10,9 +11,14 @@ def build_and_cache_priors(cache_paths, data_dir):
     corresponding .tt3 path in cache_paths. Each prior is tried independently
     so a failure in one does not prevent the others from being built.
 
-    ETAS is always skipped here — it requires external ETAS output and must
-    be built manually:
-        p = SeismicPrior.from_etas(lats, lons, lambda_grid, forecast_time=t)
+    Source file paths (relative to data_dir) and per-prior out_of_bounds_fill
+    values are read from construction_params.  Helmstetter is the only prior
+    without a source_paths entry — its data comes from pycsep at runtime.
+
+    ETAS is built from its source .tt3 if the file exists.  If absent (not yet
+    generated), ETAS is skipped.  To build from raw ETAS output instead:
+        p = SeismicPrior.from_etas(lats, lons, lambda_grid, forecast_time=t,
+                                   bounds=..., out_of_bounds_fill=...)
         p.to_tt3(cache_paths['ETAS'])
 
     Parameters
@@ -22,32 +28,85 @@ def build_and_cache_priors(cache_paths, data_dir):
         Expected keys: 'Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform'.
     data_dir : str
         Path to the priors data directory (SeismicPrior.data_dir).
+    construction_params : dict, optional
+        Must contain:
+          'bounds'             — (lon_min, lon_max, lat_min, lat_max)
+          'source_paths'       — {prior_name: path_relative_to_data_dir, ...}
+          'out_of_bounds_fill' — {prior_name: fill_value, ...}
+        Defaults to an empty dict.
     """
+    if construction_params is None:
+        construction_params = {}
+
+    oob_fills    = construction_params.get('out_of_bounds_fill', {})
+    rel_sources  = construction_params.get('source_paths', {})
+    shared_kwargs = {k: v for k, v in construction_params.items()
+                     if k not in ('out_of_bounds_fill', 'source_paths')}
+
+    def _abs(name):
+        """Resolve a prior's relative source path to an absolute path."""
+        rel = rel_sources.get(name)
+        return os.path.join(data_dir, rel) if rel is not None else None
+
     try:
-        p = SeismicPrior.from_gear1(os.path.join(data_dir, 'GEAR1_data', 'GL_HAZTBLT_M5_B2_2013.TMP'))
+        p = SeismicPrior.from_gear1(_abs('Gear1'),
+                                    out_of_bounds_fill=oob_fills.get('Gear1'),
+                                    **shared_kwargs)
         p.to_tt3(cache_paths['Gear1'])
         print("Gear1: built and cached.")
     except Exception as e:
         print(f"Gear1: failed — {e}")
 
     try:
-        p = SeismicPrior.from_nshm(os.path.join(data_dir, 'USGS_NSHM_data', 'gridded_moment_rates.xyz'))
+        p = SeismicPrior.from_nshm(_abs('NSHM'),
+                                   out_of_bounds_fill=oob_fills.get('NSHM'),
+                                   **shared_kwargs)
         p.to_tt3(cache_paths['NSHM'])
         print("NSHM: built and cached.")
     except Exception as e:
         print(f"NSHM: failed — {e}")
 
     try:
-        p = SeismicPrior.from_helmstetter()
+        p = SeismicPrior.from_helmstetter(out_of_bounds_fill=oob_fills.get('Helmstetter'),
+                                          **shared_kwargs)
         p.to_tt3(cache_paths['Helmstetter'])
         print("Helmstetter: built and cached.")
     except Exception as e:
         print(f"Helmstetter: failed — {e}")
 
     try:
-        SeismicPrior.from_smooth_seismicity()  # validates the file loads cleanly
-        print("Smooth_seismicity: ready (pre-built).")
+        src = _abs('Smooth_seismicity')
+        if src is None:
+            raise FileNotFoundError("No source_paths entry for Smooth_seismicity in construction_params.")
+        p = SeismicPrior.from_tt3(src, name='smooth_seismicity')
+        bounds = shared_kwargs.get('bounds')
+        oob = oob_fills.get('Smooth_seismicity')
+        if bounds is not None and oob is not None:
+            p.lons, p.lats, p.grid = SeismicPrior._expand_to_bounds(
+                p.lons, p.lats, p.grid, bounds, oob)
+            p.grid = p.grid / np.nansum(p.grid)
+        p.to_tt3(cache_paths['Smooth_seismicity'])
+        print("Smooth_seismicity: built and cached.")
     except Exception as e:
         print(f"Smooth_seismicity: failed — {e}")
 
-    print("ETAS: skipped (requires external ETAS output — build manually).")
+    try:
+        src = _abs('ETAS')
+        if src is None or not os.path.exists(src):
+            print("ETAS: skipped — source file not found. "
+                  "Generate with from_etas() or place source in ETAS_data/.")
+        else:
+            p = SeismicPrior.from_tt3(src, name='etas')
+            bounds = shared_kwargs.get('bounds')
+            oob = oob_fills.get('ETAS')
+            if oob is not None:
+                fv = float(np.nanmean(p.grid)) if oob == 'mean' else float(oob)
+                p.grid[p.grid <= 1e-9] = fv
+            if bounds is not None and oob is not None:
+                p.lons, p.lats, p.grid = SeismicPrior._expand_to_bounds(
+                    p.lons, p.lats, p.grid, bounds, oob)
+            p.grid = p.grid / np.nansum(p.grid)
+            p.to_tt3(cache_paths['ETAS'])
+            print("ETAS: built and cached.")
+    except Exception as e:
+        print(f"ETAS: failed — {e}")

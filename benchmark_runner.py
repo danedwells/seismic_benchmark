@@ -380,6 +380,72 @@ def compute_location_error(results_df, catalog_df=None):
     return merged.drop(columns=['usgs_lat', 'usgs_lon'])
 
 
+def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
+    """
+    Run the reference location benchmark and write results to a CSV.
+
+    Uses its own prior and grid parameters (from ref_params), independent of
+    whatever the main benchmarking workflow is configured with.
+
+    Parameters
+    ----------
+    run_dir : str
+        Directory containing <event_id>.run files.
+    output_dir : str
+        Directory where the reference CSV will be written.
+    cache_paths : dict
+        Mapping of prior name -> .tt3 file path (or None for Uniform).
+        Must contain the key named by ref_params['prior'].
+    ref_params : dict
+        Reference run configuration with keys:
+            prior     — prior name, must be a key in cache_paths
+            max_trigs — maximum station triggers per version
+            grid_size — number of grid points along one axis
+            grid_km   — half-width of the search grid in km
+
+    Returns
+    -------
+    str : path to the written CSV file.
+    """
+    from priors import SeismicPrior
+
+    prior_name = ref_params['prior']
+    cache_key  = next(k for k in cache_paths if k.lower() == prior_name.lower())
+    tt3_path   = cache_paths[cache_key]
+
+    if tt3_path is None:
+        fallback = next(v for v in cache_paths.values() if v is not None)
+        prior = SeismicPrior.from_tt3(fallback)
+        use_prior = False
+    else:
+        prior = SeismicPrior.from_tt3(tt3_path)
+        use_prior = True
+
+    params = EPIC_locate_prelim.EPIC_PARAMS()
+    params.prior          = prior
+    params.use_prior      = use_prior
+    params.GridSize       = ref_params['grid_size']
+    params.GridKm         = ref_params['grid_km']
+    params.method         = 'EPIC C'
+    params.MAX_EVENT_TRIGS = ref_params['max_trigs']
+
+    event_ids = sorted(int(f.stem) for f in Path(run_dir).glob('*.run'))
+    runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir)
+    runner.run_all(event_ids)
+
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, f"REFERENCE_{ref_params['max_trigs']}.csv")
+    pd.DataFrame([
+        {'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
+         'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
+         'best_like': t.best_like, 'best_prior': t.best_prior,
+         'frac_misfit': t.frac_misfit}
+        for (eid, ver), t in runner.results.items()
+    ]).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
+
+    return out_path
+
+
 def run_prior(args):
     """
     Module-level worker for ProcessPoolExecutor.
