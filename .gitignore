@@ -1,0 +1,10 @@
+# Generated outputs — do not commit
+results/
+
+# Input data — large files, not committed
+data/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
