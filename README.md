@@ -95,7 +95,7 @@ seismic_benchmark/
 
 ## Existing Priors
 
-These are not included in this repository due to file size. This may change in future iterations.
+These are not included in this repository due to file size. This may change in future iterations. Please contact daniel.wells@usu.edu or danedwells@gmail.com if these are needed.
 
 #### Existing Priors Links and Info For Raw Data
 
@@ -110,16 +110,17 @@ These are not included in this repository due to file size. This may change in f
 
 ## Existing data
 
-These files are not currently included in this repository due to file size and may be included in future iterations. 
+These files are not currently included in this repository due to file size and may be included in future iterations. Please contact daniel.wells@usu.edu or danedwells@gmail.com if these are needed.
 
 #### bEPIC Run Files
-bEPIC run files ({event_ID}.run) are required to run the bEPIC algorithm. These files are not currently included in this repository and may be included in future iterations. 
+
+    bEPIC run files ({event_ID}.run) are required to run the bEPIC algorithm. These files are not currently included in this repository and may be included in future iterations. 
 
 #### Reference catalog locations
 
-bEPIC_testing_catalog.txt - an example catalog connecting .run files to USGS/ANSS event ids
+    bEPIC_testing_catalog.txt - an example catalog connecting .run files to USGS/ANSS event ids
 
-background_seisimicity.parquet - a downloadable catalog of USGS events in the California region. This catalog is downloadable with the code in this repository.
+    background_seisimicity.parquet - a downloadable catalog of USGS events in the California region. This catalog is downloadable with the code in this repository.
 
 
 ---
