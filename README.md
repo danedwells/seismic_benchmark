@@ -1,6 +1,6 @@
 # seismic_benchmark
 
-> **Work in progress.** This repository is under active development. APIs, file layouts, and workflows may change without notice.
+> **Work in progress.** This repository is under active development. APIs, file layouts, and workflows may change without notice. This repository is being developed with the assistance of LLM/AI tools.
 
 A benchmarking framework for evaluating the [bEPIC](../bEPIC/) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
 
@@ -175,4 +175,5 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 - The `ETAS` prior requires an externally generated `.tt3` file from `etas_2`; there is no automated pipeline connecting them yet.
 - The `REFERENCE` workflow (high-resolution reference locations) is currently disabled.
 - There is no formal test suite; validation is done by visual inspection of output figures.
-- The `BenchmarkRunner` API is expected to change — see `CLAUDE.md` for the planned direction.
+- The `BenchmarkRunner` API is expected to change. 
+- Interfacing with other repositories for further benchmarking, inclusion of AI/ML models, and evaluation of data in real-time is expected in the future.
