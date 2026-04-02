@@ -22,7 +22,6 @@ Configuration knobs are at the top of each section.
 # Imports
 # ---------------------------------------------------------------------------
 import os
-import sys
 import time
 import warnings
 import numpy as np
@@ -33,14 +32,13 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from datetime import timezone
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from benchmark_runner import load_reference_catalog, get_usgs_event
+from benchmark.runner import load_reference_catalog, get_usgs_event
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-CATALOG_PATH = os.path.join(PROJECT_ROOT, 'reference_locations', 'bEPIC_testing_catalog.txt')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
 
 
 #%%
@@ -98,7 +96,7 @@ cbar = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
 cbar.set_label('ANSS Magnitude', fontsize=10)
 ax.set_title(f'USGS/ANSS Event Locations  (n={len(catalog)})', fontsize=12)
 plt.tight_layout()
-plt.savefig(os.path.join(PROJECT_ROOT, 'reference_locations/catalog_map.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_map.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -169,7 +167,7 @@ ax3.yaxis.set_major_formatter(
 )
 ax3.grid(True, linewidth=0.3, alpha=0.4)
 
-plt.savefig(os.path.join(PROJECT_ROOT, 'reference_locations/catalog_magnitude_time.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_magnitude_time.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -210,7 +208,7 @@ gl.right_labels = False
 
 ax.set_title(f'Temporal Evolution of Catalog Events  (n={len(catalog)})', fontsize=12)
 plt.tight_layout()
-plt.savefig(os.path.join(PROJECT_ROOT, 'reference_locations/catalog_temporal_evolution.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_temporal_evolution.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -307,7 +305,7 @@ if not flagged.empty:
                     'd_depth', 'd_time_s', 'status']].to_string(index=False))
 
 # Save verification table
-out_path = os.path.join(PROJECT_ROOT, 'reference_locations', 'catalog_verification.csv')
+out_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_verification.csv')
 verify_df.to_csv(out_path, index=False)
 print(f"\nVerification results saved to {out_path}")
 

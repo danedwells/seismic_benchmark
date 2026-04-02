@@ -1,7 +1,7 @@
 #%%
 # Get priors - separate repo
 from priors import SeismicPrior
-from seismicity_background import load_background_seismicity, add_background_seismicity
+from benchmark.background import load_background_seismicity, add_background_seismicity
 
 # Get bEPIC - separate repo
 from bEPIC import EPIC_locate_prelim
@@ -17,16 +17,16 @@ import cartopy.feature as cfeature
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Get custom class for this comparison
-import benchmark_runner
-import utils
-import config
+from benchmark import runner as benchmark_runner
+from benchmark import priors as utils
+from benchmark import config
 
 # Get root. Priors are in a different repo (priors/)
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Get directory of THIS project
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-SEIS_CACHE = os.path.join(PROJECT_ROOT, 'reference_locations', 'background_seismicity.parquet')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SEIS_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
 data_dir = SeismicPrior.data_dir  # priors/data/
 
@@ -55,11 +55,11 @@ if construct:
 """
 
 # Point to data/run files
-run_dir = os.path.join(PROJECT_ROOT, 'run_files')
+run_dir = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 
 # --- Create reference locations ---
 REFERENCE = False
-ref_dir = os.path.join(PROJECT_ROOT, 'reference_locations')
+ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
 
 if REFERENCE:
     benchmark_runner.create_reference_locations(run_dir, ref_dir, cache_paths, config.REFERENCE_PARAMS)
@@ -99,8 +99,8 @@ params.MAX_EVENT_TRIGS = MAX_TRIGS
 runner = benchmark_runner.BenchmarkRunner(prior=p, params=params, run_dir=run_dir)
 
 # --- Run all priors in parallel ---
-output_subdir = os.path.join(PROJECT_ROOT, 'output', f'max_trigs_{MAX_TRIGS}')
-figures_subdir = os.path.join(PROJECT_ROOT, 'figures', f'max_trigs_{MAX_TRIGS}')
+output_subdir = os.path.join(PROJECT_ROOT, 'results', 'output', f'max_trigs_{MAX_TRIGS}')
+figures_subdir = os.path.join(PROJECT_ROOT, 'results', 'figures', f'max_trigs_{MAX_TRIGS}')
 os.makedirs(output_subdir,  exist_ok=True)
 os.makedirs(figures_subdir, exist_ok=True)
 
