@@ -2,7 +2,7 @@
 
 > **Work in progress.** This repository is under active development. APIs, file layouts, and workflows may change without notice. This repository is being developed with the assistance of LLM/AI tools.
 
-A benchmarking framework for evaluating the [bEPIC](../bEPIC/) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
+A benchmarking framework for evaluating the [bEPIC](https://github.com/danedwells/bEPIC) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
 
 ---
 
@@ -17,7 +17,7 @@ For each event in the test catalog, bEPIC is run once per trigger version (i.e.,
 | `Helmstetter` | Helmstetter (2007) smoothed seismicity (requires pycsep) |
 | `Smooth_seismicity` | Pre-built US/Canada smoothed seismicity grid |
 | `ETAS` | ETAS-derived spatial intensity (time-dependent; optional) |
-| `Uniform` | Uninformative baseline |
+| `Uniform` | Uninformative baseline; equivalent to having no prior. |
 
 Results (posterior lat/lon, travel-time misfits, location errors vs. ANSS) are written to CSV and visualized as maps and histograms.
 
@@ -29,18 +29,22 @@ This repository is one part of a larger multi-project suite. It has **hard depen
 
 ### Required
 
-**[bEPIC](../bEPIC/)** — Bayesian earthquake early warning location algorithm.
+**[bEPIC](https://github.com/danedwells/bEPIC)** — Bayesian earthquake early warning location algorithm.
 Provides the core `EPIC_locate_prelim` module that this benchmark drives.
 
 ```bash
-cd ../bEPIC && pip install -e .
+git clone git@github.com:danedwells/bEPIC.git bEPIC/
+cd bEPIC 
+pip install -e .
 ```
 
-**[priors](../priors/)** — Spatial seismic prior distributions.
+**[priors](https://github.com/danedwells/nehrp_priors)** — Spatial seismic prior distributions.
 Provides the `SeismicPrior` class used to load, build, and cache `.tt3` prior files.
 
 ```bash
-cd ../priors && pip install -e .
+git clone git@github.com:danedwells/nehrp_priors.git priors/
+cd priors
+pip install -e .
 ```
 
 `pycsep` is additionally required to build the Helmstetter prior (not auto-installed):
@@ -51,16 +55,18 @@ pip install git+https://github.com/SCECcode/pycsep.git
 
 ### Optional
 
-**[etas_2](../etas_2/)** — ETAS parameter inversion and catalog simulation.
+**[etas_2](https://github.com/danedwells/etas_2)** — ETAS parameter inversion and catalog simulation.
 Can be used to generate a time-dependent ETAS spatial prior (a `.tt3` file) for use as the `ETAS` prior in benchmarks. If you don't need the ETAS prior, this dependency can be ignored.
 
 ---
 
 ## Installation
 
-From inside this directory:
 
 ```bash
+mkdir seismic_benchmark
+git clone git@github.com:danedwells/seismic_benchmark.git seismic_benchmark
+cd seismic_benchmark
 pip install -e .
 ```
 
