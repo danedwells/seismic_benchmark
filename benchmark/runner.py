@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import requests
 from io import StringIO
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
@@ -173,41 +174,6 @@ def load_reference_catalog(catalog_path):
 # ---------------------------------------------------------------------------
 # USGS / IRIS data retrieval (ported from download_usgs_event.py)
 # ---------------------------------------------------------------------------
-
-def get_usgs_event(anss_id):
-    """
-    Return the USGS ComCat GeoJSON for a given ANSS event ID.
-
-    Parameters
-    ----------
-    anss_id : str
-        USGS/ANSS event ID (e.g. 'nc73093981').
-    """
-    url = "https://earthquake.usgs.gov/fdsnws/event/1/query"
-    r = requests.get(url, params={"eventid": anss_id, "format": "geojson"}, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-
-def get_phases_df(geojson):
-    """
-    Download the phases.csv product from a USGS event GeoJSON.
-
-    Returns a DataFrame with columns:
-        Channel, Distance, Azimuth, Phase, Arrival Time, Status, Residual, Weight
-    or None if the product is unavailable.
-    """
-    products = geojson.get("properties", {}).get("products", {})
-    phase_products = products.get("phase-data", [])
-    if not phase_products:
-        return None
-    contents = phase_products[0].get("contents", {})
-    if "phases.csv" not in contents:
-        return None
-    url = contents["phases.csv"]["url"]
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    return pd.read_csv(StringIO(r.text))
 
 
 def get_station_coords(network, station, channel, origin_time_iso):
@@ -435,13 +401,16 @@ def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
 
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"REFERENCE_{ref_params['max_trigs']}.csv")
-    pd.DataFrame([
-        {'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
-         'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
-         'best_like': t.best_like, 'best_prior': t.best_prior,
-         'frac_misfit': t.frac_misfit}
-        for (eid, ver), t in runner.results.items()
-    ]).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
+    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
+             'best_misfit', 'best_like', 'best_prior', 'frac_misfit']
+    pd.DataFrame(
+        [{'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
+          'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
+          'best_like': t.best_like, 'best_prior': t.best_prior,
+          'frac_misfit': t.frac_misfit}
+         for (eid, ver), t in runner.results.items()],
+        columns=_cols,
+    ).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
 
     return out_path
 
@@ -490,7 +459,11 @@ def run_prior(args):
     params.MAX_EVENT_TRIGS = args['max_trigs']
 
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'])
-    event_ids = sorted(int(f.stem) for f in Path(args['run_dir']).glob('*.run'))
+    stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
+    try:
+        event_ids = sorted(int(s) for s in stems)
+    except ValueError:
+        event_ids = sorted(stems)
     runner.run_all(event_ids)
 
     rows = [
@@ -502,5 +475,31 @@ def run_prior(args):
     ]
     os.makedirs(args['output_dir'], exist_ok=True)
     out_path = os.path.join(args['output_dir'], f"{prior_name.lower()}_benchmark_results.csv")
-    pd.DataFrame(rows).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
+    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
+             'best_misfit', 'best_like', 'best_prior', 'frac_misfit']
+    pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
     return prior_name
+
+
+def run_all_priors_parallel(worker_fn, job_args):
+    """
+    Dispatch a list of per-prior job dicts to a ProcessPoolExecutor and
+    print pass/fail for each prior as it completes.
+
+    Parameters
+    ----------
+    worker_fn : callable
+        Module-level worker (e.g. run_prior).  Must accept a single dict
+        with at least a 'prior_name' key.
+    job_args : list of dict
+        One dict per prior, each with the keys expected by worker_fn.
+    """
+    with ProcessPoolExecutor() as executor:
+        futures = {executor.submit(worker_fn, a): a['prior_name'] for a in job_args}
+        for f in as_completed(futures):
+            name = futures[f]
+            exc  = f.exception()
+            if exc:
+                print(f"{name} FAILED: {exc}")
+            else:
+                print(f"{name} done")
