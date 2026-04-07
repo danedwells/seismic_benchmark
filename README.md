@@ -80,18 +80,25 @@ This makes the `benchmark` package importable from the `scripts/` entry points.
 seismic_benchmark/
 ├── benchmark/                  # Python package — import as "benchmark"
 │   ├── config.py               # Prior filenames, bounds, benchmark parameters
-│   ├── runner.py               # BenchmarkRunner class; USGS/IRIS retrieval; run_prior worker
+│   ├── runner.py               # BenchmarkRunner class; run_prior / run_all_priors_parallel workers
 │   ├── priors.py               # build_and_cache_priors() — constructs .tt3 files
+│   ├── usgs.py                 # USGS/IRIS download helpers; QuakeML parser; .run file builder
 │   └── background.py           # Background seismicity download/cache from USGS ComCat
 ├── scripts/                    # Entry-point scripts (run these directly)
 │   ├── run_benchmarks.py       # Main workflow: load priors → run bEPIC → plot
+│   ├── case_studies.py         # Case-study workflow: download catalog → build .run files → run bEPIC → plot
 │   └── examine_catalog.py      # Catalog QC: maps, magnitude-time, USGS verification
 ├── data/                       # Input data — not committed to git
-│   ├── run_files/              # Per-event trigger sequences (*.run)
+│   ├── run_files/              # Per-event trigger sequences (*.run) for the standard benchmark
+│   ├── case_studies/           # Per-case-study subdirs (run_files/, catalog cache)
+│   │   ├── Ridgecrest/
+│   │   ├── Ferndale/
+│   │   └── ElMayor/
 │   └── reference/              # Reference catalog, background seismicity cache
 ├── results/                    # Generated outputs — not committed to git
 │   ├── output/max_trigs_N/     # Benchmark CSVs: {prior}_benchmark_results.csv
-│   └── figures/max_trigs_N/    # Comparison maps and histograms
+│   ├── figures/max_trigs_N/    # Comparison maps and histograms
+│   └── case_studies/           # Per-case-study output and figures
 ├── pyproject.toml
 ├── README.md
 └── CLAUDE.md                   # Developer notes and planned API direction
@@ -120,7 +127,9 @@ These files are not currently included in this repository due to file size and m
 
 #### bEPIC Run Files
 
-    bEPIC run files ({event_ID}.run) are required to run the bEPIC algorithm. These files are not currently included in this repository and may be included in future iterations. 
+    bEPIC run files ({event_ID}.run) are required to run the standard benchmark. These files are not currently included in this repository and may be included in future iterations.
+
+    For case studies, .run files are generated automatically from USGS phase data by scripts/case_studies.py — no pre-built files are needed.
 
 #### Reference catalog locations
 
@@ -133,29 +142,63 @@ These files are not currently included in this repository due to file size and m
 
 ## Running the benchmark
 
-The main entry point is `scripts/run_benchmarks.py`. It is written as a Jupyter-style script (cells delimited by `#%%`) and can be run cell-by-cell in an IDE or top-to-bottom as a plain script.
+### Standard benchmark (`scripts/run_benchmarks.py`)
+
+Evaluates bEPIC on a fixed catalog of pre-built `.run` trigger files. Written as a Jupyter-style script (cells delimited by `#%%`) — run cell-by-cell in an IDE or top-to-bottom as a plain script.
 
 Three boolean flags near the top control which stages execute:
 
 ```python
-construct      = False   # Rebuild all prior .tt3 files from source data
+CONSTRUCT      = False   # Rebuild all prior .tt3 files from source data
 REFERENCE      = False   # Run high-resolution reference locations (unused)
 RUN_ALL_PRIORS = False   # Run all six priors in parallel
 ```
 
 **Typical first run:**
 
-1. Set `construct = True` to build and cache the `.tt3` prior files (requires source data in `SeismicPrior.data_dir`).
+1. Set `CONSTRUCT = True` to build and cache the `.tt3` prior files (requires source data in `SeismicPrior.data_dir`).
 2. Set `RUN_ALL_PRIORS = True` to run bEPIC across all priors in parallel.
 3. Results appear in `results/output/max_trigs_{N}/` and figures in `results/figures/max_trigs_{N}/`.
 
-**Catalog examination:**
+---
+
+### Case studies (`scripts/case_studies.py`)
+
+Runs bEPIC on a user-defined earthquake sequence (e.g. an aftershock sequence) downloaded live from USGS. Unlike the standard benchmark, there are no pre-built `.run` files — they are constructed on the fly from USGS phase data.
+
+Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
+
+| Key | Sequence |
+|-----|----------|
+| `Ridgecrest` | Ridgecrest 2019 aftershock sequence |
+| `Ferndale` | Ferndale 2022 sequence |
+| `ElMayor` | El Mayor-Cucapah 2010 aftershock sequence |
+
+Three boolean flags control the stages:
+
+```python
+DOWNLOAD_CATALOG = False   # Re-download the USGS event catalog (else use cache)
+BUILD_RUN_FILES  = False   # Fetch USGS phase data and build .run trigger files
+RUN_ALL_PRIORS   = False   # Run all six priors in parallel
+```
+
+**Typical first run:**
+
+1. Set `DOWNLOAD_CATALOG = True` and `BUILD_RUN_FILES = True` to fetch the catalog and phase arrivals from USGS and IRIS. The catalog is cached as a parquet file; `.run` files are written to `data/case_studies/{name}/run_files/`. Subsequent runs can leave both flags `False` to reuse cached data.
+2. Set `RUN_ALL_PRIORS = True` to run bEPIC across all priors.
+3. Results appear in `results/case_studies/{name}/output/` and figures in `results/case_studies/{name}/figures/`.
+
+The `build_run_files` step queries USGS ComCat for phase picks and IRIS FDSNWS for station coordinates. It applies a rate-limiting delay between events (default 1.5 s) and skips events that already have a `.run` file. Phase data is read from `phases.csv` if available; otherwise parsed from `quakeml.xml`.
+
+---
+
+### Catalog examination
 
 ```bash
 python scripts/examine_catalog.py
 ```
 
-Produces maps and a USGS online verification report for the test catalog. Outputs are saved to `data/reference/`.
+Produces maps and a USGS online verification report for the standard test catalog. Outputs are saved to `data/reference/`.
 
 ---
 
