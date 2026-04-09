@@ -4,6 +4,7 @@
 # =============================================================================
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity, add_background_seismicity
+from benchmark.plots import plot_prior_histograms
 import os
 import numpy as np
 import pandas as pd
@@ -294,124 +295,59 @@ plt.savefig(os.path.join(FIGURES_DIR, 'MTJ_grid_benchmark_locations.png'), dpi=1
 plt.show()
 
 # %%
-# ── MTJ fractional misfit histograms ──────────────────────────────────────
-# ref_frac_misfits_mtj = in_extent(ref_final)['frac_misfit']
 bins_frac = np.linspace(0, 0.5, 51)
-fig, axes = plt.subplots(2, 3, figsize=(16, 8), sharey=True)
+bins_km   = np.linspace(0, 100, 51)
 
-for ax, prior_name in zip(axes.flatten(), PRIOR_ORDER):
-    csv_path = os.path.join(OUTPUT_DIR, f'{prior_name.lower()}_benchmark_results.csv')
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        misfits = in_extent(df.groupby('event_id').last().reset_index())['frac_misfit']
-        ax.hist(misfits, bins=bins_frac, color='crimson', alpha=0.6, label=prior_name)
-    else:
-        ax.text(0.5, 0.5, 'no data', transform=ax.transAxes,
-                ha='center', va='center', fontsize=10, color='gray')
-
-    # ax.hist(ref_frac_misfits_mtj, bins=bins_frac, color='black', alpha=0.4, label='Reference')
-    ax.set_title(prior_name, fontsize=11)
-    ax.set_xlabel('frac_misfit (fractional TT error)', fontsize=9)
-    ax.legend(fontsize=7)
-
-axes[0, 0].set_ylabel('count', fontsize=9)
-axes[1, 0].set_ylabel('count', fontsize=9)
-
-fig.suptitle('bEPIC MTJ fractional misfit distributions — prior comparison', fontsize=14)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'MTJ_grid_misfit_histograms.png'), dpi=150)
+# ── MTJ fractional misfit histograms ──────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'frac_misfit',
+    bins        = bins_frac,
+    title       = 'bEPIC MTJ fractional misfit distributions — prior comparison',
+    xlabel      = 'frac_misfit (fractional TT error)',
+    save_path   = os.path.join(FIGURES_DIR, 'MTJ_grid_misfit_histograms.png'),
+    filter_fn   = in_extent,
+)
 plt.show()
 
 # ── Total fractional misfit histograms ────────────────────────────────────
-# ref_frac_misfits_all = ref_final['frac_misfit']
-
-fig, axes = plt.subplots(2, 3, figsize=(16, 8), sharey=True)
-for ax, prior_name in zip(axes.flatten(), PRIOR_ORDER):
-    csv_path = os.path.join(OUTPUT_DIR, f'{prior_name.lower()}_benchmark_results.csv')
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        misfits = df.groupby('event_id').last().reset_index()['frac_misfit']
-        ax.hist(misfits, bins=bins_frac, color='crimson', alpha=0.6, label=prior_name)
-    else:
-        ax.text(0.5, 0.5, 'no data', transform=ax.transAxes,
-                ha='center', va='center', fontsize=10, color='gray')
-
-    # ax.hist(ref_frac_misfits_all, bins=bins_frac, color='black', alpha=0.4, label='Reference')
-    ax.set_title(prior_name, fontsize=11)
-    ax.set_xlabel('frac_misfit (fractional TT error)', fontsize=9)
-    ax.legend(fontsize=7)
-
-axes[0, 0].set_ylabel('count', fontsize=9)
-axes[1, 0].set_ylabel('count', fontsize=9)
-
-fig.suptitle('bEPIC fractional misfit distributions — prior comparison', fontsize=14)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'Grid_misfit_histograms.png'), dpi=150)
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'frac_misfit',
+    bins        = bins_frac,
+    title       = 'bEPIC fractional misfit distributions — prior comparison',
+    xlabel      = 'frac_misfit (fractional TT error)',
+    save_path   = os.path.join(FIGURES_DIR, 'Grid_misfit_histograms.png'),
+)
 plt.show()
 
 # ── Location error histograms ─────────────────────────────────────────────
-# catalog_path and catalog_df loaded above
-
-bins_km = np.linspace(0, 100, 51)
-fig, axes = plt.subplots(2, 3, figsize=(16, 8), sharey=True)
-
-# ref_loc_errors = None
-# if catalog_df is not None and 'location_error_km' not in ref_final.columns:
-#     ref_with_err = benchmark_runner.compute_location_error(ref_final, catalog_df)
-#     ref_loc_errors = ref_with_err['location_error_km'].dropna()
-# elif 'location_error_km' in ref_final.columns:
-#     ref_loc_errors = ref_final['location_error_km'].dropna()
-
-for ax, prior_name in zip(axes.flatten(), PRIOR_ORDER):
-    csv_path = os.path.join(OUTPUT_DIR, f'{prior_name.lower()}_benchmark_results.csv')
-    if os.path.exists(csv_path) and catalog_df is not None:
-        df = pd.read_csv(csv_path)
-        final = df.groupby('event_id').last().reset_index()
-        final = benchmark_runner.compute_location_error(final, catalog_df)
-        loc_errors = final['location_error_km'].dropna()
-        ax.hist(loc_errors, bins=bins_km, color='crimson', alpha=0.6, label=prior_name)
-    else:
-        ax.text(0.5, 0.5, 'no catalog' if catalog_df is None else 'no data',
-                transform=ax.transAxes, ha='center', va='center', fontsize=10, color='gray')
-
-    # ax.hist(ref_loc_errors, bins=bins_km, color='black', alpha=0.4, label='Reference')
-    ax.set_title(prior_name, fontsize=11)
-    ax.set_xlabel('location error (km)', fontsize=9)
-    ax.legend(fontsize=7)
-
-axes[0, 0].set_ylabel('count', fontsize=9)
-axes[1, 0].set_ylabel('count', fontsize=9)
-
-fig.suptitle('bEPIC location error distributions — prior comparison', fontsize=14)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'Grid_location_error_histograms.png'), dpi=150)
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'location_error_km',
+    bins        = bins_km,
+    title       = 'bEPIC location error distributions — prior comparison',
+    xlabel      = 'location error (km)',
+    save_path   = os.path.join(FIGURES_DIR, 'Grid_location_error_histograms.png'),
+    catalog_df  = catalog_df,
+)
 plt.show()
 
 # ── MTJ location error histograms ─────────────────────────────────────────
-fig, axes = plt.subplots(2, 3, figsize=(16, 8), sharey=True)
-
-for ax, prior_name in zip(axes.flatten(), PRIOR_ORDER):
-    csv_path = os.path.join(OUTPUT_DIR, f'{prior_name.lower()}_benchmark_results.csv')
-    if os.path.exists(csv_path) and catalog_df is not None:
-        df = pd.read_csv(csv_path)
-        final = in_extent(df.groupby('event_id').last().reset_index())
-        final = benchmark_runner.compute_location_error(final, catalog_df)
-        loc_errors = final['location_error_km'].dropna()
-        ax.hist(loc_errors, bins=bins_km, color='crimson', alpha=0.6, label=prior_name)
-    else:
-        ax.text(0.5, 0.5, 'no catalog' if catalog_df is None else 'no data',
-                transform=ax.transAxes, ha='center', va='center', fontsize=10, color='gray')
-
-    ax.set_title(prior_name, fontsize=11)
-    ax.set_xlabel('location error (km)', fontsize=9)
-    ax.legend(fontsize=7)
-
-axes[0, 0].set_ylabel('count', fontsize=9)
-axes[1, 0].set_ylabel('count', fontsize=9)
-
-fig.suptitle('bEPIC MTJ location error distributions — prior comparison', fontsize=14)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'MTJ_location_error_histograms.png'), dpi=150)
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'location_error_km',
+    bins        = bins_km,
+    title       = 'bEPIC MTJ location error distributions — prior comparison',
+    xlabel      = 'location error (km)',
+    save_path   = os.path.join(FIGURES_DIR, 'MTJ_location_error_histograms.png'),
+    filter_fn   = in_extent,
+    catalog_df  = catalog_df,
+)
 plt.show()
 
 # %%

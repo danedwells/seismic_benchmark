@@ -8,6 +8,76 @@ from datetime import datetime, timezone
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 
+def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_version=None):
+    """
+    Run bEPIC for one event up through *focus_version* and return
+    (SearchOut, output_df, actual_version).
+
+    Parameters
+    ----------
+    run_path : str
+        Path to the .run trigger file.
+    prior : SeismicPrior
+        Spatial prior to use.
+    use_prior : bool
+        Whether to weight by the prior (False = uniform/likelihood-only).
+    params_kw : dict
+        Keys: grid_size, grid_km, max_trigs.
+    focus_version : int or None
+        Version to stop at (inclusive). None = last.
+    """
+    df_run = pd.read_csv(run_path)
+    df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
+
+    params = EPIC_locate_prelim.EPIC_PARAMS()
+    params.prior           = prior
+    params.use_prior       = use_prior
+    params.GridSize        = params_kw['grid_size']
+    params.GridKm          = params_kw['grid_km']
+    params.method          = 'EPIC C'
+    params.MAX_EVENT_TRIGS = params_kw['max_trigs']
+
+    first = df_run.sort_values('order').iloc[0]
+    event = EPIC_locate_prelim.Event(
+        lat        = first['latitude'],
+        lon        = first['longitude'],
+        time       = first['trigger_time'],
+        misfit_rms = 0,
+        misfit_ave = 0,
+        eventid    = Path(run_path).stem,
+        version    = 0,
+    )
+
+    versions = sorted(df_run['version'].unique())
+    target_v = versions[-1] if focus_version is None else int(focus_version)
+
+    t_out = out_df = None
+    for version in versions:
+        df_v = (df_run[df_run['version'] == version]
+                .sort_values('order')
+                .head(params.MAX_EVENT_TRIGS))
+
+        event.trigs   = []
+        event.version = int(version)
+        for row in df_v.itertuples(index=False):
+            trig = EPIC_locate_prelim.TriggerManager(
+                lon          = row.longitude,
+                lat          = row.latitude,
+                trigger_time = row.trigger_time,
+                sta          = row.station,
+                net          = row.network,
+                chan          = row.channel,
+            )
+            event.trigs.append(trig)
+
+        t_out, out_df = EPIC_locate_prelim.E2Location_locate(params, event)
+
+        if version >= target_v or len(df_v) >= params.MAX_EVENT_TRIGS:
+            target_v = version   # record the version that was actually used
+            break
+
+    return t_out, out_df, target_v
+
 
 class BenchmarkRunner:
     """
