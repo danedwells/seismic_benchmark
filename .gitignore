@@ -12,3 +12,6 @@ __pycache__/
 
 # Claude
 CLAUDE.md
+
+# Random test file:
+scripts/test_ss_prior.py

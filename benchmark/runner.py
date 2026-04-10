@@ -30,12 +30,14 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_versi
     df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
 
     params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior           = prior
-    params.use_prior       = use_prior
-    params.GridSize        = params_kw['grid_size']
-    params.GridKm          = params_kw['grid_km']
-    params.method          = 'EPIC C'
-    params.MAX_EVENT_TRIGS = params_kw['max_trigs']
+    params.prior                    = prior
+    params.use_prior                = use_prior
+    params.GridSize                 = params_kw['grid_size']
+    params.GridKm                   = params_kw['grid_km']
+    params.method                   = 'EPIC C'
+    params.MAX_EVENT_TRIGS          = params_kw['max_trigs']
+    params.migrate_grid             = params_kw.get('migrate_grid', True)
+    params.migrate_grid_min_triggers = params_kw.get('migrate_grid_min_triggers', 1)
 
     first = df_run.sort_values('order').iloc[0]
     event = EPIC_locate_prelim.Event(
@@ -458,12 +460,14 @@ def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
         use_prior = True
 
     params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior          = prior
-    params.use_prior      = use_prior
-    params.GridSize       = ref_params['grid_size']
-    params.GridKm         = ref_params['grid_km']
-    params.method         = 'EPIC C'
-    params.MAX_EVENT_TRIGS = ref_params['max_trigs']
+    params.prior                    = prior
+    params.use_prior                = use_prior
+    params.GridSize                 = ref_params['grid_size']
+    params.GridKm                   = ref_params['grid_km']
+    params.method                   = 'EPIC C'
+    params.MAX_EVENT_TRIGS          = ref_params['max_trigs']
+    params.migrate_grid             = ref_params.get('migrate_grid', True)
+    params.migrate_grid_min_triggers = ref_params.get('migrate_grid_min_triggers', 1)
 
     event_ids = sorted(int(f.stem) for f in Path(run_dir).glob('*.run'))
     runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir)
@@ -521,12 +525,14 @@ def run_prior(args):
         use_prior = True
 
     params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior          = p
-    params.use_prior      = use_prior
-    params.GridSize       = args['grid_size']
-    params.GridKm         = args['grid_km']
-    params.method         = 'EPIC C'
-    params.MAX_EVENT_TRIGS = args['max_trigs']
+    params.prior                    = p
+    params.use_prior                = use_prior
+    params.GridSize                 = args['grid_size']
+    params.GridKm                   = args['grid_km']
+    params.method                   = 'EPIC C'
+    params.MAX_EVENT_TRIGS          = args['max_trigs']
+    params.migrate_grid             = args.get('migrate_grid', True)
+    params.migrate_grid_min_triggers = args.get('migrate_grid_min_triggers', 1)
 
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'])
     stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]

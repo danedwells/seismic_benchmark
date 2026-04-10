@@ -32,13 +32,16 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from datetime import timezone
 
-from benchmark.runner import load_reference_catalog, get_usgs_event
+from benchmark.usgs import get_usgs_event
+from benchmark.runner import load_reference_catalog
+from benchmark.background import load_background_seismicity
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
 
 #%%
@@ -73,10 +76,20 @@ print(f"  Lon range  : {catalog['usgs_lon'].min():.3f} – {catalog['usgs_lon'].
 # ---------------------------------------------------------------------------
 proj = ccrs.PlateCarree()
 
+map_extent = [catalog['usgs_lon'].min() - 1, catalog['usgs_lon'].max() + 1,
+              catalog['usgs_lat'].min() - 1, catalog['usgs_lat'].max() + 1]
+
+bg = load_background_seismicity(
+    cache_path = SEIS_CACHE,
+    bounds     = (map_extent[0], map_extent[1], map_extent[2], map_extent[3]),
+    start_year = 2000,
+    end_year   = 2018,
+    min_mag    = 3.5,
+    force_refresh=True
+)
+
 fig, ax = plt.subplots(figsize=(10, 7), subplot_kw={'projection': proj})
-ax.set_extent([catalog['usgs_lon'].min() - 1, catalog['usgs_lon'].max() + 1,
-               catalog['usgs_lat'].min() - 1, catalog['usgs_lat'].max() + 1],
-              crs=proj)
+ax.set_extent(map_extent, crs=proj)
 ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor='black')
 ax.add_feature(cfeature.BORDERS, linewidth=0.7, edgecolor='black')
 ax.add_feature(cfeature.COASTLINE, linewidth=0.7)
@@ -86,12 +99,16 @@ gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5)
 gl.top_labels   = False
 gl.right_labels = False
 
-sc = ax.scatter(
-    catalog['usgs_lon'], catalog['usgs_lat'],
-    c=catalog['usgs_mag'], cmap='plasma',
-    s=2 * (catalog['usgs_mag'] - catalog['usgs_mag'].min() + 0.1) ** 3,
-    alpha=0.4, transform=proj, zorder=5,
-)
+if bg is not None:
+    ax.scatter(bg['longitude'], bg['latitude'],
+               s=6, c='gray', alpha=0.1, transform=proj, zorder=1, linewidths=0)
+
+# sc = ax.scatter(
+#     catalog['usgs_lon'], catalog['usgs_lat'],
+#     c=catalog['usgs_mag'], cmap='plasma',
+#     s=2 * (catalog['usgs_mag'] - catalog['usgs_mag'].min() + 0.1) ** 3,
+#     alpha=0.4, transform=proj, zorder=5,
+# )
 cbar = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
 cbar.set_label('ANSS Magnitude', fontsize=10)
 ax.set_title(f'USGS/ANSS Event Locations  (n={len(catalog)})', fontsize=12)

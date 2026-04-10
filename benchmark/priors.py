@@ -30,28 +30,37 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
         Path to the priors data directory (SeismicPrior.data_dir).
     construction_params : dict, optional
         Must contain:
-          'bounds'             — (lon_min, lon_max, lat_min, lat_max)
-          'source_paths'       — {prior_name: path_relative_to_data_dir, ...}
-          'out_of_bounds_fill' — {prior_name: fill_value, ...}
+          'bounds'               — (lon_min, lon_max, lat_min, lat_max)
+          'source_paths'         — {prior_name: path_relative_to_data_dir, ...}
+          'out_of_bounds_fill'   — {prior_name: fill_value, ...}
+          'target_resolution_deg'— {prior_name: float or None, ...}  (optional)
         Defaults to an empty dict.
     """
     if construction_params is None:
         construction_params = {}
 
-    oob_fills    = construction_params.get('out_of_bounds_fill', {})
-    rel_sources  = construction_params.get('source_paths', {})
+    oob_fills   = construction_params.get('out_of_bounds_fill', {})
+    rel_sources = construction_params.get('source_paths', {})
+    target_res  = construction_params.get('target_resolution_deg', {})
     shared_kwargs = {k: v for k, v in construction_params.items()
-                     if k not in ('out_of_bounds_fill', 'source_paths')}
+                     if k not in ('out_of_bounds_fill', 'source_paths', 'target_resolution_deg')}
 
     def _abs(name):
-        """Resolve a prior's relative source path to an absolute path."""
         rel = rel_sources.get(name)
         return os.path.join(data_dir, rel) if rel is not None else None
+
+    def _maybe_resample(p, name):
+        res = target_res.get(name)
+        if res is not None:
+            p = p.resample(res)
+            print(f"  {name}: resampled to {res}° ({len(p.lons)}×{len(p.lats)} cells)")
+        return p
 
     try:
         p = SeismicPrior.from_gear1(_abs('Gear1'),
                                     out_of_bounds_fill=oob_fills.get('Gear1'),
                                     **shared_kwargs)
+        p = _maybe_resample(p, 'Gear1')
         p.to_tt3(cache_paths['Gear1'])
         print("Gear1: built and cached.")
     except Exception as e:
@@ -59,8 +68,10 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
 
     try:
         p = SeismicPrior.from_nshm(_abs('NSHM'),
+                                   fault_data_path=_abs('NSHM_fault'),
                                    out_of_bounds_fill=oob_fills.get('NSHM'),
                                    **shared_kwargs)
+        p = _maybe_resample(p, 'NSHM')
         p.to_tt3(cache_paths['NSHM'])
         print("NSHM: built and cached.")
     except Exception as e:
@@ -69,6 +80,7 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
     try:
         p = SeismicPrior.from_helmstetter(out_of_bounds_fill=oob_fills.get('Helmstetter'),
                                           **shared_kwargs)
+        p = _maybe_resample(p, 'Helmstetter')
         p.to_tt3(cache_paths['Helmstetter'])
         print("Helmstetter: built and cached.")
     except Exception as e:
@@ -79,6 +91,7 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
         if src is None:
             raise FileNotFoundError("No source_paths entry for Smooth_seismicity in construction_params.")
         p = SeismicPrior.from_tt3(src, name='smooth_seismicity')
+        p = _maybe_resample(p, 'Smooth_seismicity')
         bounds = shared_kwargs.get('bounds')
         oob = oob_fills.get('Smooth_seismicity')
         if bounds is not None and oob is not None:
@@ -102,6 +115,7 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
             if oob is not None:
                 fv = float(np.nanmean(p.grid)) if oob == 'mean' else float(oob)
                 p.grid[p.grid <= 1e-9] = fv
+            p = _maybe_resample(p, 'ETAS')
             if bounds is not None and oob is not None:
                 p.lons, p.lats, p.grid = SeismicPrior._expand_to_bounds(
                     p.lons, p.lats, p.grid, bounds, oob)

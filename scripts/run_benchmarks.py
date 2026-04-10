@@ -1,10 +1,13 @@
 #%%
 # =============================================================================
 # run_benchmarks.py  —  bEPIC prior benchmark
+# Prerequisite: run scripts/build_priors.py first to build the .tt3 cache files.
 # =============================================================================
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity, add_background_seismicity
-from benchmark.plots import plot_prior_histograms
+from benchmark.plots import (plot_prior_histograms, plot_overview_map,
+                             plot_location_grid, plot_posterior_grid,
+                             plot_location_trajectory)
 import os
 import numpy as np
 import pandas as pd
@@ -14,7 +17,6 @@ import cartopy.feature as cfeature
 
 from pathlib import Path
 from benchmark import runner as benchmark_runner
-from benchmark import priors as utils
 from benchmark import config
 
 # ---------------------------------------------------------------------------
@@ -44,15 +46,10 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 
 # --- Control flags ---
-CONSTRUCT      = False   # rebuild all prior .tt3 files from source data
 REFERENCE      = False   # run high-resolution reference locations
-RUN_ALL_PRIORS = False   # run all six priors in parallel
+RUN_ALL_PRIORS = True   # run all six priors in parallel
 
-# ── 1. Build and cache all priors ─────────────────────────────────────────
-if CONSTRUCT:
-    utils.build_and_cache_priors(cache_paths, data_dir, config.PRIOR_CONSTRUCTION_PARAMS)
-
-# ── 2. Create reference locations ─────────────────────────────────────────
+# ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
 
 if REFERENCE:
@@ -61,14 +58,16 @@ if REFERENCE:
 # ── 3. Run bEPIC across priors ────────────────────────────────────────────
 job_args = [
     {
-        'prior_name': name,
-        'cache_path': path,
-        'nshm_path':  cache_paths['NSHM'],  # geometry fallback for Uniform
-        'run_dir':    RUN_DIR,
-        'output_dir': OUTPUT_DIR,
-        'grid_size':  config.BENCHMARK_PARAMS['grid_size'],
-        'grid_km':    config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':  MAX_TRIGS,
+        'prior_name':                name,
+        'cache_path':                path,
+        'nshm_path':                 cache_paths['NSHM'],  # geometry fallback for Uniform
+        'run_dir':                   RUN_DIR,
+        'output_dir':                OUTPUT_DIR,
+        'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
+        'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
+        'max_trigs':                 MAX_TRIGS,
+        'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+        'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
     }
     for name, path in cache_paths.items()
 ]
@@ -77,14 +76,16 @@ if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
 else:
     benchmark_runner.run_prior({
-        'prior_name': 'Uniform',
-        'cache_path': None,
-        'nshm_path':  cache_paths['NSHM'],
-        'run_dir':    RUN_DIR,
-        'output_dir': OUTPUT_DIR,
-        'grid_size':  config.BENCHMARK_PARAMS['grid_size'],
-        'grid_km':    config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':  MAX_TRIGS,
+        'prior_name':                'Uniform',
+        'cache_path':                None,
+        'nshm_path':                 cache_paths['NSHM'],
+        'run_dir':                   RUN_DIR,
+        'output_dir':                OUTPUT_DIR,
+        'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
+        'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
+        'max_trigs':                 MAX_TRIGS,
+        'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+        'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
     })
 
 #%%
@@ -116,182 +117,63 @@ bg = load_background_seismicity(
 )
 
 #%%
-"""
-FIGURE GENERATION
-
-4 figures:
-1) Map view, all seismicity
-2) Map view, MTJ
-3) Location error hist, all
-4) Location error hist, MTJ
-"""
 # ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 
-# ── Comparison plot: all priors ────────────────────────────────────────────
-csv_files = sorted(Path(OUTPUT_DIR).glob('*_benchmark_results.csv'))
+PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform']
 
-colors = plt.cm.tab10.colors
+MTJ_EXTENT = [-128.5, -122.5, 38.5, 42.5]
+mtj_lon_min, mtj_lon_max, mtj_lat_min, mtj_lat_max = MTJ_EXTENT
 
-proj = ccrs.PlateCarree()
-fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={'projection': proj})
+def in_extent(df):
+    return df[
+        df['posterior_lat'].between(mtj_lat_min, mtj_lat_max) &
+        df['posterior_lon'].between(mtj_lon_min, mtj_lon_max)
+    ]
 
-ax.set_extent([-128.5, -113, 31, 44], crs=proj)
-ax.add_feature(cfeature.STATES, linewidth=0.6, edgecolor='black')
-ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
-ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
-ax.add_feature(cfeature.OCEAN, facecolor='lightyellow', zorder=0)
+catalog_events = (catalog_df[['usgs_lon', 'usgs_lat']]
+                  .rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
+                  if catalog_df is not None else None)
+catalog_mtj = (catalog_df[
+    catalog_df['usgs_lat'].between(mtj_lat_min, mtj_lat_max) &
+    catalog_df['usgs_lon'].between(mtj_lon_min, mtj_lon_max)
+][['usgs_lon', 'usgs_lat']].rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
+if catalog_df is not None else None)
+stations_mtj = stations_df[
+    stations_df['latitude'].between(mtj_lat_min, mtj_lat_max) &
+    stations_df['longitude'].between(mtj_lon_min, mtj_lon_max)
+]
 
-# ax.scatter(ref_final['posterior_lon'], ref_final['posterior_lat'],
-#            s=10, color='black', alpha=0.4, transform=proj,
-#            label='Reference (smooth_seismicity)', zorder=1)
-if catalog_df is not None:
-    ax.scatter(catalog_df['usgs_lon'], catalog_df['usgs_lat'],
-               s=10, color='black', alpha=0.4, transform=proj,
-               label='ANSS catalog', zorder=1)
-ax.scatter(stations_df['longitude'], stations_df['latitude'],
-           s=20, color='orange', edgecolor='k', alpha=0.7, marker='v', transform=proj,
-           label='Stations', zorder=0)
-if bg is not None:
-    ax.scatter(
-        bg["longitude"], bg["latitude"],
-        s=10, c='gray', alpha=0.1,
-        transform=proj, zorder=0,
-        linewidths=0,
-    )
-
-for i, csv_path in enumerate(csv_files):
-    prior_name = csv_path.stem.replace('_benchmark_results', '')
-    df = pd.read_csv(csv_path)
-    final = df.groupby('event_id').last().reset_index()
-    ax.scatter(final['posterior_lon'], final['posterior_lat'],
-               s=8, color=colors[i % len(colors)], alpha=0.2,
-               transform=proj, label=prior_name, zorder=2)
-
-ax.set_title('bEPIC final locations — prior comparison')
-ax.legend(loc='upper right', fontsize=8)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'comparison_benchmark_locations.png'), dpi=150)
+# ── Overview: all priors, full region ─────────────────────────────────────
+fig = plot_overview_map(
+    output_dir  = OUTPUT_DIR,
+    prior_order = PRIOR_ORDER,
+    extent      = [-128.5, -113, 31, 44],
+    events_df   = catalog_events,
+    stations_df = stations_df,
+    bg          = bg,
+    title       = 'bEPIC final locations — prior comparison',
+    save_path   = os.path.join(FIGURES_DIR, 'comparison_benchmark_locations.png'),
+)
 plt.show()
 
 # %%
 
 # ── MTJ grid: one prior per panel ─────────────────────────────────────────
-lat_min = 38.5
-lat_max = 42.5
-lon_min = -128.5
-lon_max = -122.5
-
-def in_extent(df):
-    return df[
-        df['posterior_lat'].between(lat_min, lat_max) &
-        df['posterior_lon'].between(lon_min, lon_max)
-    ]
-
-# ref_mtj = in_extent(ref_final)
-catalog_mtj = catalog_df[
-    catalog_df['usgs_lat'].between(lat_min, lat_max) &
-    catalog_df['usgs_lon'].between(lon_min, lon_max)
-] if catalog_df is not None else None
-stations_mtj = stations_df[
-    stations_df['latitude'].between(lat_min, lat_max) &
-    stations_df['longitude'].between(lon_min, lon_max)
-]
-
-PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform']
-
-proj = ccrs.PlateCarree()
-fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
-
-for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), PRIOR_ORDER)):
-    row, col = divmod(idx, 3)
-    ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=proj)
-    ax.add_feature(cfeature.STATES, linewidth=0.8, edgecolor='black')
-    ax.add_feature(cfeature.COASTLINE, linewidth=1.0)
-    ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor='lightyellow', zorder=0)
-
-    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray',
-                      alpha=0.5, linestyle='--')
-    gl.top_labels    = False
-    gl.right_labels  = False
-    gl.left_labels   = (col == 0)
-    gl.bottom_labels = (row == 1)
-
-    # ax.scatter(ref_mtj['posterior_lon'], ref_mtj['posterior_lat'],
-    #            s=18, color='black', alpha=0.5, transform=proj,
-    #            label='Reference', zorder=1)
-    if catalog_mtj is not None:
-        ax.scatter(catalog_mtj['usgs_lon'], catalog_mtj['usgs_lat'],
-                   s=18, color='black', alpha=0.5, transform=proj,
-                   label='ANSS catalog', zorder=1)
-    if bg is not None:
-        ax.scatter(
-            bg["longitude"], bg["latitude"],
-            s=10, c='gray', alpha=0.1,
-            transform=proj, zorder=0,
-            linewidths=0,
-        )
-    ax.scatter(stations_mtj['longitude'], stations_mtj['latitude'],
-               s=40, color='orange', edgecolor='k', alpha=0.85, marker='v',
-               transform=proj, label='Stations', zorder=3)
-
-    csv_path = os.path.join(OUTPUT_DIR, f'{prior_name.lower()}_benchmark_results.csv')
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        final = in_extent(df.groupby('event_id').last().reset_index())
-
-        # Draw error lines: ANSS → posterior, one plot call using NaN separators
-        if catalog_df is not None and not final.empty:
-            matched = final.merge(
-                catalog_df[['event_id', 'usgs_lon', 'usgs_lat']],
-                on='event_id', how='inner',
-            )
-            n = len(matched)
-            seg_lons = np.empty(n * 3)
-            seg_lats = np.empty(n * 3)
-            seg_lons[0::3] = matched['usgs_lon'].values
-            seg_lons[1::3] = matched['posterior_lon'].values
-            seg_lons[2::3] = np.nan
-            seg_lats[0::3] = matched['usgs_lat'].values
-            seg_lats[1::3] = matched['posterior_lat'].values
-            seg_lats[2::3] = np.nan
-            ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
-                    alpha=0.35, transform=proj, zorder=2)
-
-        ax.scatter(final['posterior_lon'], final['posterior_lat'],
-                   s=18, color='crimson', alpha=0.5, transform=proj,
-                   label=prior_name, zorder=3)
-    else:
-        ax.text(0.5, 0.5, 'no data', transform=ax.transAxes,
-                ha='center', va='center', fontsize=10, color='gray')
-
-    ax.set_title(prior_name, fontsize=11)
-    ax.legend(loc='upper right', fontsize=7)
-
-# Scale bar on bottom-left panel (axes[1, 0])
-_ax_sb = axes[1, 0]
-_lat_mid = (lat_min + lat_max) / 2
-_scale_km = 100
-_scale_deg = _scale_km / (111.32 * np.cos(np.radians(_lat_mid)))
-_x0 = lon_min + 0.25
-_y0 = lat_min + 0.25
-_x1 = _x0 + _scale_deg
-_tick_h = 0.06  # half-height of end ticks in degrees
-_ax_sb.plot([_x0, _x1], [_y0, _y0], color='black', linewidth=2,
-            transform=proj, zorder=10, solid_capstyle='butt')
-_ax_sb.plot([_x0, _x0], [_y0 - _tick_h, _y0 + _tick_h], color='black',
-            linewidth=2, transform=proj, zorder=10)
-_ax_sb.plot([_x1, _x1], [_y0 - _tick_h, _y0 + _tick_h], color='black',
-            linewidth=2, transform=proj, zorder=10)
-_ax_sb.text((_x0 + _x1) / 2, _y0 + _tick_h + 0.04, f'{_scale_km} km',
-            ha='center', va='bottom', fontsize=8, fontweight='bold',
-            transform=proj, zorder=10)
-
-fig.suptitle('bEPIC MTJ locations — prior comparison', fontsize=14)
-plt.tight_layout()
-plt.savefig(os.path.join(FIGURES_DIR, 'MTJ_grid_benchmark_locations.png'), dpi=150)
+fig = plot_location_grid(
+    output_dir     = OUTPUT_DIR,
+    prior_order    = PRIOR_ORDER,
+    extent         = MTJ_EXTENT,
+    ref_catalog    = catalog_df,
+    events_df      = catalog_mtj,
+    stations_df    = stations_mtj,
+    bg             = bg,
+    filter_fn      = in_extent,
+    show_scale_bar = True,
+    title          = 'bEPIC MTJ locations — prior comparison',
+    save_path      = os.path.join(FIGURES_DIR, 'MTJ_grid_benchmark_locations.png'),
+)
 plt.show()
 
 # %%
@@ -349,5 +231,69 @@ fig = plot_prior_histograms(
     catalog_df  = catalog_df,
 )
 plt.show()
+
+# %%
+# ── MTJ single-event posterior grid (prior background + posterior contours) ──
+# Auto-selects the first MTJ event from the reference catalog that has a .run file.
+# Override MTJ_EVENT_ID with a specific event_id (int) to pin a particular event.
+
+MTJ_EVENT_ID   = None   # None = auto-select from MTJ region
+MTJ_VERSION    = None   # None = last available trigger version
+
+if catalog_df is not None:
+    mtj_catalog = catalog_df[
+        catalog_df['usgs_lat'].between(mtj_lat_min, mtj_lat_max) &
+        catalog_df['usgs_lon'].between(mtj_lon_min, mtj_lon_max)
+    ]
+
+    if MTJ_EVENT_ID is None:
+        # Pick first MTJ event that has a matching .run file
+        for eid in mtj_catalog['event_id']:
+            candidate = os.path.join(RUN_DIR, f'{eid}.run')
+            if os.path.exists(candidate):
+                MTJ_EVENT_ID = eid
+                break
+
+    if MTJ_EVENT_ID is not None:
+        focus_run_path = os.path.join(RUN_DIR, f'{MTJ_EVENT_ID}.run')
+        ref_row = catalog_df[catalog_df['event_id'] == MTJ_EVENT_ID]
+        ref_lat = float(ref_row['usgs_lat'].iloc[0]) if not ref_row.empty else None
+        ref_lon = float(ref_row['usgs_lon'].iloc[0]) if not ref_row.empty else None
+
+        fig = plot_posterior_grid(
+            focus_run_path = focus_run_path,
+            cache_paths    = cache_paths,
+            prior_order    = PRIOR_ORDER,
+            params_kw      = {
+                'grid_size': config.BENCHMARK_PARAMS['grid_size'],
+                'grid_km':   config.BENCHMARK_PARAMS['grid_km'],
+                'max_trigs': MAX_TRIGS,
+                'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+                'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+            },
+            ref_lat        = ref_lat,
+            ref_lon        = ref_lon,
+            focus_version  = MTJ_VERSION,
+            title          = f'bEPIC posterior grid — MTJ event {MTJ_EVENT_ID}',
+            save_path      = os.path.join(FIGURES_DIR, f'MTJ_posterior_grid_{MTJ_EVENT_ID}.png'),
+        )
+        plt.show()
+
+        fig = plot_location_trajectory(
+            event_id     = MTJ_EVENT_ID,
+            output_dir   = OUTPUT_DIR,
+            prior_order  = PRIOR_ORDER,
+            run_dir      = RUN_DIR,
+            min_triggers = 4,
+            ref_lat      = ref_lat,
+            ref_lon      = ref_lon,
+            title        = f'bEPIC location trajectory — MTJ event {MTJ_EVENT_ID}',
+            save_path    = os.path.join(FIGURES_DIR, f'MTJ_trajectory_{MTJ_EVENT_ID}.png'),
+        )
+        plt.show()
+    else:
+        print('[posterior grid] No MTJ event with a matching .run file found — skipping.')
+else:
+    print('[posterior grid] No reference catalog loaded — skipping.')
 
 # %%
