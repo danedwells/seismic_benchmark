@@ -69,7 +69,7 @@ CASE_STUDIES = {
 }
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'ElMayor'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -243,11 +243,22 @@ plt.show()
 # Single-event posterior grid figure (2×3 panel, one panel per prior)
 # =============================================================================
 # FOCUS_EVENT_ID : str   — ANSS event ID whose .run file exists in CS_RUN_DIR.
-#                          Ridgecrest mainshock → 'ci38457511' (M7.1 2019-07-06)
+#                          Automatically selected from FOCUS_EVENTS below based
+#                          on ACTIVE_CASE_STUDY.  Override by setting
+#                          FOCUS_EVENT_ID manually after this cell.
 # FOCUS_VERSION  : int or None — trigger version to plot; None = last available.
+#
+# To add or change representative events, edit FOCUS_EVENTS below.
+# Use examine_catalog.py (case-study section) to browse the catalog and pick IDs.
 # =============================================================================
 
-FOCUS_EVENT_ID = 'ci38457511'
+FOCUS_EVENTS = {
+    'Ridgecrest': 'ci38457511',   # M7.1 mainshock  2019-07-06
+    'Ferndale':   'nc73821036',   # M6.4 mainshock  2022-12-20
+    'ElMayor':    'ci10148002',   # M5.2 aftershock 2010-04-05
+}
+
+FOCUS_EVENT_ID = FOCUS_EVENTS[ACTIVE_CASE_STUDY]
 FOCUS_VERSION  = None
 
 focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
@@ -287,6 +298,7 @@ else:
         min_triggers = 4,
         ref_lat      = _ref_lat,
         ref_lon      = _ref_lon,
+        cache_paths  = cache_paths,
         title        = f'bEPIC location trajectory — {cs["name"]} — event {FOCUS_EVENT_ID}',
         save_path    = os.path.join(CS_FIGURES_DIR, f'trajectory_{FOCUS_EVENT_ID}.png'),
     )

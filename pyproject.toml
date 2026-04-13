@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "seismic_benchmark"
+version = "0.1.0"
+description = "Benchmarking framework for the bEPIC location algorithm across spatial priors"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -327,3 +327,165 @@ verify_df.to_csv(out_path, index=False)
 print(f"\nVerification results saved to {out_path}")
 
 # %%
+
+# =============================================================================
+# Case-study catalog examination
+# =============================================================================
+# Loads a per-case-study parquet catalog, cross-references with available
+# .run files, prints a sorted summary table, and produces two figures:
+#   • Magnitude distribution histogram + lollipop magnitude-vs-time
+#   • Map of event locations colored by magnitude, IDs labelled ≥ ANNOTATE_MIN_MAG
+#
+# Set CASE_STUDY_NAME to any key in CASE_STUDIES (defined in case_studies.py):
+#   'Ridgecrest', 'Ferndale', 'ElMayor'
+# =============================================================================
+
+# ── Config ────────────────────────────────────────────────────────────────────
+#%%
+CASE_STUDY_NAME  = 'Ridgecrest'   # ← change to 'Ferndale' or 'ElMayor' as needed
+ANNOTATE_MIN_MAG = 4.5            # label event IDs on map for events ≥ this magnitude
+RUN_FILES_ONLY   = True           # if True, restrict to events that have a .run file
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+import glob as _glob
+
+_CS_DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'case_studies', CASE_STUDY_NAME)
+_CS_RUN_DIR  = os.path.join(_CS_DATA_DIR, 'run_files')
+_FIG_DIR     = os.path.join(PROJECT_ROOT, 'results', 'case_studies', CASE_STUDY_NAME, 'figures')
+os.makedirs(_FIG_DIR, exist_ok=True)
+
+# ── Load parquet ──────────────────────────────────────────────────────────────
+_pq_files = _glob.glob(os.path.join(_CS_DATA_DIR, '*.parquet'))
+if not _pq_files:
+    raise FileNotFoundError(
+        f"No parquet catalog found in {_CS_DATA_DIR}. "
+        "Run DOWNLOAD_CATALOG in case_studies.py first."
+    )
+cs_cat = pd.read_parquet(_pq_files[0])
+cs_cat['time'] = pd.to_datetime(cs_cat['time'], utc=True)
+cs_cat = cs_cat.sort_values('time').reset_index(drop=True)
+
+# ── Cross-reference with .run files ───────────────────────────────────────────
+_run_ids = set()
+if os.path.isdir(_CS_RUN_DIR):
+    _run_ids = {os.path.splitext(f)[0]
+                for f in os.listdir(_CS_RUN_DIR) if f.endswith('.run')}
+cs_cat['has_run'] = cs_cat['id'].isin(_run_ids)
+
+cs_plot = cs_cat[cs_cat['has_run']].copy() if RUN_FILES_ONLY else cs_cat.copy()
+
+print(f"\nCase study: {CASE_STUDY_NAME}")
+print(f"  Catalog events    : {len(cs_cat)}")
+print(f"  With .run files   : {cs_cat['has_run'].sum()}")
+print(f"  Date range        : {cs_cat['time'].iloc[0].date()}  →  {cs_cat['time'].iloc[-1].date()}")
+print(f"  Magnitude range   : {cs_cat['mag'].min():.1f} – {cs_cat['mag'].max():.1f}")
+
+print(f"\nAll events with .run files, sorted by magnitude (descending):")
+_summary = (cs_cat[cs_cat['has_run']]
+            .sort_values('mag', ascending=False)
+            [['id', 'mag', 'latitude', 'longitude', 'time']]
+            .reset_index(drop=True))
+print(_summary.to_string())
+
+#%%
+# ── Figure 1: Magnitude distribution + lollipop ───────────────────────────────
+_fig1, (_ax_hist, _ax_lollipop) = plt.subplots(
+    2, 1, figsize=(12, 7),
+    gridspec_kw={'height_ratios': [1, 2]},
+)
+
+# Histogram
+_bins = np.arange(
+    np.floor(cs_cat['mag'].min() * 2) / 2,
+    np.ceil(cs_cat['mag'].max() * 2) / 2 + 0.25,
+    0.25,
+)
+_ax_hist.hist(cs_cat['mag'], bins=_bins, color='steelblue', alpha=0.8, label='all events')
+if RUN_FILES_ONLY:
+    _ax_hist.hist(cs_plot['mag'], bins=_bins, color='tomato', alpha=0.6, label='has .run file')
+_ax_hist.set_xlabel('Magnitude', fontsize=10)
+_ax_hist.set_ylabel('Count', fontsize=10)
+_ax_hist.set_title(f'{CASE_STUDY_NAME} — Magnitude Distribution', fontsize=11)
+_ax_hist.legend(fontsize=9)
+_ax_hist.grid(True, linewidth=0.3, alpha=0.4, axis='y')
+
+# Lollipop magnitude vs time
+_depth_norm = mcolors.Normalize(vmin=cs_plot['depth'].min(), vmax=cs_plot['depth'].max())
+_depth_cmap = plt.cm.viridis_r
+_colors_cs  = _depth_cmap(_depth_norm(cs_plot['depth'].values))
+_ax_lollipop.vlines(cs_plot['time'], 0, cs_plot['mag'],
+                    color=_colors_cs, linewidth=0.8, alpha=0.7)
+_sc_lollipop = _ax_lollipop.scatter(
+    cs_plot['time'], cs_plot['mag'],
+    c=cs_plot['depth'], cmap=_depth_cmap, norm=_depth_norm,
+    s=14, zorder=3,
+)
+_ax_lollipop.set_ylabel('Magnitude', fontsize=10)
+_ax_lollipop.set_xlabel('Date', fontsize=10)
+_ax_lollipop.set_title(f'{CASE_STUDY_NAME} — Magnitude vs. Time', fontsize=11)
+_ax_lollipop.set_ylim(bottom=0)
+_ax_lollipop.grid(True, linewidth=0.3, alpha=0.4, axis='y')
+_cbar1 = _fig1.colorbar(_sc_lollipop, ax=_ax_lollipop, pad=0.01, shrink=0.85)
+_cbar1.set_label('Depth (km)', fontsize=9)
+
+_fig1.tight_layout()
+_fig1.savefig(os.path.join(_FIG_DIR, f'{CASE_STUDY_NAME}_mag_distribution.png'),
+              dpi=150, bbox_inches='tight')
+plt.show()
+
+#%%
+# ── Figure 2: Location map colored by magnitude ───────────────────────────────
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
+_proj = ccrs.PlateCarree()
+_pad  = 0.5
+_extent = [
+    cs_plot['longitude'].min() - _pad, cs_plot['longitude'].max() + _pad,
+    cs_plot['latitude'].min()  - _pad, cs_plot['latitude'].max()  + _pad,
+]
+
+_fig2, _ax_map = plt.subplots(figsize=(9, 7), subplot_kw={'projection': _proj})
+_ax_map.set_extent(_extent, crs=_proj)
+_ax_map.add_feature(cfeature.STATES,    linewidth=0.5, edgecolor='black')
+_ax_map.add_feature(cfeature.BORDERS,   linewidth=0.7, edgecolor='black')
+_ax_map.add_feature(cfeature.COASTLINE, linewidth=0.7)
+_ax_map.add_feature(cfeature.OCEAN,  facecolor='lightcyan', alpha=0.4)
+_ax_map.add_feature(cfeature.LAND,   facecolor='whitesmoke')
+_gl = _ax_map.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5)
+_gl.top_labels   = False
+_gl.right_labels = False
+
+_mag_norm = mcolors.Normalize(vmin=cs_plot['mag'].min(), vmax=cs_plot['mag'].max())
+_mag_cmap = plt.cm.plasma
+_sc_map = _ax_map.scatter(
+    cs_plot['longitude'], cs_plot['latitude'],
+    c=cs_plot['mag'], cmap=_mag_cmap, norm=_mag_norm,
+    s=2 * (cs_plot['mag'] - cs_plot['mag'].min() + 0.5) ** 2.5,
+    alpha=0.65, transform=_proj, zorder=5, linewidths=0,
+)
+
+# Annotate events above ANNOTATE_MIN_MAG
+_annotated = cs_plot[cs_plot['mag'] >= ANNOTATE_MIN_MAG].sort_values('mag', ascending=False)
+for _, _row in _annotated.iterrows():
+    _ax_map.annotate(
+        f"{_row['id']}\nM{_row['mag']:.1f}",
+        xy=(_row['longitude'], _row['latitude']),
+        xycoords=_proj._as_mpl_transform(_ax_map),
+        fontsize=5.5, color='black',
+        xytext=(4, 4), textcoords='offset points',
+        ha='left', va='bottom',
+        bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.5, lw=0),
+    )
+
+_cbar2 = _fig2.colorbar(_sc_map, ax=_ax_map, shrink=0.75, pad=0.02)
+_cbar2.set_label('Magnitude', fontsize=10)
+_ax_map.set_title(
+    f'{CASE_STUDY_NAME} — Event Locations  (n={len(cs_plot)}, '
+    f'IDs shown ≥ M{ANNOTATE_MIN_MAG})',
+    fontsize=11,
+)
+_fig2.tight_layout()
+_fig2.savefig(os.path.join(_FIG_DIR, f'{CASE_STUDY_NAME}_event_locations.png'),
+              dpi=150, bbox_inches='tight')
+plt.show()

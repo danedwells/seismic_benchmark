@@ -12,8 +12,6 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 
 from pathlib import Path
 from benchmark import runner as benchmark_runner
@@ -47,7 +45,8 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # --- Control flags ---
 REFERENCE      = False   # run high-resolution reference locations
-RUN_ALL_PRIORS = True   # run all six priors in parallel
+RUN_ALL_PRIORS = True  # run all six priors in parallel
+SKIP_RUN = True
 
 # ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
@@ -75,18 +74,19 @@ job_args = [
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
 else:
-    benchmark_runner.run_prior({
-        'prior_name':                'Uniform',
-        'cache_path':                None,
-        'nshm_path':                 cache_paths['NSHM'],
-        'run_dir':                   RUN_DIR,
-        'output_dir':                OUTPUT_DIR,
-        'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-        'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':                 MAX_TRIGS,
-        'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-        'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-    })
+    if SKIP_RUN == False:
+        benchmark_runner.run_prior({
+            'prior_name':                'Uniform',
+            'cache_path':                None,
+            'nshm_path':                 cache_paths['NSHM'],
+            'run_dir':                   RUN_DIR,
+            'output_dir':                OUTPUT_DIR,
+            'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
+            'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
+            'max_trigs':                 MAX_TRIGS,
+            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+        })
 
 #%%
 # ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ plt.show()
 # Auto-selects the first MTJ event from the reference catalog that has a .run file.
 # Override MTJ_EVENT_ID with a specific event_id (int) to pin a particular event.
 
-MTJ_EVENT_ID   = None   # None = auto-select from MTJ region
+MTJ_EVENT_ID   = 130646   # None = auto-select from MTJ region
 MTJ_VERSION    = None   # None = last available trigger version
 
 if catalog_df is not None:
@@ -287,6 +287,7 @@ if catalog_df is not None:
             min_triggers = 4,
             ref_lat      = ref_lat,
             ref_lon      = ref_lon,
+            cache_paths  = cache_paths,
             title        = f'bEPIC location trajectory — MTJ event {MTJ_EVENT_ID}',
             save_path    = os.path.join(FIGURES_DIR, f'MTJ_trajectory_{MTJ_EVENT_ID}.png'),
         )
