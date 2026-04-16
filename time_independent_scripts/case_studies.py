@@ -5,7 +5,7 @@
 # =============================================================================
 # Downloads a USGS catalog for a predefined case study (aftershock sequence
 # or mainshock region), builds .run trigger files from USGS phase data, then
-# runs bEPIC across all six spatial priors — mirroring run_benchmarks.py.
+# runs bEPIC across all five static spatial priors — mirroring run_benchmarks.py.
 #
 # Usage:
 #   Set ACTIVE_CASE_STUDY to one of the keys in CASE_STUDIES, flip the
@@ -173,7 +173,7 @@ bg = load_background_seismicity(
     min_mag    = 3.5,
 )
 
-PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform']
+PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'Uniform']
 
 # Compute case-study map extent and filter background seismicity to the region
 min_lon, max_lon, min_lat, max_lat = cs['bounds']

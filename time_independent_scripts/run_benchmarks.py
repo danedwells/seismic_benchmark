@@ -188,7 +188,7 @@ bg = load_background_seismicity(
 # Figures
 # ---------------------------------------------------------------------------
 
-PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform']
+PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'Uniform']
 
 MTJ_EXTENT = [-128.5, -122.5, 38.5, 42.5]
 mtj_lon_min, mtj_lon_max, mtj_lat_min, mtj_lat_max = MTJ_EXTENT

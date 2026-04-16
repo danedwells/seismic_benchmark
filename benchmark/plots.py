@@ -226,7 +226,7 @@ def plot_location_grid(
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv`` files.
     prior_order : list[str]
-        Prior names in panel order (6 entries for a 2×3 grid).
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     extent : list
         [lon_min, lon_max, lat_min, lat_max] for every panel.
     ref_catalog : DataFrame or None
@@ -350,6 +350,9 @@ def plot_location_grid(
                    ha='center', va='bottom', fontsize=8, fontweight='bold',
                    transform=proj, zorder=10)
 
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
+
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
     if save_path is not None:
@@ -380,7 +383,7 @@ def plot_posterior_grid(
     cache_paths : dict
         Mapping of prior name → .tt3 file path (or None for Uniform).
     prior_order : list[str]
-        Prior names in panel order; must have exactly 6 entries for a 2×3 grid.
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     params_kw : dict
         Keys: grid_size, grid_km, max_trigs — passed to run_single_event_get_grid.
     ref_lat, ref_lon : float or None
@@ -483,6 +486,9 @@ def plot_posterior_grid(
         ax.set_title(f'{prior_name}  ({v_label})', fontsize=11)
         ax.legend(loc='upper right', fontsize=7)
 
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
+
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
     if save_path is not None:
@@ -519,7 +525,7 @@ def plot_location_trajectory(
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv`` files.
     prior_order : list[str]
-        Prior names in panel order (6 entries for a 2×3 grid).
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     run_dir : str
         Directory containing ``{event_id}.run`` files; used to map version → trigger count.
     min_triggers : int
@@ -683,6 +689,9 @@ def plot_location_trajectory(
 
         ax.set_title(prior_name, fontsize=11)
         ax.legend(loc='upper right', fontsize=7)
+
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
 
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()

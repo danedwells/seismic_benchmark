@@ -1,13 +1,8 @@
 import os
 
-# Filenames for cached prior .tt3 files, relative to SeismicPrior.data_dir.
-# Set to None to disable a prior (uniform weighting will be used instead).
-# Update ETAS_FILENAME whenever a new ETAS prior is generated.
-
 # Parameters passed to SeismicPrior factory constructors when building .tt3 files.
 # 'bounds' is (lon_min, lon_max, lat_min, lat_max).
-# from_smooth_seismicity and from_etas are excluded: the former is pre-built,
-# the latter is constructed externally from ETAS output.
+# from_smooth_seismicity is excluded here — it is pre-built and just needs fill/expand.
 
 PRIOR_CONSTRUCTION_PARAMS = {
     'bounds': (-129, -112, 30, 51), # Include Washingotn and Oregon
@@ -16,7 +11,6 @@ PRIOR_CONSTRUCTION_PARAMS = {
         'NSHM':              5000000.,   # land-only source; offshore needs a background value
         'Helmstetter':       0.00001,   # CSEP testing region; offshore needs a background value
         'Smooth_seismicity': 0.0001,   # US/Canada file; may not extend to all offshore areas
-        'ETAS':              0.00001,   # polygon-masked; offshore outside polygon needs fill
     },
     # Optional resampling to a common resolution before caching.
     # Set to None to keep each prior's native resolution.
@@ -30,7 +24,6 @@ PRIOR_CONSTRUCTION_PARAMS = {
     #     'NSHM':              None,
     #     'Helmstetter':       None,
     #     'Smooth_seismicity': 0.1,
-    #     'ETAS':              None,
     # },
 
     #Experiment B — all at ~0.02° (coarse priors upsampled):
@@ -39,7 +32,6 @@ PRIOR_CONSTRUCTION_PARAMS = {
         'NSHM':              0.02,
         'Helmstetter':       0.02,
         'Smooth_seismicity': None,
-        'ETAS':              0.02,
     },
     # Paths to source data files, relative to SeismicPrior.data_dir.
     # Helmstetter is omitted — its source data comes from pycsep at runtime.
@@ -48,18 +40,16 @@ PRIOR_CONSTRUCTION_PARAMS = {
         'NSHM':              os.path.join('USGS_NSHM_data', 'gridded_moment_rates.xyz'),
         'NSHM_fault':        os.path.join('USGS_NSHM_data', 'fault_moment_rates.xyz'),
         'Smooth_seismicity': os.path.join('smooth_seismicity_data', 'prior_seis_grid_US_Canada.tt3'),
-        'ETAS':              os.path.join('ETAS_data', 'etas_prior_20080101_000000.tt3'),
     },
 }
 
 # Cached .tt3 filenames written into SeismicPrior.data_dir.
-# Smooth_seismicity and ETAS are filled/expanded copies of the source files.
+# Smooth_seismicity is a filled/expanded copy of the source file.
 PRIOR_FILENAMES = {
     'Gear1':             'GEAR1_prior.tt3',
     'NSHM':              'USGS_NSHM_prior.tt3',
     'Helmstetter':       'helmstetter_prior.tt3',
     'Smooth_seismicity': 'prior_seis_grid_US_Canada_filled.tt3',
-    'ETAS':              'etas_prior_20080101_000000_filled.tt3',
     'Uniform':           None,
 }
 
@@ -149,7 +139,7 @@ ETAS_INVERSION_CONFIG = {
 ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
     'grid_spacing':     0.1,
-    'out_of_bounds_fill': float(PRIOR_CONSTRUCTION_PARAMS['out_of_bounds_fill']['ETAS']),
+    'out_of_bounds_fill': 0.00001,  # fill for cells outside the ETAS polygon
 }
 
 # Parameters for the main benchmark run.

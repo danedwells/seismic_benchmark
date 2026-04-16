@@ -173,14 +173,15 @@ class BenchmarkRunner:
         df = pd.read_csv(run_path, nrows=1)
         return float(df['trigger time'].iloc[0])
 
-    def run_all(self, event_ids, etas_update_fn=None, update_interval_s=3600):
+    def run_all(self, event_ids, etas_update_fn=None, update_interval_s=3600,
+                after_event_fn=None):
         """
         Loop over events in order, optionally updating the prior on a
         fixed time schedule.
 
         Parameters
         ----------
-        event_ids : list[int]
+        event_ids : list[int or str]
             Event IDs to process, in the order they should run.
         etas_update_fn : callable, optional
             Called as etas_update_fn(event_time: float) -> SeismicPrior
@@ -188,7 +189,13 @@ class BenchmarkRunner:
             update_interval_s.  If None, the prior is never updated.
         update_interval_s : float
             How often (in event seconds) to invoke etas_update_fn.
-            Default 3600 (1 hour).
+            Set to 0 to update before every event.  Default 3600 (1 hour).
+        after_event_fn : callable, optional
+            Called as after_event_fn(event_id, event_time: float) immediately
+            after each event is located.  Intended for appending the just-
+            located event to a time-dependent model (e.g. EtasPriorUpdater)
+            so that the next event's prior update sees it.  Return value is
+            ignored.
         """
         last_update_time = None
 
@@ -201,6 +208,10 @@ class BenchmarkRunner:
                     last_update_time = event_time
 
             self.run_event(event_id)
+
+            if after_event_fn is not None:
+                event_time = self._get_event_time(event_id)
+                after_event_fn(event_id, event_time)
 
 
 # ---------------------------------------------------------------------------

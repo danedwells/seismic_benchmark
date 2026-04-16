@@ -134,7 +134,7 @@ if os.path.exists(output_json) and not FORCE_RERUN:
     print(f"Inversion output already exists: {output_json}")
     print("Set FORCE_RERUN = True to re-run.")
 else:
-    #%%
+
     # ── Load catalog ──────────────────────────────────────────────────────────
 
     print(f"Loading catalog from:\n  {os.path.abspath(CATALOG_PATH)}")
@@ -142,7 +142,7 @@ else:
     print(f"  Time range: {catalog_df['time'].min()} → {catalog_df['time'].max()}")
     print(f"  Mag  range: {catalog_df['magnitude'].min():.1f} → {catalog_df['magnitude'].max():.1f}")
 
-    #%%
+
     # ── Build inversion metadata dict ─────────────────────────────────────────
     # Merge config params with runtime paths.  ETASParameterCalculation accepts
     # a 'catalog' DataFrame directly, so no temp file is needed.
@@ -162,7 +162,6 @@ else:
     print(f"  theta_0: {config.ETAS_INVERSION_CONFIG['theta_0']}")
     print(f"  shape_coords: {len(config.ETAS_INVERSION_CONFIG['shape_coords'])} polygon vertices")
 
-    #%%
     # ── Run inversion ─────────────────────────────────────────────────────────
 
     set_up_logger(level=logging.INFO)
@@ -170,6 +169,7 @@ else:
     print(f"\nRunning ETAS inversion (id='{inversion_id}')…")
     print("This typically takes several minutes.\n")
 
+    # This comes directly from the runnable_code/invert_etas.py script within the etas/ repository.
     calculation = ETASParameterCalculation(inversion_metadata)
     calculation.prepare()
     parameters  = calculation.invert()
