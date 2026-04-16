@@ -169,6 +169,7 @@ fig = plot_location_grid(
     events_df      = catalog_mtj,
     stations_df    = stations_mtj,
     bg             = bg,
+    cache_paths    = cache_paths,
     filter_fn      = in_extent,
     show_scale_bar = True,
     title          = 'bEPIC MTJ locations — prior comparison',

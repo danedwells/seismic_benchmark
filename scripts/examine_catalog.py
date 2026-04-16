@@ -103,12 +103,33 @@ if bg is not None:
     ax.scatter(bg['longitude'], bg['latitude'],
                s=6, c='gray', alpha=0.1, transform=proj, zorder=1, linewidths=0)
 
-# sc = ax.scatter(
-#     catalog['usgs_lon'], catalog['usgs_lat'],
-#     c=catalog['usgs_mag'], cmap='plasma',
-#     s=2 * (catalog['usgs_mag'] - catalog['usgs_mag'].min() + 0.1) ** 3,
-#     alpha=0.4, transform=proj, zorder=5,
-# )
+sc = ax.scatter(
+    catalog['usgs_lon'], catalog['usgs_lat'],
+    c=catalog['usgs_mag'], cmap='plasma',
+    s=2 * (catalog['usgs_mag'] - catalog['usgs_mag'].min() + 0.1) ** 3,
+    alpha=0.4, transform=proj, zorder=5,
+)
+
+# Case-study mainshocks — labeled stars
+_MAINSHOCKS = {
+    'Ridgecrest\nM7.1 (2019)':  (35.7695, -117.5990),
+    'Ferndale\nM6.4 (2022)':    (40.5268, -124.4227),
+    'El Mayor\nM7.2 (2010)':    (32.2863, -115.2950),
+}
+_star_color = 'cyan'
+for _label, (_lat, _lon) in _MAINSHOCKS.items():
+    ax.plot(_lon, _lat, marker='*', markersize=14, color=_star_color,
+            markeredgecolor='black', markeredgewidth=0.4,
+            transform=proj, zorder=10)
+    ax.annotate(
+        _label,
+        xy=(_lon, _lat), xycoords=proj._as_mpl_transform(ax),
+        fontsize=7.5, color=_star_color, fontweight='bold',
+        xytext=(6, 6), textcoords='offset points',
+        ha='left', va='bottom',
+        bbox=dict(boxstyle='round,pad=0.2', fc='black', alpha=0.55, lw=0),
+    )
+
 cbar = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
 cbar.set_label('ANSS Magnitude', fontsize=10)
 ax.set_title(f'USGS/ANSS Event Locations  (n={len(catalog)})', fontsize=12)
@@ -439,7 +460,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
 _proj = ccrs.PlateCarree()
-_pad  = 0.5
+_pad  = 0.1
 _extent = [
     cs_plot['longitude'].min() - _pad, cs_plot['longitude'].max() + _pad,
     cs_plot['latitude'].min()  - _pad, cs_plot['latitude'].max()  + _pad,

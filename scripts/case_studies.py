@@ -20,7 +20,6 @@ from benchmark.usgs import *
 
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 
 from benchmark import runner as benchmark_runner
@@ -69,7 +68,7 @@ CASE_STUDIES = {
 }
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -92,8 +91,8 @@ for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
 # --- Control flags ---
 DOWNLOAD_CATALOG = False  # re-download even if cached
 BUILD_RUN_FILES  = False  # build / rebuild .run files from USGS phases
-RUN_ALL_PRIORS   = True # run all six priors in parallel
-SKIP_RUN         = True # Skip all runs - will toss an error if nothing has been run before.
+RUN_ALL_PRIORS   = False # run all six priors in parallel
+SKIP_RUN         = True # Skip all runs - will toss an error if nothing has been run before AND run_all_priors == False
 # Setting skip_run to true and run_all_priors to false will skip bEPIC calls entirely and go 
 # straight to plot/figure generation
 
@@ -253,10 +252,19 @@ plt.show()
 # =============================================================================
 
 FOCUS_EVENTS = {
-    'Ridgecrest': 'ci38457511',   # M7.1 mainshock  2019-07-06
-    'Ferndale':   'nc73821036',   # M6.4 mainshock  2022-12-20
-    'ElMayor':    'ci10148002',   # M5.2 aftershock 2010-04-05
+    'Ridgecrest': 'ci38548295',  # M 4.9 aftershock 
+    'Ferndale':   'nc73831091',  # M 4.05 aftershock
+    'ElMayor':    'ci10148002',  # M 5.2 aftershock
 }
+
+# Mainshocks
+_MS_ = False
+if _MS_ == True:
+    FOCUS_EVENTS = {
+        'Ridgecrest': 'ci38457511',   # M7.1 mainshock  2019-07-06
+        'Ferndale':   'nc73821036',   # M6.4 mainshock  2022-12-20
+        'ElMayor':    'ci14607652',   # M7.2 mainshock
+    }
 
 FOCUS_EVENT_ID = FOCUS_EVENTS[ACTIVE_CASE_STUDY]
 FOCUS_VERSION  = None
