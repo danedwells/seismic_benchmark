@@ -1,10 +1,8 @@
 import os
 import numpy as np
 import pandas as pd
-import requests
-from io import StringIO
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime, timezone
+
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 
@@ -174,7 +172,7 @@ class BenchmarkRunner:
         return float(df['trigger time'].iloc[0])
 
     def run_all(self, event_ids, etas_update_fn=None, update_interval_s=3600,
-                after_event_fn=None):
+                after_event_fn=None,rolling_catalog=None):
         """
         Loop over events in order, optionally updating the prior on a
         fixed time schedule.
@@ -191,11 +189,11 @@ class BenchmarkRunner:
             How often (in event seconds) to invoke etas_update_fn.
             Set to 0 to update before every event.  Default 3600 (1 hour).
         after_event_fn : callable, optional
-            Called as after_event_fn(event_id, event_time: float) immediately
+            Called as after_event_fn(event_id, rolling_catalog) immediately
             after each event is located.  Intended for appending the just-
             located event to a time-dependent model (e.g. EtasPriorUpdater)
-            so that the next event's prior update sees it.  Return value is
-            ignored.
+            so that the next event's prior update sees it.  Returns the
+            (possibly updated) rolling_catalog.
         """
         last_update_time = None
 
@@ -204,14 +202,17 @@ class BenchmarkRunner:
                 event_time = self._get_event_time(event_id)
                 if (last_update_time is None or
                         (event_time - last_update_time) >= update_interval_s):
-                    self.update_prior(etas_update_fn(event_time))
+                    new_prior = etas_update_fn(event_time)
+                    self.update_prior(new_prior)
                     last_update_time = event_time
 
             self.run_event(event_id)
 
             if after_event_fn is not None:
-                event_time = self._get_event_time(event_id)
-                after_event_fn(event_id, event_time)
+                rolling_catalog = after_event_fn(event_id, rolling_catalog)
+                
+        if rolling_catalog is not None:
+            return rolling_catalog
 
 
 # ---------------------------------------------------------------------------
@@ -252,139 +253,6 @@ def load_reference_catalog(catalog_path):
         'usgs_depth': raw['ANSS depth'],
         'usgs_mag':   raw['ANSS mag'],
     })
-
-
-# ---------------------------------------------------------------------------
-# USGS / IRIS data retrieval (ported from download_usgs_event.py)
-# ---------------------------------------------------------------------------
-
-
-def get_station_coords(network, station, channel, origin_time_iso):
-    """
-    Query IRIS FDSNWS for the lat/lon of a station at the time of the event.
-
-    Returns (lat, lon) or (None, None) if not found.
-    """
-    url = "https://service.iris.edu/fdsnws/station/1/query"
-    params = {
-        "net":      network,
-        "sta":      station,
-        "cha":      channel,
-        "level":    "station",
-        "format":   "text",
-        "endafter": origin_time_iso[:10],
-    }
-    try:
-        r = requests.get(url, params=params, timeout=15)
-        r.raise_for_status()
-        lines = [ln for ln in r.text.strip().split("\n") if not ln.startswith("#")]
-        if lines:
-            parts = lines[0].split("|")
-            return float(parts[2]), float(parts[3])
-    except Exception:
-        pass
-    return None, None
-
-
-def build_event_and_triggers(anss_id, max_dist_deg=5.0, phases_filter=None):
-    """
-    Download USGS phase data for a given ANSS event ID and return a populated
-    EPIC_locate_prelim.Event object ready for E2Location_locate().
-
-    To look up the ANSS ID from a postgres ID, use load_reference_catalog()
-    first and index into the returned DataFrame:
-        catalog_df = load_reference_catalog('bEPIC_testing_catalog.txt')
-        anss_id = catalog_df.set_index('event_id').loc[postgres_id, 'anss_id']
-
-    Parameters
-    ----------
-    anss_id : str
-        USGS/ANSS event ID (e.g. 'nc73093981').
-    max_dist_deg : float
-        Keep only phases with epicentral distance <= this many degrees.
-    phases_filter : list of str or None
-        Phase types to include. Defaults to ['P', 'Pn', 'Pg', 'Pb'].
-
-    Returns
-    -------
-    EPIC_locate_prelim.Event or None on failure.
-    """
-    if phases_filter is None:
-        phases_filter = ["P", "Pn", "Pg", "Pb"]
-
-    print(f"\nFetching event {anss_id} from USGS ComCat...")
-    geojson = get_usgs_event(anss_id)
-
-    props  = geojson["properties"]
-    coords = geojson["geometry"]["coordinates"]  # [lon, lat, depth_km]
-    evlon   = coords[0]
-    evlat   = coords[1]
-    evmag   = props["mag"]
-    evtime  = props["time"] / 1000.0   # ms → seconds since epoch
-    origin_iso = datetime.fromtimestamp(evtime, tz=timezone.utc).isoformat()
-
-    print(f"  Title : {props.get('title', anss_id)}")
-    print(f"  Origin: lat={evlat:.4f}  lon={evlon:.4f}  M={evmag}")
-
-    print("\nDownloading phases.csv from USGS...")
-    phases_df = get_phases_df(geojson)
-    if phases_df is None:
-        print("  ERROR: No phases.csv product found.")
-        return None
-
-    phases_df = phases_df[phases_df["Phase"].isin(phases_filter)].copy()
-    phases_df = phases_df[phases_df["Distance"] <= max_dist_deg].copy()
-    print(f"  Phases after filter: {len(phases_df)}")
-    if phases_df.empty:
-        print("  No phases remain after filtering.")
-        return None
-
-    def parse_channel(ch):
-        parts = ch.strip().split()
-        return parts[0], parts[1], parts[2], (parts[3] if len(parts) > 3 else "--")
-
-    parsed = phases_df["Channel"].apply(parse_channel)
-    phases_df["net"] = [p[0] for p in parsed]
-    phases_df["sta"] = [p[1] for p in parsed]
-    phases_df["cha"] = [p[2] for p in parsed]
-
-    event = EPIC_locate_prelim.Event(
-        lat=evlat, lon=evlon, time=evtime,
-        misfit_rms=0, misfit_ave=0, eventid=anss_id, version=0,
-    )
-
-    print("\nFetching station coordinates from IRIS FDSNWS...")
-    coord_cache = {}
-    seen = set()
-    for _, row in phases_df.iterrows():
-        key = (row["net"], row["sta"], row["cha"])
-        if key in seen:
-            continue
-        seen.add(key)
-
-        cache_key = (row["net"], row["sta"])
-        if cache_key in coord_cache:
-            sta_lat, sta_lon = coord_cache[cache_key]
-        else:
-            sta_lat, sta_lon = get_station_coords(row["net"], row["sta"], row["cha"], origin_iso)
-            coord_cache[cache_key] = (sta_lat, sta_lon)
-
-        if sta_lat is None:
-            print(f"  SKIP {row['net']}.{row['sta']}.{row['cha']} — coordinates not found")
-            continue
-
-        arrival_dt = datetime.fromisoformat(row["Arrival Time"].replace("Z", "+00:00"))
-        t = EPIC_locate_prelim.TriggerManager(
-            lon=sta_lon, lat=sta_lat,
-            sta=row["sta"], net=row["net"], chan=row["cha"],
-            trigger_time=arrival_dt.timestamp(),
-        )
-        event.trigs.append(t)
-        print(f"  ADD {row['net']}.{row['sta']}.{row['cha']:5s}  "
-              f"lat={sta_lat:.4f}  lon={sta_lon:.4f}  dist={row['Distance']:.2f}°")
-
-    print(f"\nTotal triggers added: {len(event.trigs)}")
-    return event
 
 
 def compute_location_error(results_df, catalog_df=None):
