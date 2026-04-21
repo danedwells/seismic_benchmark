@@ -61,7 +61,7 @@ CATALOG_PATH = os.path.join(
 )
 
 # Set to True to re-run the inversion even if a result already exists.
-FORCE_RERUN = False
+FORCE_RERUN = True
 
 #%%
 # ── Catalog loader ────────────────────────────────────────────────────────────
@@ -217,3 +217,5 @@ print(f"  grid max   : {prior.grid.max():.4e}")
 print(f"  grid sum   : {prior.grid.sum():.6f}  (should be 1.0)")
 print(f"\nAll done.  Pass this path to EtasPriorUpdater.from_inversion_json():")
 print(f"  {output_json}")
+
+# %%

@@ -172,7 +172,7 @@ class BenchmarkRunner:
         return float(df['trigger time'].iloc[0])
 
     def run_all(self, event_ids, etas_update_fn=None, update_interval_s=3600,
-                after_event_fn=None,rolling_catalog=None):
+                after_event_fn=None):
         """
         Loop over events in order, optionally updating the prior on a
         fixed time schedule.
@@ -189,11 +189,10 @@ class BenchmarkRunner:
             How often (in event seconds) to invoke etas_update_fn.
             Set to 0 to update before every event.  Default 3600 (1 hour).
         after_event_fn : callable, optional
-            Called as after_event_fn(event_id, rolling_catalog) immediately
-            after each event is located.  Intended for appending the just-
-            located event to a time-dependent model (e.g. EtasPriorUpdater)
-            so that the next event's prior update sees it.  Returns the
-            (possibly updated) rolling_catalog.
+            Called as after_event_fn(event_id) immediately after each event
+            is located.  Intended for appending the just-located event to a
+            time-dependent model (e.g. EtasPriorUpdater) so that the next
+            prior update sees it.
         """
         last_update_time = None
 
@@ -209,10 +208,7 @@ class BenchmarkRunner:
             self.run_event(event_id)
 
             if after_event_fn is not None:
-                rolling_catalog = after_event_fn(event_id, rolling_catalog)
-                
-        if rolling_catalog is not None:
-            return rolling_catalog
+                after_event_fn(event_id)
 
 
 # ---------------------------------------------------------------------------

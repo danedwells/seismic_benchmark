@@ -173,7 +173,7 @@ bg = load_background_seismicity(
     min_mag    = 3.5,
 )
 
-PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'Uniform']
+PRIOR_ORDER = list(config.PRIOR_FILENAMES.keys())
 
 # Compute case-study map extent and filter background seismicity to the region
 min_lon, max_lon, min_lat, max_lat = cs['bounds']

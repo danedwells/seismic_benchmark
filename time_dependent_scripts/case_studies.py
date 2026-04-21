@@ -140,6 +140,7 @@ DOWNLOAD_CATALOG   = False   # re-download even if cached
 BUILD_RUN_FILES    = False   # build / rebuild .run files from USGS phases
 RUN_DYNAMIC_PRIORS = True    # run all time-dependent priors (serial, event-by-event)
 SKIP_RUN           = False   # skip all bEPIC calls; go straight to figures
+DEBUG_PLOT_PRIOR   = True    # plot ETAS lambda grid before each event (comment out to disable)
 
 #%%
 # ---------------------------------------------------------------------------
@@ -163,23 +164,6 @@ if BUILD_RUN_FILES:
 
 #%%
 
-# Bookkeep rolling catalog within script. Might want
-# to consider making a rolling catalog object to deal with triggers and what not.
-# TODO - investigate this further.
-def append_events(new_events: pd.DataFrame, catalog) -> pd.DataFrame:
-    """
-    Append new events to the rolling catalog.
-
-    Duplicates are dropped by matching on (time, latitude, longitude)
-    after concatenation, so it is safe to call with overlapping batches.
-    """
-    catalog = (
-        pd.concat([catalog, new_events], ignore_index=True)
-        .drop_duplicates(subset=['time', 'latitude', 'longitude'])
-        .sort_values('time')
-        .reset_index(drop=True)
-    )
-    return catalog
 
 # ---------------------------------------------------------------------------
 # 3. Dynamic prior runs (serial — prior state evolves event-by-event)
@@ -229,7 +213,7 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     cs_etas_catalog = (
         catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
         .rename(columns={'mag': 'magnitude'})
-        .assign(time=lambda df: pd.to_datetime(df['time']))
+        .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
         .query(f'magnitude >= {mc}')
         .sort_values('time')
         .reset_index(drop=True)
@@ -271,6 +255,22 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
         prior = updater.update(t, cache_path=save_path)
         print(f"  [ETAS] prior updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
               f"— catalog size: {updater.n_catalog_events}")
+
+        # ── DEBUG: plot lambda grid ──────────────────────────────────────────
+        if DEBUG_PLOT_PRIOR:
+            _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
+            _pcm = _ax.pcolormesh(prior.lons, prior.lats,
+                                  np.log10(prior.grid + 1e-12),
+                                  cmap='viridis', shading='auto')
+            plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ')
+            _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}  '
+                          f'(n_cat={updater.n_catalog_events})', fontsize=9)
+            _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
+            plt.tight_layout()
+            plt.pause(0.01)
+            plt.close(_fig)
+        # ── END DEBUG ────────────────────────────────────────────────────────
+
         return prior
 
     # def after_event_fn(event_id, event_time_unix: float) -> None:
@@ -284,17 +284,16 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     #                                   ['time', 'latitude', 'longitude', 'magnitude']]
     #         updater.append_events(row)
 
-    def after_event_fn(event_id, catalog: pd.DataFrame) -> pd.DataFrame:
+    def after_event_fn(event_id):
         """
         Called by BenchmarkRunner immediately after each event is located.
-        Appends the just-located event to the rolling ETAS catalog so the
-        next prior update reflects it.
+        Appends the just-located event to updater.catalog so the next
+        prior update sees it.
         """
         if event_id in cs_event_lookup.index:
             row = cs_event_lookup.loc[[event_id],
                                       ['time', 'latitude', 'longitude', 'magnitude']]
-            catalog = append_events(row,catalog)
-            return catalog
+            updater.append_events(row)
 
     # -- Set up BenchmarkRunner with the initial (pre-sequence) prior --------
     t0 = pd.Timestamp(cs['starttime'])
@@ -330,7 +329,7 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
           f"(update interval: {'per-event' if ETAS_UPDATE_INTERVAL_S == 0 else f'{ETAS_UPDATE_INTERVAL_S}s'})…\n")
 
     # -- Run ------------------------------------------------------------------
-    rolling_catalog = runner.run_all(
+    runner.run_all(
         event_ids          = event_ids,
         etas_update_fn     = etas_update_fn,
         update_interval_s  = ETAS_UPDATE_INTERVAL_S,

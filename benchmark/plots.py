@@ -186,10 +186,10 @@ def plot_overview_map(
                    s=20, color='orange', edgecolor='k', alpha=0.7, marker='v',
                    transform=proj, label='Stations', zorder=2)
 
-    from pathlib import Path as _Path
-    csv_files = sorted(_Path(output_dir).glob('*_benchmark_results.csv'))
-    for i, csv_path in enumerate(csv_files):
-        prior_name = csv_path.stem.replace('_benchmark_results', '')
+    for i, prior_name in enumerate(prior_order):
+        csv_path = os.path.join(output_dir, f'{prior_name.lower()}_benchmark_results.csv')
+        if not os.path.exists(csv_path):
+            continue
         df    = pd.read_csv(csv_path)
         final = df.groupby('event_id').last().reset_index()
         ax.scatter(final['posterior_lon'], final['posterior_lat'],
@@ -436,10 +436,14 @@ def plot_posterior_grid(
     ]
 
     # -- Build figure ----------------------------------------------------------
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
+    n = len(prior_order)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 16 / 3, nrows * 5.0),
+                             subplot_kw={'projection': proj}, squeeze=False)
 
     for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), prior_order)):
-        row_idx, col_idx = divmod(idx, 3)
+        row_idx, col_idx = divmod(idx, ncols)
         t, odf, actual_v, sp, pcache = prior_results[prior_name]
 
         ax.set_extent(ext, crs=proj)
@@ -450,7 +454,7 @@ def plot_posterior_grid(
         gl.top_labels    = False
         gl.right_labels  = False
         gl.left_labels   = (col_idx == 0)
-        gl.bottom_labels = (row_idx == 1)
+        gl.bottom_labels = (row_idx == nrows - 1)
 
         # Prior density background (Blues pcolormesh)
         if pcache is not None and os.path.exists(pcache):
@@ -621,10 +625,14 @@ def plot_location_trajectory(
     cmap = plt.cm.plasma
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
+    n = len(prior_order)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 16 / 3 + 1.5, nrows * 5.0),
+                             subplot_kw={'projection': proj}, squeeze=False)
 
     for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), prior_order)):
-        row_idx, col_idx = divmod(idx, 3)
+        row_idx, col_idx = divmod(idx, ncols)
         df_traj = trajectories.get(prior_name)
 
         ax.set_extent(ext, crs=proj)
@@ -637,7 +645,7 @@ def plot_location_trajectory(
         gl.top_labels    = False
         gl.right_labels  = False
         gl.left_labels   = (col_idx == 0)
-        gl.bottom_labels = (row_idx == 1)
+        gl.bottom_labels = (row_idx == nrows - 1)
 
         # Optional prior density background
         if cache_paths is not None:

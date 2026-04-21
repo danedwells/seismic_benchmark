@@ -104,12 +104,13 @@ ETAS_INVERSION_CONFIG = {
     'delta_m': 0.1,
 
     # -- Spatial region (California + PNW benchmark polygon, [lat, lon] pairs) --
+
     'shape_coords': [
-        [43.5, -125.7], [43.5, -118.5], [39.7, -118.5], [36.1, -113.6],
-        [34.6, -112.6], [34.3, -112.6], [32.7, -113.1], [31.8, -113.2],
-        [31.2, -114.5], [31.0, -117.1], [31.1, -117.4], [31.5, -118.3],
-        [32.4, -118.8], [33.3, -121.3], [34.0, -122.0], [37.5, -124.3],
-        [40.0, -125.9], [40.5, -125.9], [43.0, -125.7], [43.5, -125.7],
+    [43.5, -127.7], [43.5, -117.5], [39.7, -117.5], [36.1, -112.6],
+    [34.6, -111.6], [34.3, -111.6], [32.7, -112.1], [31.8, -112.2],
+    [31.2, -113.5], [31.0, -117.1], [31.1, -117.4], [31.5, -118.3],
+    [32.4, -118.8], [33.3, -122.3], [34.0, -124.0], [37.5, -126.3],
+    [40.0, -127.9], [40.5, -127.9], [43.0, -127.7], [43.5, -127.7],
     ],
 
     # -- Model settings --
@@ -139,7 +140,7 @@ ETAS_INVERSION_CONFIG = {
 ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
     'grid_spacing':     0.1,
-    'out_of_bounds_fill': 0.00001,  # fill for cells outside the ETAS polygon
+    'out_of_bounds_fill': 0.0000001,  # fill for cells outside the ETAS polygon
 }
 
 # Parameters for the main benchmark run.
