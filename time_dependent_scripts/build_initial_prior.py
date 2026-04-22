@@ -32,12 +32,16 @@ import logging
 import os
 import json
 
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from etas import set_up_logger
 from etas.inversion import ETASParameterCalculation
 
+
 from benchmark import config
+from benchmark.usgs import download_case_study_catalog
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -55,10 +59,58 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # The example below references the etas_2 example catalog.  To use a catalog
 # within seismic_benchmark instead, change CATALOG_PATH accordingly and make
 # sure the file is in ETAS format (or handled by load_catalog() below).
+# NOTE - if # of events exceeds 20,000, it WILL toss an error (USGS limitaiton).
+# TODO - add functionality to chunk the requests to avoid this
 
-CATALOG_PATH = os.path.join(
-    PROJECT_ROOT, '..', 'etas_2', 'input_data', 'example_catalog.csv'
-)
+CATALOG_PATH = None
+if CATALOG_PATH is None:
+    ETAS_catalog_params = {
+        'name':      'etas_inversion',
+        'starttime': '1999-01-01',
+        'invstarttime': '2000-01-01',
+        'endtime':   '2018-01-01',
+        'bounds':    (-130, -110, 30, 45),   # (min_lon, max_lon, min_lat, max_lat)
+        'min_mag':   3.0,
+    }
+    cache_dir = os.path.join(OUTPUT_DIR, 'input')
+    catalog_df = download_case_study_catalog(ETAS_catalog_params, cache_dir,REDOWNLOAD=True)
+    catalog_df = catalog_df.rename(columns={'mag': 'magnitude'})
+    CATALOG_PATH = os.path.join(cache_dir, 'downloaded_catalog.csv')
+    catalog_df[['id', 'latitude', 'longitude', 'time', 'magnitude']].to_csv(
+        CATALOG_PATH, index=False
+    )
+    mc   = config.ETAS_INVERSION_CONFIG['mc']
+    bins = np.arange(
+        np.floor(catalog_df['magnitude'].min() * 10) / 10,
+        catalog_df['magnitude'].max() + 0.15,
+        0.1,
+    )
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.hist(catalog_df['magnitude'], bins=bins, color='steelblue',
+            edgecolor='white', linewidth=0.4)
+    ax.axvline(mc, color='crimson', linestyle='--', linewidth=1.5,
+               label=f'$M_c$ = {mc}')
+    ax.set_yscale('log')
+    ax.set_xlabel('Magnitude')
+    ax.set_ylabel('Count')
+    ax.set_title('Magnitude distribution — verify completeness above $M_c$')
+    ax.legend()
+    plt.tight_layout()
+    fig_path = os.path.join(OUTPUT_DIR, 'magnitude_distribution.png')
+    fig.savefig(fig_path, dpi=150)
+    plt.show()
+    print(f"  Magnitude distribution saved: {fig_path}")
+
+    config.ETAS_INVERSION_CONFIG['mc'] = ETAS_catalog_params['min_mag']
+    config.ETAS_INVERSION_CONFIG['auxiliary_start'] = ETAS_catalog_params['starttime']
+    config.ETAS_INVERSION_CONFIG['timewindow_start'] = ETAS_catalog_params['invstarttime']
+    config.ETAS_INVERSION_CONFIG['timewindow_end'] = ETAS_catalog_params['endtime']
+
+
+else:
+    CATALOG_PATH = os.path.join(
+        PROJECT_ROOT, 'data', 'etas_inversion', 'input', 'example_catalog.csv'
+    )
 
 # Set to True to re-run the inversion even if a result already exists.
 FORCE_RERUN = True
@@ -104,9 +156,12 @@ def load_catalog(path):
         df = pd.read_csv(
             path,
             index_col=0,
-            parse_dates=['time'],
             dtype={'url': str, 'alert': str},
         )
+        # parse_dates is unreliable on Arrow-backed dtypes in pandas 2.x;
+        # convert explicitly and strip timezone so comparisons with tz-naive
+        # ETAS timewindow boundaries don't raise TypeError.
+        df['time'] = pd.to_datetime(df['time'], format='ISO8601', utc=True).dt.tz_convert(None)
         df = df.reset_index().rename(columns={'index': 'id'})
         if 'id' not in df.columns:
             df.insert(0, 'id', range(len(df)))

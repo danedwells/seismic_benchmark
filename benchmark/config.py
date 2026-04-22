@@ -95,12 +95,12 @@ REFERENCE_PARAMS = {
 
 ETAS_INVERSION_CONFIG = {
     # -- Catalog time windows --
-    'auxiliary_start':  '1971-01-01 00:00:00',
+    'auxiliary_start':  '1971-01-01 00:00:00', # These are default values for the example catalog
     'timewindow_start': '1981-01-01 00:00:00',
     'timewindow_end':   '2007-01-01 00:00:00',
 
     # -- Magnitude completeness --
-    'mc':      3.6,
+    'mc':      3.6, # default value
     'delta_m': 0.1,
 
     # -- Spatial region (California + PNW benchmark polygon, [lat, lon] pairs) --

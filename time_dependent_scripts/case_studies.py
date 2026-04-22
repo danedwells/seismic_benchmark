@@ -122,7 +122,7 @@ MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'output',  f'max_trigs_{MAX_TRIGS}')
+                               'output', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
 CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
                                'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 

@@ -415,9 +415,12 @@ def plot_posterior_grid(
             sp       = SeismicPrior.from_tt3(pcache)
             use_p    = True
         else:
-            nshm_path = next(v for v in cache_paths.values() if v is not None)
-            sp        = SeismicPrior.from_tt3(nshm_path)
-            use_p     = False
+            fallback = next((v for v in cache_paths.values() if v is not None), None)
+            if fallback is None:
+                print(f'  [{pname}] no prior file available — skipping panel.')
+                continue
+            sp    = SeismicPrior.from_tt3(fallback)
+            use_p = False
         t, odf, actual_v = run_single_event_get_grid(
             focus_run_path, sp, use_p, params_kw, focus_version=focus_version
         )

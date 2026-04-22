@@ -58,6 +58,7 @@ CASE_STUDIES = {
         'bounds':    (-127.0, -122.5, 39, 41.0),
         'min_mag':   3.0,
     },
+    
     'ElMayor': {
         'name':      'El Mayor-Cucapah 2010',
         'starttime': '2010-04-04T22:00:00',

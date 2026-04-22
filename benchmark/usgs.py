@@ -158,7 +158,7 @@ def _parse_phases_from_quakeml(url):
 
     return pd.DataFrame(rows) if rows else None
 
-def download_case_study_catalog(cs, cache_dir):
+def download_case_study_catalog(cs, cache_dir, REDOWNLOAD=False):
     """
     Download a USGS earthquake catalog for a case study.
 
@@ -180,7 +180,7 @@ def download_case_study_catalog(cs, cache_dir):
     name       = cs['name'].replace(' ', '_')
     cache_path = os.path.join(cache_dir, f"{name}_catalog.parquet")
 
-    if os.path.exists(cache_path):
+    if os.path.exists(cache_path) and REDOWNLOAD == False:
         print(f"Loading cached catalog: {cache_path}")
         return pd.read_parquet(cache_path)
 
