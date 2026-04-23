@@ -186,10 +186,10 @@ def plot_overview_map(
                    s=20, color='orange', edgecolor='k', alpha=0.7, marker='v',
                    transform=proj, label='Stations', zorder=2)
 
-    from pathlib import Path as _Path
-    csv_files = sorted(_Path(output_dir).glob('*_benchmark_results.csv'))
-    for i, csv_path in enumerate(csv_files):
-        prior_name = csv_path.stem.replace('_benchmark_results', '')
+    for i, prior_name in enumerate(prior_order):
+        csv_path = os.path.join(output_dir, f'{prior_name.lower()}_benchmark_results.csv')
+        if not os.path.exists(csv_path):
+            continue
         df    = pd.read_csv(csv_path)
         final = df.groupby('event_id').last().reset_index()
         ax.scatter(final['posterior_lon'], final['posterior_lat'],
@@ -226,7 +226,7 @@ def plot_location_grid(
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv`` files.
     prior_order : list[str]
-        Prior names in panel order (6 entries for a 2×3 grid).
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     extent : list
         [lon_min, lon_max, lat_min, lat_max] for every panel.
     ref_catalog : DataFrame or None
@@ -350,6 +350,9 @@ def plot_location_grid(
                    ha='center', va='bottom', fontsize=8, fontweight='bold',
                    transform=proj, zorder=10)
 
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
+
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
     if save_path is not None:
@@ -366,6 +369,7 @@ def plot_posterior_grid(
     ref_lon=None,
     focus_version=None,
     extent_pad_deg=0.4,
+    extent=None,
     title='bEPIC posterior grid',
     save_path=None,
 ):
@@ -380,7 +384,7 @@ def plot_posterior_grid(
     cache_paths : dict
         Mapping of prior name → .tt3 file path (or None for Uniform).
     prior_order : list[str]
-        Prior names in panel order; must have exactly 6 entries for a 2×3 grid.
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     params_kw : dict
         Keys: grid_size, grid_km, max_trigs — passed to run_single_event_get_grid.
     ref_lat, ref_lon : float or None
@@ -388,7 +392,11 @@ def plot_posterior_grid(
     focus_version : int or None
         Trigger version to plot (0-based).  None = last available version.
     extent_pad_deg : float
-        Degrees of padding added around the posterior grid extent.
+        Degrees of padding added around the posterior grid extent (ignored when
+        `extent` is provided).
+    extent : list[float] or None
+        ``[min_lon, max_lon, min_lat, max_lat]`` — overrides the auto-derived
+        extent.  Useful for zooming in on a specific region.
     title : str
         Figure suptitle.
     save_path : str or None
@@ -412,9 +420,12 @@ def plot_posterior_grid(
             sp       = SeismicPrior.from_tt3(pcache)
             use_p    = True
         else:
-            nshm_path = next(v for v in cache_paths.values() if v is not None)
-            sp        = SeismicPrior.from_tt3(nshm_path)
-            use_p     = False
+            fallback = next((v for v in cache_paths.values() if v is not None), None)
+            if fallback is None:
+                print(f'  [{pname}] no prior file available — skipping panel.')
+                continue
+            sp    = SeismicPrior.from_tt3(fallback)
+            use_p = False
         t, odf, actual_v = run_single_event_get_grid(
             focus_run_path, sp, use_p, params_kw, focus_version=focus_version
         )
@@ -425,7 +436,7 @@ def plot_posterior_grid(
     if first_odf is None:
         print('[plot_posterior_grid] No valid posterior found — figure skipped.')
         return None
-    ext = [
+    ext = extent if extent is not None else [
         float(first_odf['lon'].min()) - extent_pad_deg,
         float(first_odf['lon'].max()) + extent_pad_deg,
         float(first_odf['lat'].min()) - extent_pad_deg,
@@ -433,10 +444,14 @@ def plot_posterior_grid(
     ]
 
     # -- Build figure ----------------------------------------------------------
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
+    n = len(prior_order)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 16 / 3, nrows * 5.0),
+                             subplot_kw={'projection': proj}, squeeze=False)
 
     for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), prior_order)):
-        row_idx, col_idx = divmod(idx, 3)
+        row_idx, col_idx = divmod(idx, ncols)
         t, odf, actual_v, sp, pcache = prior_results[prior_name]
 
         ax.set_extent(ext, crs=proj)
@@ -447,14 +462,18 @@ def plot_posterior_grid(
         gl.top_labels    = False
         gl.right_labels  = False
         gl.left_labels   = (col_idx == 0)
-        gl.bottom_labels = (row_idx == 1)
+        gl.bottom_labels = (row_idx == nrows - 1)
 
-        # Prior density background (Blues pcolormesh)
+        # Prior density background (viridis pcolormesh).
+        # vmin is anchored to the mean log10 value so the colormap reflects
+        # absolute probability density — a flat (tempered) prior will look
+        # visually uniform rather than being stretched to fill the palette.
         if pcache is not None and os.path.exists(pcache):
             log_grid = np.log10(sp.grid + 1e-12)
             ax.pcolormesh(sp.lons, sp.lats, log_grid,
                           transform=proj, cmap='viridis', alpha=0.5,
-                          shading='auto', zorder=1)
+                          shading='auto', zorder=1,
+                          vmin=np.nanmean(log_grid), vmax=np.nanmax(log_grid))
 
         # Posterior contours (Reds)
         if odf is not None:
@@ -482,6 +501,9 @@ def plot_posterior_grid(
         v_label = f'v{actual_v}' if t is not None else 'no data'
         ax.set_title(f'{prior_name}  ({v_label})', fontsize=11)
         ax.legend(loc='upper right', fontsize=7)
+
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
 
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
@@ -519,7 +541,7 @@ def plot_location_trajectory(
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv`` files.
     prior_order : list[str]
-        Prior names in panel order (6 entries for a 2×3 grid).
+        Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     run_dir : str
         Directory containing ``{event_id}.run`` files; used to map version → trigger count.
     min_triggers : int
@@ -615,10 +637,14 @@ def plot_location_trajectory(
     cmap = plt.cm.plasma
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
+    n = len(prior_order)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 16 / 3 + 1.5, nrows * 5.0),
+                             subplot_kw={'projection': proj}, squeeze=False)
 
     for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), prior_order)):
-        row_idx, col_idx = divmod(idx, 3)
+        row_idx, col_idx = divmod(idx, ncols)
         df_traj = trajectories.get(prior_name)
 
         ax.set_extent(ext, crs=proj)
@@ -631,7 +657,7 @@ def plot_location_trajectory(
         gl.top_labels    = False
         gl.right_labels  = False
         gl.left_labels   = (col_idx == 0)
-        gl.bottom_labels = (row_idx == 1)
+        gl.bottom_labels = (row_idx == nrows - 1)
 
         # Optional prior density background
         if cache_paths is not None:
@@ -683,6 +709,9 @@ def plot_location_trajectory(
 
         ax.set_title(prior_name, fontsize=11)
         ax.legend(loc='upper right', fontsize=7)
+
+    for ax in axes.flatten()[len(prior_order):]:
+        ax.set_visible(False)
 
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()

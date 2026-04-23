@@ -15,17 +15,14 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
     values are read from construction_params.  Helmstetter is the only prior
     without a source_paths entry — its data comes from pycsep at runtime.
 
-    ETAS is built from its source .tt3 if the file exists.  If absent (not yet
-    generated), ETAS is skipped.  To build from raw ETAS output instead:
-        p = SeismicPrior.from_etas(lats, lons, lambda_grid, forecast_time=t,
-                                   bounds=..., out_of_bounds_fill=...)
-        p.to_tt3(cache_paths['ETAS'])
+    ETAS is time-dependent and is handled separately via EtasPriorUpdater
+    (see time_dependent_scripts/).
 
     Parameters
     ----------
     cache_paths : dict
         Mapping of prior name -> .tt3 file path (or None for Uniform).
-        Expected keys: 'Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'ETAS', 'Uniform'.
+        Expected keys: 'Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'Uniform'.
     data_dir : str
         Path to the priors data directory (SeismicPrior.data_dir).
     construction_params : dict, optional
@@ -103,24 +100,3 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
     except Exception as e:
         print(f"Smooth_seismicity: failed — {e}")
 
-    try:
-        src = _abs('ETAS')
-        if src is None or not os.path.exists(src):
-            print("ETAS: skipped — source file not found. "
-                  "Generate with from_etas() or place source in ETAS_data/.")
-        else:
-            p = SeismicPrior.from_tt3(src, name='etas')
-            bounds = shared_kwargs.get('bounds')
-            oob = oob_fills.get('ETAS')
-            if oob is not None:
-                fv = float(np.nanmean(p.grid)) if oob == 'mean' else float(oob)
-                p.grid[p.grid <= 1e-9] = fv
-            p = _maybe_resample(p, 'ETAS')
-            if bounds is not None and oob is not None:
-                p.lons, p.lats, p.grid = SeismicPrior._expand_to_bounds(
-                    p.lons, p.lats, p.grid, bounds, oob)
-            p.grid = p.grid / np.nansum(p.grid)
-            p.to_tt3(cache_paths['ETAS'])
-            print("ETAS: built and cached.")
-    except Exception as e:
-        print(f"ETAS: failed — {e}")
