@@ -369,6 +369,7 @@ def plot_posterior_grid(
     ref_lon=None,
     focus_version=None,
     extent_pad_deg=0.4,
+    extent=None,
     title='bEPIC posterior grid',
     save_path=None,
 ):
@@ -391,7 +392,11 @@ def plot_posterior_grid(
     focus_version : int or None
         Trigger version to plot (0-based).  None = last available version.
     extent_pad_deg : float
-        Degrees of padding added around the posterior grid extent.
+        Degrees of padding added around the posterior grid extent (ignored when
+        `extent` is provided).
+    extent : list[float] or None
+        ``[min_lon, max_lon, min_lat, max_lat]`` — overrides the auto-derived
+        extent.  Useful for zooming in on a specific region.
     title : str
         Figure suptitle.
     save_path : str or None
@@ -431,7 +436,7 @@ def plot_posterior_grid(
     if first_odf is None:
         print('[plot_posterior_grid] No valid posterior found — figure skipped.')
         return None
-    ext = [
+    ext = extent if extent is not None else [
         float(first_odf['lon'].min()) - extent_pad_deg,
         float(first_odf['lon'].max()) + extent_pad_deg,
         float(first_odf['lat'].min()) - extent_pad_deg,
@@ -459,12 +464,16 @@ def plot_posterior_grid(
         gl.left_labels   = (col_idx == 0)
         gl.bottom_labels = (row_idx == nrows - 1)
 
-        # Prior density background (Blues pcolormesh)
+        # Prior density background (viridis pcolormesh).
+        # vmin is anchored to the mean log10 value so the colormap reflects
+        # absolute probability density — a flat (tempered) prior will look
+        # visually uniform rather than being stretched to fill the palette.
         if pcache is not None and os.path.exists(pcache):
             log_grid = np.log10(sp.grid + 1e-12)
             ax.pcolormesh(sp.lons, sp.lats, log_grid,
                           transform=proj, cmap='viridis', alpha=0.5,
-                          shading='auto', zorder=1)
+                          shading='auto', zorder=1,
+                          vmin=np.nanmean(log_grid), vmax=np.nanmax(log_grid))
 
         # Posterior contours (Reds)
         if odf is not None:

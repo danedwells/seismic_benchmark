@@ -244,6 +244,8 @@ def load_reference_catalog(catalog_path):
     return pd.DataFrame({
         'event_id':   raw['postgres id'].astype(int),
         'anss_id':    raw['ANSS ID'],
+        'usgs_time':  pd.to_datetime(raw['ANSS date'],
+                                     format='%Y-%m-%d-%H:%M:%S.%f-GMT'),
         'usgs_lat':   raw['ANSS lat'],
         'usgs_lon':   raw['ANSS lon'],
         'usgs_depth': raw['ANSS depth'],
