@@ -1,4 +1,4 @@
-# seismic_benchmark
+# Benchmarking seismic priors for earthquake early warning using the bEPIC location algorithm
 
 > **Work in progress.** This repository is under active development. APIs, file layouts, and workflows may change without notice. This repository is being developed with the assistance of LLM/AI tools.
 

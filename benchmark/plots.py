@@ -372,6 +372,7 @@ def plot_posterior_grid(
     extent=None,
     title='bEPIC posterior grid',
     save_path=None,
+    prior_results=None,
 ):
     """
     2×3 panel figure showing the prior density background and bEPIC posterior
@@ -387,10 +388,12 @@ def plot_posterior_grid(
         Prior names in panel order (≤6 entries; unused 2×3 panels are hidden).
     params_kw : dict
         Keys: grid_size, grid_km, max_trigs — passed to run_single_event_get_grid.
+        Ignored when prior_results is provided.
     ref_lat, ref_lon : float or None
         USGS reference location plotted as a gold star.  Omitted if None.
     focus_version : int or None
         Trigger version to plot (0-based).  None = last available version.
+        Ignored when prior_results is provided.
     extent_pad_deg : float
         Degrees of padding added around the posterior grid extent (ignored when
         `extent` is provided).
@@ -401,6 +404,11 @@ def plot_posterior_grid(
         Figure suptitle.
     save_path : str or None
         If given, the figure is saved as a PNG at 150 dpi.
+    prior_results : dict or None
+        Pre-computed results keyed by prior name:
+        ``{pname: (t, odf, actual_v, sp, pcache)}``.
+        When provided, skips the internal run_single_event_get_grid calls so
+        the caller can reuse a grid already computed for coverage metrics.
 
     Returns
     -------
@@ -412,24 +420,25 @@ def plot_posterior_grid(
     grid_width = 2 * params_kw['grid_size'] + 1
     proj = ccrs.PlateCarree()
 
-    # -- Run all priors for this event -----------------------------------------
-    prior_results = {}
-    for pname in prior_order:
-        pcache = cache_paths.get(pname)
-        if pcache is not None and os.path.exists(pcache):
-            sp       = SeismicPrior.from_tt3(pcache)
-            use_p    = True
-        else:
-            fallback = next((v for v in cache_paths.values() if v is not None), None)
-            if fallback is None:
-                print(f'  [{pname}] no prior file available — skipping panel.')
-                continue
-            sp    = SeismicPrior.from_tt3(fallback)
-            use_p = False
-        t, odf, actual_v = run_single_event_get_grid(
-            focus_run_path, sp, use_p, params_kw, focus_version=focus_version
-        )
-        prior_results[pname] = (t, odf, actual_v, sp, pcache)
+    # -- Run all priors for this event (skip if pre-computed) ------------------
+    if prior_results is None:
+        prior_results = {}
+        for pname in prior_order:
+            pcache = cache_paths.get(pname)
+            if pcache is not None and os.path.exists(pcache):
+                sp       = SeismicPrior.from_tt3(pcache)
+                use_p    = True
+            else:
+                fallback = next((v for v in cache_paths.values() if v is not None), None)
+                if fallback is None:
+                    print(f'  [{pname}] no prior file available — skipping panel.')
+                    continue
+                sp    = SeismicPrior.from_tt3(fallback)
+                use_p = False
+            t, odf, actual_v = run_single_event_get_grid(
+                focus_run_path, sp, use_p, params_kw, focus_version=focus_version
+            )
+            prior_results[pname] = (t, odf, actual_v, sp, pcache)
 
     # -- Derive map extent from first valid posterior grid ---------------------
     first_odf = next((v[1] for v in prior_results.values() if v[1] is not None), None)
