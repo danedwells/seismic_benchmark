@@ -3,7 +3,6 @@ results/
 
 # Input data — large files, not committed
 data/case_studies
-data/reference
 data/run_files
 
 # Python cache
