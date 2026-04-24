@@ -14,6 +14,8 @@ from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
                              plot_location_trajectory)
+from benchmark.metrics import usgs_credible_level, posterior_coverage
+
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import BenchmarkRunner
@@ -184,7 +186,8 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     params.migrate_grid              = config.BENCHMARK_PARAMS['migrate_grid']
     params.migrate_grid_min_triggers = config.BENCHMARK_PARAMS['migrate_grid_min_triggers']
 
-    dyn_runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=RUN_DIR)
+    dyn_runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=RUN_DIR,
+                                 catalog_df=catalog_df)
 
     dyn_runner.run_all(
         event_ids         = event_ids,
@@ -193,19 +196,23 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
         after_event_fn    = after_event_fn,
     )
 
-    rows = [
-        {
-            'event_id':      eid,
-            'version':       ver,
-            'posterior_lat': t.posterior_lat,
-            'posterior_lon': t.posterior_lon,
-            'best_misfit':   t.best_misfit,
-            'best_like':     t.best_like,
-            'best_prior':    t.best_prior,
-            'frac_misfit':   t.frac_misfit,
-        }
-        for (eid, ver), t in dyn_runner.results.items()
-    ]
+    rows = []
+    for (eid, ver), t in dyn_runner.results.items():
+        m = dyn_runner.metrics.get(eid, {})
+        is_final = (ver == m.get('final_version'))
+        rows.append({
+            'event_id':            eid,
+            'version':             ver,
+            'posterior_lat':       t.posterior_lat,
+            'posterior_lon':       t.posterior_lon,
+            'best_misfit':         t.best_misfit,
+            'best_like':           t.best_like,
+            'best_prior':          t.best_prior,
+            'frac_misfit':         t.frac_misfit,
+            'map_err_km':          m.get('map_err_km')          if is_final else None,
+            'coverage':            m.get('coverage')            if is_final else None,
+            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
+        })
     out_path = os.path.join(OUTPUT_DIR, 'etas_dynamic_benchmark_results.csv')
     (pd.DataFrame(rows)
        .sort_values(['event_id', 'version'])
@@ -352,52 +359,6 @@ fig = plot_prior_histograms(
 plt.show()
 
 
-
-# %%
-# ---------------------------------------------------------------------------
-# Posterior coverage utility
-# ---------------------------------------------------------------------------
-
-def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=50):
-    """
-    Fraction of posterior probability mass within the radius from the usgs location to the
-    computed bEPIC location.
-
-    Parameters
-    ----------
-    out_df : pd.DataFrame
-        Grid output from run_single_event_get_grid — must have columns lat, lon, post.
-    ref_lat, ref_lon : float
-        True / reference location (e.g. USGS catalog).
-    radii_km : iterable of float
-        Radii at which to evaluate cumulative mass (compute dist to final location if desired,
-        pass to this function)
-
-    Returns
-    -------
-    float : mapping radius_km (float) → coverage fraction [0, 1]
-    """
-
-    from obspy.geodetics import gps2dist_azimuth
-
-    # Get distance to true locatoin
-    dists_km = np.array([
-        gps2dist_azimuth(ref_lat, ref_lon, row.lat, row.lon)[0] / 1000.0
-        for row in out_df.itertuples(index=False)
-    ])
-
-    # Normalize
-    post = out_df['post'].values
-    total = post.sum()
-    if total > 0:
-        post = post / total
-
-    # return the sum of hte normalized posterior where dists_km is less than 
-    # the distance from the final bEPIC location to the 'true' USGS location
-    return float(post[dists_km <= radii_km].sum())
-
-
-
 #%%
 # ---------------------------------------------------------------------------
 # Standalone single-event prior/posterior test
@@ -426,7 +387,10 @@ else:
     if MTJ_EVENT_ID not in _usgs_ref_lookup.index:
         print(f'[standalone] event {MTJ_EVENT_ID} not found in reference catalog.')
     else:
+        # Get the event time
         _focus_t = pd.Timestamp(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'time'])
+
+        # Get USGS lat/lon
         _ref_lat = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'latitude'])
         _ref_lon = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'longitude'])
         print(f'[standalone] focus event {MTJ_EVENT_ID}  t = {_focus_t}')
@@ -519,6 +483,8 @@ else:
             'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
             'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
         }
+
+        # Get the posterior (_t_cov), out_df (_odf_cov), and version (# triggers) (_actual_v)
         _t_cov, _odf_cov, _actual_v = run_single_event_get_grid(
             _focus_run_path, _standalone_prior, True, _params_kw,
             focus_version=MTJ_VERSION,
@@ -566,33 +532,6 @@ else:
         plt.show()
 
 #%%
-def hdr_levels(post_flat, credible_levels=(0.1, 0.50, 0.67, 0.90, 0.95)):
-    p = post_flat / post_flat.sum()
-    idx = np.argsort(p)[::-1]
-    cumsum = np.cumsum(p[idx])
-    thresholds = {}
-    for cl in credible_levels:
-        i = np.searchsorted(cumsum, cl)
-        thresholds[cl] = float(p[idx[min(i, len(idx) - 1)]])
-    return thresholds
-
-def usgs_credible_level(out_df, usgs_lat, usgs_lon):
-    """
-    Credible level of the smallest HDR that contains the USGS location.
-    Returns a value in [0, 1]: lower is better (USGS is in a high-density region).
-    """
-    p = out_df['post'].values
-    p_norm = p / p.sum()
-
-    # This is literally a crude degree measurement - shouldn't matter much
-    dlat = out_df['lat'].values - usgs_lat
-    
-    # correct for the fact that dlon is less than dlat, since longitude is closer together
-    # except at the equator. Multiply by cosine of the latitude to account for that.
-    dlon = (out_df['lon'].values - usgs_lon) * np.cos(np.radians(usgs_lat))
-    p_usgs = p_norm[np.argmin(np.hypot(dlat, dlon))]
-
-    return float(p_norm[p_norm >= p_usgs].sum())
 
 ######################################
 # Compute posterior statistics
@@ -600,8 +539,10 @@ def usgs_credible_level(out_df, usgs_lat, usgs_lon):
 bEPIC_lat = _t_cov.posterior_lat
 bEPIC_lon = _t_cov.posterior_lon
 
-# TODO verify this is what we want.
-# Posterior coverage # 1
+
+# Posterior coverage # 1 - Geometry first
+# how much of probability mass is contained within
+# a circle around the USGS location with a radius of the distance to the bEPIC location?
 if _odf_cov is not None:
     from obspy.geodetics import gps2dist_azimuth as _gps2dist
     _map_err_km = _gps2dist(
@@ -613,21 +554,26 @@ if _odf_cov is not None:
         radii_km=(_map_err_km),
     )
     print(f'MAP location error : {_map_err_km:.1f} km')
-    print(f'posterior coverage :')
-    print(f'  within {_map_err_km:6.1f} km : {_frac * 100:5.1f}%')
+    print(f'Posterior Coverage # 1:')
+    print(f'  Probability mass within {_map_err_km:6.1f} km : {_frac * 100:5.1f}%')
 
 
-# Posterior coverage #2
-
+# Posterior coverage #2 - Probability first
+# What confidence contour is the USGS locatoin on w/respect to the bEPIC location?
 # USGS credible_level computes the contour level around 
 # the bEPIC location that the USGS lies on. I.e., it returns 0.5
 # if 50% of the probability mass of hte posterior is contained within the contour 
-# the the USGS location lies on. To get a confidence interval, we subtract from 1
-# (this makes the % how much of the PDF is LESS than the grid location of the 
-# USGS location) and multiply by 100 to get %. Therefore, closer to 100 is good,
-# closer to 0 is bad.
-# Actually, maybe don't do that. Lol. TODO - check tomorrow
-usgs_contf = 100*(1-usgs_credible_level(_odf_cov,_ref_lat,_ref_lon))
+# the the USGS location lies on. 
+if _odf_cov is not None:
+    usgs_contf = 100*usgs_credible_level(_odf_cov,_ref_lat,_ref_lon)
+    print("Posterior Coverage # 2")
+    print(f'   Confidence contour of USGS location: {usgs_contf:5.1f}%')
+
+# # 3 metrics to compare. We probably want to implement this on all of 
+# # the priors, including time independent
+# post_covs = []
+# distance_err = []
+# post_conts = []
 
 
-print(usgs_contf)
+# %%

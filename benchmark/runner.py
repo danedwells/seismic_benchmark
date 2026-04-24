@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
+from .metrics import usgs_credible_level, posterior_coverage, location_error_km
 
 def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_version=None):
     """
@@ -101,11 +102,20 @@ class BenchmarkRunner:
         Directory containing <event_id>.run files.
     """
 
-    def __init__(self, prior, params, run_dir):
+    def __init__(self, prior, params, run_dir, catalog_df=None):
         self.prior   = prior
         self.params  = params
         self.run_dir = run_dir
-        self.results = {}   # keyed by (event_id, version) -> (SearchOut, DataFrame)
+        self.results = {}   # {(event_id, version): SearchOut}
+        self.metrics = {}   # {event_id: {final_version, map_err_km, coverage, usgs_credible_level}}
+
+        if catalog_df is not None:
+            self._ref_lookup = {
+                int(row.event_id): (float(row.usgs_lat), float(row.usgs_lon))
+                for row in catalog_df[['event_id', 'usgs_lat', 'usgs_lon']].itertuples(index=False)
+            }
+        else:
+            self._ref_lookup = {}
 
     def _normalize_columns(self, df):
         df.columns = [c.replace(' ', '_') for c in df.columns]
@@ -114,6 +124,26 @@ class BenchmarkRunner:
     def update_prior(self, new_prior):
         # TODO - add in condion of some sort to automatically retreive a new prior for ETAS only (AND other time dependent later)
         self.prior = new_prior
+
+    def _compute_event_metrics(self, event_id, final_version, t, out_df):
+        """Compute and store posterior accuracy metrics for one event."""
+        try:
+            eid_int = int(event_id)
+        except (TypeError, ValueError):
+            return
+        ref = self._ref_lookup.get(eid_int)
+        if ref is None or t is None or out_df is None:
+            return
+        usgs_lat, usgs_lon = ref
+        err_km = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
+        cov    = posterior_coverage(out_df, usgs_lat, usgs_lon, radii_km=err_km)
+        cred   = usgs_credible_level(out_df, usgs_lat, usgs_lon)
+        self.metrics[event_id] = {
+            'final_version':       final_version,
+            'map_err_km':          err_km,
+            'coverage':            cov,
+            'usgs_credible_level': cred,
+        }
 
     def run_event(self, event_id):
         """
@@ -141,6 +171,8 @@ class BenchmarkRunner:
         )
 
         # Iterate over the versions (new version every time new trigger)
+        last_t = last_out_df = None
+        last_version = None
         for version in sorted(df_run['version'].unique()):
             df_v = (df_run[df_run['version'] == version]
                     .sort_values('order')
@@ -159,11 +191,15 @@ class BenchmarkRunner:
                 )
                 event.trigs.append(trig)
 
-            t, _ = EPIC_locate_prelim.E2Location_locate(self.params, event)
+            t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
             self.results[(event_id, version)] = t
+            last_t, last_out_df, last_version = t, out_df, version
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break
+
+        if self._ref_lookup and last_t is not None:
+            self._compute_event_metrics(event_id, last_version, last_t, last_out_df)
 
     def _get_event_time(self, event_id):
         """Return the first trigger time in the run file as a proxy for event time."""
@@ -272,8 +308,6 @@ def compute_location_error(results_df, catalog_df=None):
     DataFrame with location_error_km column appended (NaN for events
     not present in catalog_df).
     """
-    from obspy.geodetics import gps2dist_azimuth
-
     if catalog_df is None:
         return results_df
 
@@ -285,11 +319,8 @@ def compute_location_error(results_df, catalog_df=None):
     def _dist_km(row):
         if pd.isna(row['usgs_lat']) or pd.isna(row['usgs_lon']):
             return np.nan
-        m, _, _ = gps2dist_azimuth(
-            row['usgs_lat'], row['usgs_lon'],
-            row['posterior_lat'], row['posterior_lon']
-        )
-        return m / 1000.0
+        return location_error_km(row['posterior_lat'], row['posterior_lon'],
+                                 row['usgs_lat'], row['usgs_lon'])
 
     merged['location_error_km'] = merged.apply(_dist_km, axis=1)
     return merged.drop(columns=['usgs_lat', 'usgs_lon'])
@@ -411,7 +442,13 @@ def run_prior(args):
     params.migrate_grid             = args.get('migrate_grid', True)
     params.migrate_grid_min_triggers = args.get('migrate_grid_min_triggers', 1)
 
-    runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'])
+    catalog_path = args.get('catalog_path')
+    catalog_df = None
+    if catalog_path and os.path.exists(catalog_path):
+        catalog_df = load_reference_catalog(catalog_path)
+
+    runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
+                             catalog_df=catalog_df)
     stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
     try:
         event_ids = sorted(int(s) for s in stems)
@@ -419,17 +456,29 @@ def run_prior(args):
         event_ids = sorted(stems)
     runner.run_all(event_ids)
 
-    rows = [
-        {'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
-         'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
-         'best_like': t.best_like, 'best_prior': t.best_prior,
-         'frac_misfit': t.frac_misfit}
-        for (eid, ver), t in runner.results.items()
-    ]
+    rows = []
+    for (eid, ver), t in runner.results.items():
+        m = runner.metrics.get(eid, {})
+        is_final = (ver == m.get('final_version'))
+        rows.append({
+            'event_id':            eid,
+            'version':             ver,
+            'posterior_lat':       t.posterior_lat,
+            'posterior_lon':       t.posterior_lon,
+            'best_misfit':         t.best_misfit,
+            'best_like':           t.best_like,
+            'best_prior':          t.best_prior,
+            'frac_misfit':         t.frac_misfit,
+            'map_err_km':          m.get('map_err_km')          if is_final else None,
+            'coverage':            m.get('coverage')            if is_final else None,
+            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
+        })
+
     os.makedirs(args['output_dir'], exist_ok=True)
     out_path = os.path.join(args['output_dir'], f"{prior_name.lower()}_benchmark_results.csv")
     _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
-             'best_misfit', 'best_like', 'best_prior', 'frac_misfit']
+             'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
+             'map_err_km', 'coverage', 'usgs_credible_level']
     pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
     return prior_name
 

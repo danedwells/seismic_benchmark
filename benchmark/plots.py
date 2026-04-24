@@ -10,7 +10,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import obspy
 
+from .metrics import hdr_levels, usgs_credible_level, posterior_coverage  # re-exported for scripts
+
+# Plots
 
 def plot_prior_histograms(
     prior_names,

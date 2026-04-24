@@ -8,6 +8,7 @@ from benchmark.background import load_background_seismicity, add_background_seis
 from benchmark.plots import (plot_prior_histograms, plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
                              plot_location_trajectory)
+from benchmark.metrics import usgs_credible_level, posterior_coverage
 import os
 import numpy as np
 import pandas as pd
@@ -122,6 +123,8 @@ if REFERENCE:
     benchmark_runner.create_reference_locations(RUN_DIR, ref_dir, cache_paths, config.REFERENCE_PARAMS)
 
 # ── 3. Run bEPIC across priors ────────────────────────────────────────────
+_catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+
 job_args = [
     {
         'prior_name':                name,
@@ -129,6 +132,7 @@ job_args = [
         'nshm_path':                 cache_paths['NSHM'],  # geometry fallback for Uniform
         'run_dir':                   RUN_DIR,
         'output_dir':                OUTPUT_DIR,
+        'catalog_path':              _catalog_path,
         'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
         'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
         'max_trigs':                 MAX_TRIGS,
@@ -148,6 +152,7 @@ else:
             'nshm_path':                 cache_paths['NSHM'],
             'run_dir':                   RUN_DIR,
             'output_dir':                OUTPUT_DIR,
+            'catalog_path':              _catalog_path,
             'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
             'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
             'max_trigs':                 MAX_TRIGS,
@@ -328,17 +333,36 @@ if catalog_df is not None:
         ref_lat = float(ref_row['usgs_lat'].iloc[0]) if not ref_row.empty else None
         ref_lon = float(ref_row['usgs_lon'].iloc[0]) if not ref_row.empty else None
 
+        params_kw = {
+            'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
+            'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
+            'max_trigs':                 MAX_TRIGS,
+            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+        }
+
+        # Run bEPIC once per prior and cache — reused by plot_posterior_grid
+        # and the posterior statistics block below so bEPIC is not called twice.
+        prior_results = {}
+        for prior_name in PRIOR_ORDER:
+            tt3_path = cache_paths[prior_name]
+            if tt3_path is None:
+                p         = SeismicPrior.from_tt3(cache_paths['NSHM'])
+                use_prior = False
+            else:
+                p         = SeismicPrior.from_tt3(tt3_path)
+                use_prior = True
+            t_out, out_df, actual_v = benchmark_runner.run_single_event_get_grid(
+                focus_run_path, p, use_prior, params_kw, focus_version=MTJ_VERSION,
+            )
+            prior_results[prior_name] = (t_out, out_df, actual_v, p, tt3_path)
+
         fig = plot_posterior_grid(
             focus_run_path = focus_run_path,
             cache_paths    = cache_paths,
             prior_order    = PRIOR_ORDER,
-            params_kw      = {
-                'grid_size': config.BENCHMARK_PARAMS['grid_size'],
-                'grid_km':   config.BENCHMARK_PARAMS['grid_km'],
-                'max_trigs': MAX_TRIGS,
-                'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-                'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-            },
+            params_kw      = params_kw,
+            prior_results  = prior_results,
             ref_lat        = ref_lat,
             ref_lon        = ref_lon,
             focus_version  = MTJ_VERSION,
@@ -360,6 +384,25 @@ if catalog_df is not None:
             save_path    = os.path.join(FIGURES_DIR, f'MTJ_trajectory_{MTJ_EVENT_ID}.png'),
         )
         plt.show()
+
+        # ── Posterior statistics ───────────────────────────────────────────────
+        if ref_lat is not None and ref_lon is not None:
+            from obspy.geodetics import gps2dist_azimuth as _gps2dist
+            print(f'\n── Posterior statistics — event {MTJ_EVENT_ID} ──')
+            for prior_name, (t_out, out_df, actual_v, sp, pcache) in prior_results.items():
+                if t_out is None or out_df is None:
+                    continue
+                bEPIC_lat  = t_out.posterior_lat
+                bEPIC_lon  = t_out.posterior_lon
+                map_err_km = _gps2dist(ref_lat, ref_lon, bEPIC_lat, bEPIC_lon)[0] / 1000.0
+                frac       = posterior_coverage(out_df, ref_lat, ref_lon, radii_km=map_err_km)
+                usgs_contf = 100 * usgs_credible_level(out_df, ref_lat, ref_lon)
+                print(f'  {prior_name}:')
+                print(f'    MAP error         : {map_err_km:.1f} km')
+                print(f'    Coverage (dist)   : {frac * 100:.1f}%  '
+                      f'(mass within {map_err_km:.1f} km of USGS)')
+                print(f'    USGS credible lvl : {usgs_contf:.1f}%')
+
     else:
         print('[posterior grid] No MTJ event with a matching .run file found — skipping.')
 else:
