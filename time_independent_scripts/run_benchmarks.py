@@ -7,7 +7,8 @@ from priors import SeismicPrior
 from benchmark.background import load_background_seismicity, add_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
-                             plot_location_trajectory)
+                             plot_location_trajectory,
+                             plot_qq_calibration, plot_qq_prior_comparison)
 from benchmark.metrics import usgs_credible_level, posterior_coverage
 import os
 import numpy as np
@@ -113,7 +114,7 @@ verify_prior_resolutions(
 
 # --- Control flags ---
 REFERENCE      = False   # run high-resolution reference locations
-RUN_ALL_PRIORS = True  # run all six priors in parallel
+RUN_ALL_PRIORS = False  # run all six priors in parallel
 SKIP_RUN = True
 
 # ── 1. Create reference locations ─────────────────────────────────────────
@@ -185,7 +186,7 @@ bg = load_background_seismicity(
     bounds      = (-129, -112, 30, 45),
     start_year  = 2000,
     end_year    = 2025,
-    min_mag     = 3.5,
+    min_mag     = 3.0,
 )
 
 #%%
@@ -301,6 +302,52 @@ fig = plot_prior_histograms(
     xlabel      = 'location error (km)',
     save_path   = os.path.join(FIGURES_DIR, 'MTJ_location_error_histograms.png'),
     filter_fn   = in_extent,
+    catalog_df  = catalog_df,
+)
+plt.show()
+
+# ── usgs_credible_level histograms ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'usgs_credible_level',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — usgs_credible_level distributions',
+    xlabel      = 'usgs_credible_level',
+    save_path   = os.path.join(FIGURES_DIR, 'usgs_credible_level_histograms.png'),
+    color       = 'steelblue',
+)
+plt.show()
+
+# ── posterior-mass ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'coverage',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — posterior coverage within location error',
+    xlabel      = 'Posterior Coverage',
+    save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
+    color       = 'steelblue',
+)
+plt.show()
+
+# ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
+fig = plot_qq_calibration(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
+)
+plt.show()
+
+# ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
+fig = plot_qq_prior_comparison(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'map_err_km',
+    title       = 'Q-Q prior comparison — map location error (km)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
     catalog_df  = catalog_df,
 )
 plt.show()

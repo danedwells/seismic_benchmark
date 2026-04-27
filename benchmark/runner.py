@@ -121,10 +121,6 @@ class BenchmarkRunner:
         df.columns = [c.replace(' ', '_') for c in df.columns]
         return df
 
-    def update_prior(self, new_prior):
-        # TODO - add in condion of some sort to automatically retreive a new prior for ETAS only (AND other time dependent later)
-        self.prior = new_prior
-
     def _compute_event_metrics(self, event_id, final_version, t, out_df):
         """Compute and store posterior accuracy metrics for one event."""
         try:

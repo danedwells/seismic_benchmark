@@ -744,3 +744,210 @@ def plot_location_trajectory(
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
     return fig
+
+
+def plot_qq_calibration(
+    prior_names,
+    output_dir,
+    title='bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    save_path=None,
+    filter_fn=None,
+):
+    """
+    Single-panel Q-Q calibration plot: usgs_credible_level vs Uniform(0,1).
+
+    Each prior is plotted as a separate colored line.  For a perfectly
+    calibrated posterior, usgs_credible_level is Uniform(0,1) across events
+    and all lines fall on the diagonal.
+
+    Interpretation of deviations (assuming roughly unimodal posteriors):
+    - Below diagonal: posteriors are overconfident (too narrow/peaked) — USGS
+      tends to fall in high-probability regions, requiring only a small HDR to
+      contain it; the posterior concentrates mass near the true location more
+      than a calibrated system would.
+    - Above diagonal: posteriors are underconfident (too wide/diffuse) — USGS
+      tends to fall in lower-probability regions; more mass is needed to
+      include it in an HDR.
+
+    Parameters
+    ----------
+    prior_names : list[str]
+        Ordered list of prior names; one line per entry.
+    output_dir : str
+        Directory containing ``{prior_name.lower()}_benchmark_results.csv``.
+    title : str
+        Figure title.
+    save_path : str or None
+        Full path for the saved PNG (written at 150 dpi).
+    filter_fn : callable(df) -> df, optional
+        Applied to the per-event final-trigger DataFrame before extracting
+        usgs_credible_level (e.g. a spatial subset like ``in_extent``).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    colors = plt.cm.tab10.colors
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    for color, prior_name in zip(colors, prior_names):
+        csv_path = os.path.join(output_dir,
+                                f'{prior_name.lower()}_benchmark_results.csv')
+
+        if not os.path.exists(csv_path):
+            continue
+
+        df = pd.read_csv(csv_path)
+        # usgs_credible_level is only set for the final trigger version per event
+        final = df.dropna(subset=['usgs_credible_level'])
+        if filter_fn is not None:
+            final = filter_fn(final)
+
+        vals = np.sort(final['usgs_credible_level'].values)
+        n = len(vals)
+        if n == 0:
+            continue
+
+        theoretical = (np.arange(1, n + 1) - 0.5) / n
+        ax.plot(theoretical, vals, color=color, linewidth=1.5,
+                label=f'{prior_name}  (n={n})')
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
+    ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=11)
+    ax.set_ylabel('Empirical usgs_credible_level', fontsize=11)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.legend(fontsize=9)
+    ax.set_title(title, fontsize=12)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig
+
+
+def plot_qq_prior_comparison(
+    prior_names,
+    output_dir,
+    column='map_err_km',
+    title='Q-Q prior comparison — map_err_km',
+    save_path=None,
+    catalog_df=None,
+):
+    """
+    5×5 Q-Q comparison of location errors across all prior pairs.
+
+    Panel [i, j] plots sorted errors of prior_i (y-axis) against sorted
+    errors of prior_j (x-axis) at 200 common quantile levels.  Points below
+    the diagonal mean prior_i (row) has smaller errors at that quantile than
+    prior_j (column).  Diagonal panels show the prior name.
+
+    Parameters
+    ----------
+    prior_names : list[str]
+        Ordered list of prior names (determines grid size and ordering).
+    output_dir : str
+        Directory containing ``{prior_name.lower()}_benchmark_results.csv``.
+    column : str
+        Column to compare across priors.  Defaults to ``'map_err_km'``.
+        If the column is absent or all-NaN, falls back to computing
+        ``location_error_km`` from ``catalog_df`` when provided.
+    title : str
+        Figure suptitle.
+    save_path : str or None
+        Full path for the saved PNG (written at 150 dpi).
+    catalog_df : DataFrame or None
+        Reference catalog with ``event_id``, ``usgs_lat``, ``usgs_lon``
+        columns.  Used as a fallback if ``column`` is unavailable in the CSV.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    from .runner import compute_location_error
+
+    n = len(prior_names)
+    fig, axes = plt.subplots(n, n, figsize=(n * 3.2, n * 3.2))
+
+    # Load sorted error values for each prior
+    data = {}
+    for prior_name in prior_names:
+        csv_path = os.path.join(output_dir,
+                                f'{prior_name.lower()}_benchmark_results.csv')
+        if not os.path.exists(csv_path):
+            data[prior_name] = None
+            continue
+
+        df = pd.read_csv(csv_path)
+
+        if column in df.columns and not df[column].isna().all():
+            vals = df[column].dropna().values
+        elif catalog_df is not None:
+            final = df.groupby('event_id').last().reset_index()
+            final = compute_location_error(final, catalog_df)
+            vals  = final['location_error_km'].dropna().values
+        else:
+            data[prior_name] = None
+            continue
+
+        data[prior_name] = np.sort(vals)
+
+    # Shared axis limit clipped at the 99th percentile across all priors
+    all_vals = [v for v in data.values() if v is not None]
+    global_max = float(np.percentile(np.concatenate(all_vals), 99)) if all_vals else 100.0
+
+    q_levels = np.linspace(0, 1, 200)
+
+    for i, prior_i in enumerate(prior_names):
+        for j, prior_j in enumerate(prior_names):
+            ax = axes[i, j]
+
+            if i == j:
+                ax.text(0.5, 0.5, prior_i, transform=ax.transAxes,
+                        ha='center', va='center', fontsize=10,
+                        fontweight='bold', color='0.25')
+                ax.set_facecolor('0.91')
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+            vals_i = data[prior_i]
+            vals_j = data[prior_j]
+
+            if vals_i is None or vals_j is None:
+                ax.text(0.5, 0.5, 'no data', transform=ax.transAxes,
+                        ha='center', va='center', fontsize=8, color='gray')
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+            q_i = np.quantile(vals_i, q_levels)
+            q_j = np.quantile(vals_j, q_levels)
+
+            ax.plot(q_j, q_i, color='steelblue', linewidth=1.2)
+            ax.plot([0, global_max], [0, global_max],
+                    'k--', linewidth=0.8, alpha=0.55)
+            ax.set_xlim(0, global_max)
+            ax.set_ylim(0, global_max)
+
+            # Suppress inner tick labels; keep outer edges readable
+            ax.tick_params(labelsize=7)
+            if j != 0:
+                ax.tick_params(labelleft=False)
+            if i != n - 1:
+                ax.tick_params(labelbottom=False)
+
+            # Outer axis labels carry the prior name
+            if j == 0:
+                ax.set_ylabel(prior_i, fontsize=9)
+            if i == n - 1:
+                ax.set_xlabel(prior_j, fontsize=9)
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig

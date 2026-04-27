@@ -13,7 +13,8 @@ from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
-                             plot_location_trajectory)
+                             plot_location_trajectory,
+                             plot_qq_calibration, plot_qq_prior_comparison)
 from benchmark.metrics import usgs_credible_level, posterior_coverage
 
 from benchmark import runner as benchmark_runner
@@ -358,6 +359,30 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
+# ── usgs_credible_level histograms ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'usgs_credible_level',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — usgs_credible_level distributions',
+    xlabel      = 'usgs_credible_level',
+    save_path   = os.path.join(FIGURES_DIR, 'usgs_credible_level_histograms.png'),
+    color       = 'steelblue',
+)
+plt.show()
+
+# ── posterior-mass ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'coverage',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — posterior coverage within location error',
+    xlabel      = 'Posterior Coverage',
+    save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
+    color       = 'steelblue',
+)
 
 #%%
 # ---------------------------------------------------------------------------

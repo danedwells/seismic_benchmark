@@ -15,7 +15,9 @@
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_posterior_grid, plot_location_trajectory,
-                             plot_overview_map, plot_location_grid)
+                             plot_overview_map, plot_location_grid,
+                             plot_qq_calibration, plot_qq_prior_comparison)
+from benchmark.metrics import usgs_credible_level, posterior_coverage
 from benchmark.usgs import *
 
 import os
@@ -235,6 +237,52 @@ fig = plot_prior_histograms(
     title       = f'bEPIC fractional misfit — {cs["name"]}',
     xlabel      = 'frac_misfit',
     save_path   = os.path.join(CS_FIGURES_DIR, 'misfit_histograms.png'),
+)
+plt.show()
+
+
+# ── usgs_credible_level histograms ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = CS_OUTPUT_DIR,
+    column      = 'usgs_credible_level',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — usgs_credible_level distributions',
+    xlabel      = 'usgs_credible_level',
+    save_path   = os.path.join(CS_FIGURES_DIR, 'usgs_credible_level_histograms.png'),
+    color       = 'steelblue',
+)
+plt.show()
+
+# ── posterior-mass ────────────────────────────────────────
+fig = plot_prior_histograms(
+    prior_names = PRIOR_ORDER,
+    output_dir  = CS_OUTPUT_DIR,
+    column      = 'coverage',
+    bins        = np.linspace(0, 1, 41),
+    title       = 'bEPIC posterior calibration — posterior coverage within location error',
+    xlabel      = 'Posterior Coverage',
+    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_coverage_histograms.png'),
+    color       = 'steelblue',
+)
+
+# ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
+fig = plot_qq_calibration(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
+)
+plt.show()
+
+# ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
+fig = plot_qq_prior_comparison(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'map_err_km',
+    title       = 'Q-Q prior comparison — map location error (km)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
+    catalog_df  = catalog_df,
 )
 plt.show()
 
