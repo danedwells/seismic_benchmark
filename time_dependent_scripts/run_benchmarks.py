@@ -19,7 +19,8 @@ from benchmark.metrics import usgs_credible_level, posterior_coverage
 
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import BenchmarkRunner
+from benchmark.runner import (BenchmarkRunner, get_unique_stations,
+                              make_epic_params, runner_results_to_df)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -176,16 +177,7 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     _t0 = pd.Timestamp(_run_trigger_time(event_ids[0]), unit='s')
     initial_prior = updater.update(_t0)
 
-    from bEPIC import EPIC_locate_prelim
-    params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior                     = initial_prior
-    params.use_prior                 = True
-    params.GridSize                  = config.BENCHMARK_PARAMS['grid_size']
-    params.GridKm                    = config.BENCHMARK_PARAMS['grid_km']
-    params.method                    = 'EPIC C'
-    params.MAX_EVENT_TRIGS           = MAX_TRIGS
-    params.migrate_grid              = config.BENCHMARK_PARAMS['migrate_grid']
-    params.migrate_grid_min_triggers = config.BENCHMARK_PARAMS['migrate_grid_min_triggers']
+    params = make_epic_params(initial_prior, True, config.BENCHMARK_PARAMS)
 
     dyn_runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=RUN_DIR,
                                  catalog_df=catalog_df)
@@ -197,34 +189,9 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
         after_event_fn    = after_event_fn,
     )
 
-    rows = []
-    for (eid, ver), t in dyn_runner.results.items():
-        m = dyn_runner.metrics.get(eid, {})
-        is_final = (ver == m.get('final_version'))
-        rows.append({
-            'event_id':            eid,
-            'version':             ver,
-            'posterior_lat':       t.posterior_lat,
-            'posterior_lon':       t.posterior_lon,
-            'best_misfit':         t.best_misfit,
-            'best_like':           t.best_like,
-            'best_prior':          t.best_prior,
-            'frac_misfit':         t.frac_misfit,
-            'map_err_km':          m.get('map_err_km')          if is_final else None,
-            'coverage':            m.get('coverage')            if is_final else None,
-            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
-        })
     out_path = os.path.join(OUTPUT_DIR, 'etas_dynamic_benchmark_results.csv')
-    (pd.DataFrame(rows)
-       .sort_values(['event_id', 'version'])
-       .to_csv(out_path, index=False))
+    runner_results_to_df(dyn_runner).to_csv(out_path, index=False)
     print(f"\nDynamic ETAS results saved to:\n  {out_path}")
-
-def get_unique_stations(run_dir):
-    """Return a DataFrame of unique stations (by station+network) across all run files."""
-    frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
-              for f in Path(run_dir).glob('*.run')]
-    return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
 
 stations_df = get_unique_stations(RUN_DIR)
 
@@ -397,7 +364,6 @@ fig = plot_prior_histograms(
 #     TIME_PRIOR_BUFFER_DAYS (USGS reference locations, not bEPIC estimates)
 #     Set TIME_PRIOR_BUFFER_DAYS = None to include all pre-event entries.
 
-MTJ_EVENT_ID           = 130646  # event to locate and plot
 MTJ_VERSION            = None    # None = last available trigger version
 TIME_PRIOR_BUFFER_DAYS = 1     # lookback window for bEPIC catalog events
 
@@ -421,8 +387,13 @@ else:
         print(f'[standalone] focus event {MTJ_EVENT_ID}  t = {_focus_t}')
 
         # -- Load historical catalog and build a fresh updater ---------------
-        _hist = pd.read_csv(HISTORICAL_CATALOG, index_col=0, dtype={'url': str, 'alert': str})
-        _hist['time'] = pd.to_datetime(_hist['time'], format='ISO8601', utc=True).dt.tz_convert(None)
+        # Reuse hist_catalog if available (set in the main loop block above);
+        # fall back to re-reading from disk when running the standalone section alone.
+        try:
+            _hist = hist_catalog
+        except NameError:
+            _hist = pd.read_csv(HISTORICAL_CATALOG, index_col=0, dtype={'url': str, 'alert': str})
+            _hist['time'] = pd.to_datetime(_hist['time'], format='ISO8601', utc=True).dt.tz_convert(None)
 
         _updater = EtasPriorUpdater.from_inversion_json(
             json_path  = INVERSION_JSON,
@@ -457,16 +428,7 @@ else:
         _standalone_prior.to_tt3(_standalone_prior_path)
 
         # -- Run bEPIC on just this event ------------------------------------
-        from bEPIC import EPIC_locate_prelim
-        _params = EPIC_locate_prelim.EPIC_PARAMS()
-        _params.prior                     = _standalone_prior
-        _params.use_prior                 = True
-        _params.GridSize                  = config.BENCHMARK_PARAMS['grid_size']
-        _params.GridKm                    = config.BENCHMARK_PARAMS['grid_km']
-        _params.method                    = 'EPIC C'
-        _params.MAX_EVENT_TRIGS           = MAX_TRIGS
-        _params.migrate_grid              = config.BENCHMARK_PARAMS['migrate_grid']
-        _params.migrate_grid_min_triggers = config.BENCHMARK_PARAMS['migrate_grid_min_triggers']
+        _params = make_epic_params(_standalone_prior, True, config.BENCHMARK_PARAMS)
 
         _single_runner = BenchmarkRunner(
             prior   = _standalone_prior,

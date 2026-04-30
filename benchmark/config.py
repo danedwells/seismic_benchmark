@@ -53,20 +53,6 @@ PRIOR_FILENAMES = {
     'Uniform':           None,
 }
 
-# Parameters for the reference location run.
-# NOTE - deprecated in the sense that for reference locations,
-# We are NOT currently running htis algorithm. Instead, we are using ANSS/COMCAT
-# Locations.
-# This is independent of the main benchmarking workflow — change these
-# without affecting benchmark runs, and vice versa.
-# 'prior' must match a key in PRIOR_FILENAMES.
-REFERENCE_PARAMS = {
-    'prior':     'Smooth_seismicity',
-    'max_trigs': 100,
-    'grid_size': 100,
-    'grid_km':   200,
-}
-
 # ---------------------------------------------------------------------------
 # ETAS inversion configuration
 # ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from benchmark import runner as benchmark_runner
 from benchmark import config
+from benchmark.runner import get_unique_stations
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -172,12 +173,6 @@ catalog_df = benchmark_runner.load_reference_catalog(catalog_path) if os.path.ex
 # REF_FILE_NAME = 'REFERENCE_100.csv'
 # ref_df = pd.read_csv(os.path.join(PROJECT_ROOT, 'reference_locations', REF_FILE_NAME))
 # ref_final = ref_df.groupby('event_id').last().reset_index()
-
-def get_unique_stations(run_dir):
-    """Return a DataFrame of unique stations (by station+network) across all run files."""
-    frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
-              for f in Path(run_dir).glob('*.run')]
-    return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
 
 stations_df = get_unique_stations(RUN_DIR)
 

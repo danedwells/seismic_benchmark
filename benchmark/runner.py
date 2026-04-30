@@ -7,6 +7,57 @@ from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 from .metrics import usgs_credible_level, posterior_coverage, location_error_km
 
+
+def get_unique_stations(run_dir):
+    """Return a DataFrame of unique stations (by station+network) across all run files."""
+    frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
+              for f in Path(run_dir).glob('*.run')]
+    return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
+
+
+def make_epic_params(prior, use_prior, benchmark_params):
+    """Return a configured EPIC_PARAMS object from a benchmark params dict.
+
+    benchmark_params must contain: grid_size, grid_km, max_trigs.
+    Optional keys (with defaults): migrate_grid (True), migrate_grid_min_triggers (1).
+    """
+    params = EPIC_locate_prelim.EPIC_PARAMS()
+    params.prior                     = prior
+    params.use_prior                 = use_prior
+    params.GridSize                  = benchmark_params['grid_size']
+    params.GridKm                    = benchmark_params['grid_km']
+    params.method                    = 'EPIC C'
+    params.MAX_EVENT_TRIGS           = benchmark_params['max_trigs']
+    params.migrate_grid              = benchmark_params.get('migrate_grid', True)
+    params.migrate_grid_min_triggers = benchmark_params.get('migrate_grid_min_triggers', 1)
+    return params
+
+
+def runner_results_to_df(runner):
+    """Convert a BenchmarkRunner's results and metrics into a tidy DataFrame."""
+    rows = []
+    for (eid, ver), t in runner.results.items():
+        m = runner.metrics.get(eid, {})
+        is_final = (ver == m.get('final_version'))
+        rows.append({
+            'event_id':            eid,
+            'version':             ver,
+            'posterior_lat':       t.posterior_lat,
+            'posterior_lon':       t.posterior_lon,
+            'best_misfit':         t.best_misfit,
+            'best_like':           t.best_like,
+            'best_prior':          t.best_prior,
+            'frac_misfit':         t.frac_misfit,
+            'map_err_km':          m.get('map_err_km')          if is_final else None,
+            'coverage':            m.get('coverage')            if is_final else None,
+            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
+        })
+    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
+             'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
+             'map_err_km', 'coverage', 'usgs_credible_level']
+    return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
+
+
 def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_version=None):
     """
     Run bEPIC for one event up through *focus_version* and return
@@ -28,15 +79,7 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_versi
     df_run = pd.read_csv(run_path)
     df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
 
-    params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior                    = prior
-    params.use_prior                = use_prior
-    params.GridSize                 = params_kw['grid_size']
-    params.GridKm                   = params_kw['grid_km']
-    params.method                   = 'EPIC C'
-    params.MAX_EVENT_TRIGS          = params_kw['max_trigs']
-    params.migrate_grid             = params_kw.get('migrate_grid', True)
-    params.migrate_grid_min_triggers = params_kw.get('migrate_grid_min_triggers', 1)
+    params = make_epic_params(prior, use_prior, params_kw)
 
     first = df_run.sort_values('order').iloc[0]
     event = EPIC_locate_prelim.Event(
@@ -242,6 +285,11 @@ class BenchmarkRunner:
             if after_event_fn is not None:
                 after_event_fn(event_id)
 
+    def update_prior(self, new_prior):
+        """Swap in a new prior; also updates params.prior so the next run_event uses it."""
+        self.prior = new_prior
+        self.params.prior = new_prior
+
 
 # ---------------------------------------------------------------------------
 # Catalog lookup
@@ -363,15 +411,7 @@ def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
         prior = SeismicPrior.from_tt3(tt3_path)
         use_prior = True
 
-    params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior                    = prior
-    params.use_prior                = use_prior
-    params.GridSize                 = ref_params['grid_size']
-    params.GridKm                   = ref_params['grid_km']
-    params.method                   = 'EPIC C'
-    params.MAX_EVENT_TRIGS          = ref_params['max_trigs']
-    params.migrate_grid             = ref_params.get('migrate_grid', True)
-    params.migrate_grid_min_triggers = ref_params.get('migrate_grid_min_triggers', 1)
+    params = make_epic_params(prior, use_prior, ref_params)
 
     event_ids = sorted(int(f.stem) for f in Path(run_dir).glob('*.run'))
     runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir)
@@ -428,15 +468,7 @@ def run_prior(args):
         p = SeismicPrior.from_tt3(cache_path)
         use_prior = True
 
-    params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior                    = p
-    params.use_prior                = use_prior
-    params.GridSize                 = args['grid_size']
-    params.GridKm                   = args['grid_km']
-    params.method                   = 'EPIC C'
-    params.MAX_EVENT_TRIGS          = args['max_trigs']
-    params.migrate_grid             = args.get('migrate_grid', True)
-    params.migrate_grid_min_triggers = args.get('migrate_grid_min_triggers', 1)
+    params = make_epic_params(p, use_prior, args)
 
     catalog_path = args.get('catalog_path')
     catalog_df = None
@@ -452,30 +484,9 @@ def run_prior(args):
         event_ids = sorted(stems)
     runner.run_all(event_ids)
 
-    rows = []
-    for (eid, ver), t in runner.results.items():
-        m = runner.metrics.get(eid, {})
-        is_final = (ver == m.get('final_version'))
-        rows.append({
-            'event_id':            eid,
-            'version':             ver,
-            'posterior_lat':       t.posterior_lat,
-            'posterior_lon':       t.posterior_lon,
-            'best_misfit':         t.best_misfit,
-            'best_like':           t.best_like,
-            'best_prior':          t.best_prior,
-            'frac_misfit':         t.frac_misfit,
-            'map_err_km':          m.get('map_err_km')          if is_final else None,
-            'coverage':            m.get('coverage')            if is_final else None,
-            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
-        })
-
     os.makedirs(args['output_dir'], exist_ok=True)
     out_path = os.path.join(args['output_dir'], f"{prior_name.lower()}_benchmark_results.csv")
-    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
-             'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-             'map_err_km', 'coverage', 'usgs_credible_level']
-    pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
+    runner_results_to_df(runner).to_csv(out_path, index=False)
     return prior_name
 
 

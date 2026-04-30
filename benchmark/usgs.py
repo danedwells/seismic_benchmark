@@ -23,7 +23,6 @@ def get_usgs_event(anss_id):
     url = USGS_QUERY_URL
     r = requests.get(url, params={"eventid": anss_id, "format": "geojson"}, timeout=30)
     r.raise_for_status()
-    print("get_usgs_event: ",r.json())
     return r.json()
 
 

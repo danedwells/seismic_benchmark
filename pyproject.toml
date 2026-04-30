@@ -6,6 +6,12 @@ build-backend = "setuptools.backends.legacy:build"
 name = "seismic_benchmark"
 version = "0.1.0"
 description = "Benchmarking framework for the bEPIC location algorithm across spatial priors"
+requires-python = ">=3.9"
+dependencies = [
+    # Sibling repos — install separately with `pip install -e ../priors/` and `pip install -e ../bEPIC/`
+    "seismic-priors",
+    "bEPIC",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
