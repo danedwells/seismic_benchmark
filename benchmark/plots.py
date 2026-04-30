@@ -868,6 +868,10 @@ def plot_qq_prior_comparison(
     from .runner import compute_location_error
 
     n = len(prior_names)
+    if n < 2:
+        print(f'[plot_qq_prior_comparison] skipped — need ≥2 priors, got {n}.')
+        return None
+
     fig, axes = plt.subplots(n, n, figsize=(n * 3.2, n * 3.2))
 
     # Load sorted error values for each prior

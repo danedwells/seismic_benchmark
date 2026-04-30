@@ -11,40 +11,41 @@
 #   Set ACTIVE_CASE_STUDY to one of the keys in CASE_STUDIES, flip the
 #   control flags, then run cells in order (or execute the whole script).
 # =============================================================================
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
 
+# Custom repository imports
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_posterior_grid, plot_location_trajectory,
                              plot_overview_map, plot_location_grid,
                              plot_qq_calibration, plot_qq_prior_comparison)
-from benchmark.metrics import usgs_credible_level, posterior_coverage
+
 from benchmark.usgs import *
-
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-
 from benchmark import runner as benchmark_runner
 from benchmark import config
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
+                              run_single_event_get_grid, make_epic_params)
+
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-root_dir     = os.path.dirname(PROJECT_ROOT)   # 2024_NEHRP/
-
 data_dir    = SeismicPrior.data_dir            # priors/data/
 cache_paths = {
     name: os.path.join(data_dir, fname) if fname is not None else None
     for name, fname in config.PRIOR_FILENAMES.items()
 }
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+print(PROJECT_ROOT)
 SEIS_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
 # ---------------------------------------------------------------------------
 # Case study definitions
 # ---------------------------------------------------------------------------
-# bounds = (min_lon, max_lon, min_lat, max_lat)
 CASE_STUDIES = {
     'Ridgecrest': {
         'name':      'Ridgecrest 2019',
@@ -92,30 +93,39 @@ for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
 # ---------------------------------------------------------------------------
 
 # --- Control flags ---
-DOWNLOAD_CATALOG = False  # re-download even if cached
-BUILD_RUN_FILES  = False  # build / rebuild .run files from USGS phases
-RUN_ALL_PRIORS   = False # run all six priors in parallel
-SKIP_RUN         = True # Skip all runs - will toss an error if nothing has been run before AND run_all_priors == False
-# Setting skip_run to true and run_all_priors to false will skip bEPIC calls entirely and go 
-# straight to plot/figure generation
+DOWNLOAD_CATALOG    = False  # re-download even if cached
+BUILD_RUN_FILES     = False  # build / rebuild .run files from USGS phases
+RUN_ALL_PRIORS      = True # run all six priors in parallel
+SKIP_RUN            = False # Skip all runs - will toss an error if nothing has been run before AND run_all_priors == False
 
-# ── 1. Download (or load cached) catalog ──────────────────────────────────
-catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR)
-print(catalog_df.head())
+# ---------------------------------------------------------------------------
+# 1. Download (or load cached) catalog
+# ---------------------------------------------------------------------------
+
+catalog_df = download_case_study_catalog(
+    cs,
+    cache_dir=CS_DATA_DIR,
+    REDOWNLOAD=DOWNLOAD_CATALOG)
+
+print(f"{len(catalog_df)} events in {cs['name']} catalog.")
+print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
 #%%
-
-# ── 2. Build .run files ───────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# 2. Build .run files
+# ---------------------------------------------------------------------------
 if BUILD_RUN_FILES:
     build_run_files_for_case_study(
-        catalog_df   = catalog_df,
-        run_dir      = CS_RUN_DIR,
-        max_dist_deg = 5.0,
+        catalog_df    = catalog_df,
+        run_dir       = CS_RUN_DIR,
+        max_dist_deg  = 5.0,
         skip_existing = not DOWNLOAD_CATALOG,
     )
-#%%
 
+#%%
+# ------------------------------------------------------------------------------
 # ── 3. Run bEPIC across priors ────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 job_args = [
     {
         'prior_name': name,
@@ -269,20 +279,20 @@ fig = plot_prior_histograms(
 # ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
 fig = plot_qq_calibration(
     prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
+    output_dir  = CS_OUTPUT_DIR,
     title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
-    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
+    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration.png'),
 )
 plt.show()
 
 # ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
 fig = plot_qq_prior_comparison(
     prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
+    output_dir  = CS_OUTPUT_DIR,
     column      = 'map_err_km',
     title       = 'Q-Q prior comparison — map location error (km)',
-    save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
-    catalog_df  = catalog_df,
+    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_prior_comparison.png'),
+    catalog_df  = ref_df,
 )
 plt.show()
 

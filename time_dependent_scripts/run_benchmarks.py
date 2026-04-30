@@ -2,31 +2,29 @@
 # =============================================================================
 # run_benchmarks.py  —  bEPIC prior benchmark
 # Prerequisite: run scripts/build_priors.py first to build the .tt3 cache files.
-# =============================================================================
 import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
 from pathlib import Path
+
+# Custom repository imports
 from priors import SeismicPrior, EtasPriorUpdater
-from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_overview_map,
-                             plot_location_grid, plot_posterior_grid,
+from benchmark.background import load_background_seismicity, add_background_seismicity
+from benchmark.plots import (plot_prior_histograms, plot_location_grid,
+                             plot_posterior_grid,
+                             plot_overview_map,
                              plot_location_trajectory,
                              plot_qq_calibration, plot_qq_prior_comparison)
-from benchmark.metrics import usgs_credible_level, posterior_coverage
-
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import (BenchmarkRunner, get_unique_stations,
-                              make_epic_params, runner_results_to_df)
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
+                              run_single_event_get_grid, make_epic_params)
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
-# This should be /home/a01738353/2024_NEHRP/seismic_benchmark/
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
@@ -45,6 +43,7 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 MTJ_EVENT_ID = 130646  # event used in standalone prior/posterior test below
 MTJ_VERSION  = None    # None = last available trigger version
 
+#%%
 # ---------------------------------------------------------------------------
 # Reference catalog and station list
 # ---------------------------------------------------------------------------
@@ -60,10 +59,12 @@ _usgs_ref_lookup = (
     .set_index('event_id')
     if catalog_df is not None else pd.DataFrame()
 )
+#%%
+# ---------------------------------------------------------------------------
+# Main workflow
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Control flags
-# ---------------------------------------------------------------------------
+# --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run time-dependent ETAS prior (serial, event-by-event)
 SKIP_RUN           = True
 DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
@@ -215,20 +216,6 @@ catalog_events = (catalog_df[['usgs_lon', 'usgs_lat']]
                   .rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
                   if catalog_df is not None else None)
 
-
-# ── Overview: all priors, full region ─────────────────────────────────────
-fig = plot_overview_map(
-    output_dir  = OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = [-128.5, -113, 31, 44],
-    events_df   = catalog_events,
-    stations_df = stations_df,
-    bg          = bg,
-    title       = 'bEPIC final locations — prior comparison',
-    save_path   = os.path.join(FIGURES_DIR, 'comparison_benchmark_locations.png'),
-)
-plt.show()
-
 ###########################################################################
 # Get Mendecino Triple Junction (MTJ) specific events - filter catalog
 ###########################################################################
@@ -250,6 +237,19 @@ stations_mtj = stations_df[
     stations_df['latitude'].between(mtj_lat_min, mtj_lat_max) &
     stations_df['longitude'].between(mtj_lon_min, mtj_lon_max)
 ]
+
+# ── Overview: all priors, full region ─────────────────────────────────────
+fig = plot_overview_map(
+    output_dir  = OUTPUT_DIR,
+    prior_order = PRIOR_ORDER,
+    extent      = [-128.5, -113, 31, 44],
+    events_df   = catalog_events,
+    stations_df = stations_df,
+    bg          = bg,
+    title       = 'bEPIC final locations — prior comparison',
+    save_path   = os.path.join(FIGURES_DIR, 'comparison_benchmark_locations.png'),
+)
+plt.show()
 
 # %%
 
@@ -350,6 +350,26 @@ fig = plot_prior_histograms(
     save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
     color       = 'steelblue',
 )
+
+# ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
+fig = plot_qq_calibration(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
+)
+plt.show()
+
+# ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
+fig = plot_qq_prior_comparison(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    column      = 'map_err_km',
+    title       = 'Q-Q prior comparison — map location error (km)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
+    catalog_df  = catalog_df,
+)
+plt.show()
 
 #%%
 # ---------------------------------------------------------------------------
@@ -520,47 +540,47 @@ else:
 
 #%%
 
-######################################
-# Compute posterior statistics
-######################################
-bEPIC_lat = _t_cov.posterior_lat
-bEPIC_lon = _t_cov.posterior_lon
+# ######################################
+# # Compute posterior statistics
+# ######################################
+# bEPIC_lat = _t_cov.posterior_lat
+# bEPIC_lon = _t_cov.posterior_lon
 
 
-# Posterior coverage # 1 - Geometry first
-# how much of probability mass is contained within
-# a circle around the USGS location with a radius of the distance to the bEPIC location?
-if _odf_cov is not None:
-    from obspy.geodetics import gps2dist_azimuth as _gps2dist
-    _map_err_km = _gps2dist(
-        _ref_lat, _ref_lon,
-        bEPIC_lat, bEPIC_lon,
-    )[0] / 1000.0
-    _frac = posterior_coverage(
-        _odf_cov, _ref_lat, _ref_lon,
-        radii_km=(_map_err_km),
-    )
-    print(f'MAP location error : {_map_err_km:.1f} km')
-    print(f'Posterior Coverage # 1:')
-    print(f'  Probability mass within {_map_err_km:6.1f} km : {_frac * 100:5.1f}%')
+# # Posterior coverage # 1 - Geometry first
+# # how much of probability mass is contained within
+# # a circle around the USGS location with a radius of the distance to the bEPIC location?
+# if _odf_cov is not None:
+#     from obspy.geodetics import gps2dist_azimuth as _gps2dist
+#     _map_err_km = _gps2dist(
+#         _ref_lat, _ref_lon,
+#         bEPIC_lat, bEPIC_lon,
+#     )[0] / 1000.0
+#     _frac = posterior_coverage(
+#         _odf_cov, _ref_lat, _ref_lon,
+#         radii_km=(_map_err_km),
+#     )
+#     print(f'MAP location error : {_map_err_km:.1f} km')
+#     print(f'Posterior Coverage # 1:')
+#     print(f'  Probability mass within {_map_err_km:6.1f} km : {_frac * 100:5.1f}%')
 
 
-# Posterior coverage #2 - Probability first
-# What confidence contour is the USGS locatoin on w/respect to the bEPIC location?
-# USGS credible_level computes the contour level around 
-# the bEPIC location that the USGS lies on. I.e., it returns 0.5
-# if 50% of the probability mass of hte posterior is contained within the contour 
-# the the USGS location lies on. 
-if _odf_cov is not None:
-    usgs_contf = 100*usgs_credible_level(_odf_cov,_ref_lat,_ref_lon)
-    print("Posterior Coverage # 2")
-    print(f'   Confidence contour of USGS location: {usgs_contf:5.1f}%')
+# # Posterior coverage #2 - Probability first
+# # What confidence contour is the USGS locatoin on w/respect to the bEPIC location?
+# # USGS credible_level computes the contour level around 
+# # the bEPIC location that the USGS lies on. I.e., it returns 0.5
+# # if 50% of the probability mass of hte posterior is contained within the contour 
+# # the the USGS location lies on. 
+# if _odf_cov is not None:
+#     usgs_contf = 100*usgs_credible_level(_odf_cov,_ref_lat,_ref_lon)
+#     print("Posterior Coverage # 2")
+#     print(f'   Confidence contour of USGS location: {usgs_contf:5.1f}%')
 
-# # 3 metrics to compare. We probably want to implement this on all of 
-# # the priors, including time independent
-# post_covs = []
-# distance_err = []
-# post_conts = []
+# # # 3 metrics to compare. We probably want to implement this on all of 
+# # # the priors, including time independent
+# # post_covs = []
+# # distance_err = []
+# # post_conts = []
 
 
 # %%
