@@ -66,7 +66,7 @@ _usgs_ref_lookup = (
 
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run time-dependent ETAS prior (serial, event-by-event)
-SKIP_RUN           = True
+SKIP_RUN           = False
 DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # How often to re-evaluate the ETAS prior (in seconds of event time).

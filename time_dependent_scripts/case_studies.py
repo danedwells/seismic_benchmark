@@ -93,7 +93,7 @@ CASE_STUDIES = {
 }
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -142,9 +142,9 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 # --- Control flags ---
 DOWNLOAD_CATALOG   = False   # re-download even if cached
 BUILD_RUN_FILES    = False   # build / rebuild .run files from USGS phases
-RUN_DYNAMIC_PRIORS = False   # run all time-dependent priors (serial, event-by-event)
-SKIP_RUN           = True   # skip all bEPIC calls; go straight to figures
-DEBUG_PLOT_PRIOR   = True    # plot ETAS lambda grid before each event (comment out to disable)
+RUN_DYNAMIC_PRIORS = True   # run all time-dependent priors (serial, event-by-event)
+SKIP_RUN           = False  # skip all bEPIC calls; go straight to figures
+DEBUG_PLOT_PRIOR   = False   # plot ETAS lambda grid before each event (comment out to disable)
 
 #%%
 # ---------------------------------------------------------------------------
@@ -285,7 +285,13 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     params.migrate_grid              = config.BENCHMARK_PARAMS['migrate_grid']
     params.migrate_grid_min_triggers = config.BENCHMARK_PARAMS['migrate_grid_min_triggers']
 
-    runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=CS_RUN_DIR)
+    cs_ref_df = catalog_df.rename(columns={
+        'id':        'event_id',
+        'latitude':  'usgs_lat',
+        'longitude': 'usgs_lon',
+    })[['event_id', 'usgs_lat', 'usgs_lon']]
+    runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=CS_RUN_DIR,
+                             catalog_df=cs_ref_df)
 
     # Collect event IDs from available .run files, sorted by first trigger time
     # (chronological order is critical so ETAS updates are causal).

@@ -154,7 +154,7 @@ class BenchmarkRunner:
 
         if catalog_df is not None:
             self._ref_lookup = {
-                int(row.event_id): (float(row.usgs_lat), float(row.usgs_lon))
+                str(row.event_id): (float(row.usgs_lat), float(row.usgs_lon))
                 for row in catalog_df[['event_id', 'usgs_lat', 'usgs_lon']].itertuples(index=False)
             }
         else:
@@ -166,11 +166,7 @@ class BenchmarkRunner:
 
     def _compute_event_metrics(self, event_id, final_version, t, out_df):
         """Compute and store posterior accuracy metrics for one event."""
-        try:
-            eid_int = int(event_id)
-        except (TypeError, ValueError):
-            return
-        ref = self._ref_lookup.get(eid_int)
+        ref = self._ref_lookup.get(str(event_id))
         if ref is None or t is None or out_df is None:
             return
         usgs_lat, usgs_lon = ref
@@ -470,10 +466,11 @@ def run_prior(args):
 
     params = make_epic_params(p, use_prior, args)
 
-    catalog_path = args.get('catalog_path')
-    catalog_df = None
-    if catalog_path and os.path.exists(catalog_path):
-        catalog_df = load_reference_catalog(catalog_path)
+    catalog_df = args.get('catalog_df')
+    if catalog_df is None:
+        catalog_path = args.get('catalog_path')
+        if catalog_path and os.path.exists(catalog_path):
+            catalog_df = load_reference_catalog(catalog_path)
 
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
                              catalog_df=catalog_df)

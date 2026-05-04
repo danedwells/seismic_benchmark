@@ -132,7 +132,7 @@ ETAS_UPDATER_CONFIG = {
 # Parameters for the main benchmark run.
 BENCHMARK_PARAMS = {
     'prior':                     'Smooth_seismicity',
-    'max_trigs':                 8,
+    'max_trigs':                 15,
     'grid_size':                 100,
     'grid_km':                   200,
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions

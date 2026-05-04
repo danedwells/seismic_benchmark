@@ -72,7 +72,7 @@ CASE_STUDIES = {
 }
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'ElMayor'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -126,6 +126,16 @@ if BUILD_RUN_FILES:
 # ------------------------------------------------------------------------------
 # ── 3. Run bEPIC across priors ────────────────────────────────────────────
 # ------------------------------------------------------------------------------
+
+# Build reference catalog before job_args so it can be passed to each worker.
+# Workers run in separate processes (ProcessPoolExecutor) — the DataFrame is
+# pickled with the args dict, which is fine for a small case-study catalog.
+_cs_ref_df = catalog_df.rename(columns={
+    'id':        'event_id',
+    'latitude':  'usgs_lat',
+    'longitude': 'usgs_lon',
+})[['event_id', 'usgs_lat', 'usgs_lon']]
+
 job_args = [
     {
         'prior_name': name,
@@ -138,6 +148,7 @@ job_args = [
         'max_trigs':  MAX_TRIGS,
         'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+        'catalog_df': _cs_ref_df,
     }
     for name, path in cache_paths.items()
 ]
