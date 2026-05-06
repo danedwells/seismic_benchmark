@@ -36,9 +36,9 @@ from pathlib import Path
 # Custom repository imports
 from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_posterior_grid,
-                              plot_location_trajectory, plot_overview_map,
-                              plot_location_grid,
+from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
+                              plot_posterior_grid, plot_location_trajectory,
+                              plot_overview_map, plot_location_grid,
                               plot_qq_calibration, plot_qq_prior_comparison)
 
 from benchmark.usgs import *
@@ -142,9 +142,13 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 # --- Control flags ---
 DOWNLOAD_CATALOG   = False   # re-download even if cached
 BUILD_RUN_FILES    = False   # build / rebuild .run files from USGS phases
-RUN_DYNAMIC_PRIORS = True   # run all time-dependent priors (serial, event-by-event)
+RUN_DYNAMIC_PRIORS = True  # run all time-dependent priors (serial, event-by-event)
 SKIP_RUN           = False  # skip all bEPIC calls; go straight to figures
 DEBUG_PLOT_PRIOR   = False   # plot ETAS lambda grid before each event (comment out to disable)
+
+# Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
+# dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
+PRIOR_ALPHA = 0.5
 
 #%%
 # ---------------------------------------------------------------------------
@@ -235,6 +239,9 @@ if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
     def etas_update_fn(event_time_unix: float) -> SeismicPrior:
         t     = pd.Timestamp(event_time_unix, unit='s')
         prior = updater.update(t)
+        if PRIOR_ALPHA != 1.0:
+            prior.grid  = prior.grid ** PRIOR_ALPHA
+            prior.grid /= prior.grid.sum()
         print(f"  [ETAS] prior updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
               f"— catalog size: {updater.n_catalog_events}")
         if DEBUG_PLOT_PRIOR:
@@ -424,16 +431,12 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
-# ── posterior-mass ────────────────────────────────────────
-fig = plot_prior_histograms(
+# ── posterior coverage at fixed radii (2×2 panel) ─────────────────────────
+fig = plot_coverage_panel(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    column      = 'coverage',
-    bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — posterior coverage within location error',
-    xlabel      = 'Posterior Coverage',
+    title       = f'bEPIC posterior coverage at fixed radii — {cs["name"]}',
     save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_coverage_histograms.png'),
-    color       = 'steelblue',
 )
 
 # ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
@@ -538,6 +541,9 @@ else:
 
         # -- Compute ETAS prior at focus event time ---------------------------
         _standalone_prior = _updater.update(_focus_t)
+        if PRIOR_ALPHA != 1.0:
+            _standalone_prior.grid  = _standalone_prior.grid ** PRIOR_ALPHA
+            _standalone_prior.grid /= _standalone_prior.grid.sum()
         print(f'[single-event] prior computed  (catalog size: {_updater.n_catalog_events})')
 
         _standalone_prior_path = os.path.join(CS_OUTPUT_DIR, f'standalone_prior_{FOCUS_EVENT_ID}.tt3')
@@ -601,6 +607,7 @@ else:
             ref_lat        = _ref_lat,
             ref_lon        = _ref_lon,
             cache_paths    = _standalone_cache,
+            extent         = _extent,
             extent_pad_deg = 0.1,
             title          = f'bEPIC location trajectory — {cs["name"]} — event {FOCUS_EVENT_ID} ({_buffer_label})',
             save_path      = os.path.join(CS_FIGURES_DIR, f'standalone_trajectory_{FOCUS_EVENT_ID}.png'),

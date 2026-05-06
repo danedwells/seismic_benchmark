@@ -19,7 +19,8 @@ from pathlib import Path
 # Custom repository imports
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_posterior_grid, plot_location_trajectory,
+from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
+                             plot_posterior_grid, plot_location_trajectory,
                              plot_overview_map, plot_location_grid,
                              plot_qq_calibration, plot_qq_prior_comparison)
 
@@ -72,7 +73,7 @@ CASE_STUDIES = {
 }
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -275,16 +276,12 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
-# ── posterior-mass ────────────────────────────────────────
-fig = plot_prior_histograms(
+# ── posterior coverage at fixed radii (2×2 panel) ─────────────────────────
+fig = plot_coverage_panel(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    column      = 'coverage',
-    bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — posterior coverage within location error',
-    xlabel      = 'Posterior Coverage',
+    title       = f'bEPIC posterior coverage at fixed radii — {cs["name"]}',
     save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_coverage_histograms.png'),
-    color       = 'steelblue',
 )
 
 # ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────

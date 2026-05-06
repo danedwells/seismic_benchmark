@@ -12,7 +12,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import obspy
 
-from .metrics import hdr_levels, usgs_credible_level, posterior_coverage  # re-exported for scripts
+from .metrics import hdr_levels, usgs_credible_level, posterior_coverage, COVERAGE_RADII_KM  # re-exported for scripts
 
 # Plots
 
@@ -257,11 +257,17 @@ def plot_location_grid(
     -------
     fig : matplotlib.figure.Figure
     """
-    proj = ccrs.PlateCarree()
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10), subplot_kw={'projection': proj})
+    proj  = ccrs.PlateCarree()
+    n     = len(prior_order)
+    ncols = min(n, 3)
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(ncols * 16 / 3, nrows * 5.0),
+                             subplot_kw={'projection': proj},
+                             squeeze=False)
 
     for idx, (ax, prior_name) in enumerate(zip(axes.flatten(), prior_order)):
-        row_idx, col_idx = divmod(idx, 3)
+        row_idx, col_idx = divmod(idx, ncols)
         ax.set_extent(extent, crs=proj)
         ax.add_feature(cfeature.STATES,    linewidth=0.8, edgecolor='black')
         ax.add_feature(cfeature.COASTLINE, linewidth=1.0)
@@ -273,7 +279,7 @@ def plot_location_grid(
         gl.top_labels    = False
         gl.right_labels  = False
         gl.left_labels   = (col_idx == 0)
-        gl.bottom_labels = (row_idx == 1)
+        gl.bottom_labels = (row_idx == nrows - 1)
 
         # Optional prior density pcolormesh background
         if cache_paths is not None:
@@ -338,7 +344,7 @@ def plot_location_grid(
     # Optional 100 km scale bar on bottom-left panel
     if show_scale_bar:
         lon_min, lon_max, lat_min, lat_max = extent
-        ax_sb    = axes[1, 0]
+        ax_sb    = axes[nrows - 1, 0]
         lat_mid  = (lat_min + lat_max) / 2
         scale_km = 100
         scale_deg = scale_km / (111.32 * np.cos(np.radians(lat_mid)))
@@ -521,7 +527,7 @@ def plot_posterior_grid(
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
     if save_path is not None:
-        plt.savefig(save_path, dpi=150)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
     return fig
 
@@ -535,6 +541,7 @@ def plot_location_trajectory(
     ref_lat=None,
     ref_lon=None,
     cache_paths=None,
+    extent = None,
     extent_pad_deg=0.5,
     title='bEPIC location trajectory',
     save_path=None,
@@ -636,7 +643,8 @@ def plot_location_trajectory(
     lat_span = max(max(all_lats) - min(all_lats), 0.5)
     lon_mid  = (max(all_lons) + min(all_lons)) / 2
     lat_mid  = (max(all_lats) + min(all_lats)) / 2
-    ext = [
+    
+    ext = extent if extent is not None else [
         lon_mid - lon_span / 2 - extent_pad_deg,
         lon_mid + lon_span / 2 + extent_pad_deg,
         lat_mid - lat_span / 2 - extent_pad_deg,
@@ -743,6 +751,75 @@ def plot_location_trajectory(
     if save_path is not None:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
+    return fig
+
+
+def plot_coverage_panel(
+    prior_names,
+    output_dir,
+    title,
+    save_path=None,
+    filter_fn=None,
+    bins=None,
+):
+    """
+    2×2 panel of posterior coverage histograms, one subplot per fixed radius.
+
+    Each subplot overlays step histograms for every prior so distributions can
+    be compared directly.  Panels correspond to COVERAGE_RADII_KM in reading
+    order (top-left → top-right → bottom-left → bottom-right).
+
+    Parameters
+    ----------
+    prior_names : list[str]
+    output_dir : str
+    title : str
+    save_path : str or None
+    filter_fn : callable(df) -> df, optional
+    bins : array-like or None
+        Defaults to np.linspace(0, 1, 41).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    if bins is None:
+        bins = np.linspace(0, 1, 41)
+
+    colors = plt.cm.tab10.colors
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+    for ax, radius_km in zip(axes.flatten(), COVERAGE_RADII_KM):
+        col = f'coverage_{radius_km}km'
+        for i, prior_name in enumerate(prior_names):
+            csv_path = os.path.join(output_dir,
+                                    f'{prior_name.lower()}_benchmark_results.csv')
+            if not os.path.exists(csv_path):
+                continue
+            df    = pd.read_csv(csv_path)
+            final = df.groupby('event_id').last().reset_index()
+            if filter_fn is not None:
+                final = filter_fn(final)
+            if col not in final.columns:
+                continue
+            values = final[col].dropna()
+            if values.empty:
+                continue
+            ax.hist(values, bins=bins,
+                    color=colors[i % len(colors)], alpha=0.6,
+                    histtype='step', linewidth=1.8,
+                    label=f'{prior_name}  (med={values.median():.2f})')
+
+        ax.set_title(f'Within {radius_km} km', fontsize=11)
+        ax.set_xlabel('Posterior coverage fraction', fontsize=9)
+        ax.set_ylabel('count', fontsize=9)
+        ax.set_xlim(0, 1)
+        ax.legend(fontsize=7)
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
     return fig
 
 

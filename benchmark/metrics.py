@@ -41,9 +41,27 @@ def usgs_credible_level(out_df, usgs_lat, usgs_lon):
     return float(p_norm[p_norm >= p_usgs].sum())
 
 
-def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=50):
+def _haversine_km(ref_lat, ref_lon, lats, lons):
+    """Vectorized haversine distance (km) from one point to an array of points.
+
+    Accurate to < 0.5 km within the ~400 km search boxes used here; replaces
+    per-row gps2dist_azimuth calls that would otherwise loop over the full grid.
     """
-    Fraction of posterior probability mass within radii_km of ref_lat/ref_lon.
+    R = 6371.0
+    dlat = np.radians(lats - ref_lat)
+    dlon = np.radians(lons - ref_lon)
+    a = (np.sin(dlat / 2) ** 2
+         + np.cos(np.radians(ref_lat)) * np.cos(np.radians(lats))
+         * np.sin(dlon / 2) ** 2)
+    return 2 * R * np.arcsin(np.sqrt(a))
+
+
+COVERAGE_RADII_KM = (10, 25, 50, 100)
+
+
+def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=COVERAGE_RADII_KM):
+    """
+    Fraction of posterior probability mass within each radius of ref_lat/ref_lon.
 
     Parameters
     ----------
@@ -51,23 +69,22 @@ def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=50):
         Grid output from E2Location_locate — must have columns lat, lon, post.
     ref_lat, ref_lon : float
         Reference location (e.g. USGS catalog).
-    radii_km : float
-        Radius at which to evaluate cumulative posterior mass.  Typically set to
-        the MAP location error so the metric answers "what fraction of the posterior
-        was within the same distance as the final estimate?"
+    radii_km : float or sequence of float
+        Radius or radii (km) at which to evaluate cumulative posterior mass.
 
     Returns
     -------
-    float : coverage fraction in [0, 1]
+    dict mapping each radius to its coverage fraction in [0, 1], or a single
+    float if a scalar radii_km was supplied.
     """
-    dists_km = np.array([
-        gps2dist_azimuth(ref_lat, ref_lon, row.lat, row.lon)[0] / 1000.0
-        for row in out_df.itertuples(index=False)
-    ])
-
+    dists_km = _haversine_km(ref_lat, ref_lon,
+                             out_df['lat'].values, out_df['lon'].values)
     post = out_df['post'].values
     total = post.sum()
     if total > 0:
         post = post / total
 
-    return float(post[dists_km <= radii_km].sum())
+    scalar = np.isscalar(radii_km)
+    radii_km = (radii_km,) if scalar else radii_km
+    result = {r: float(post[dists_km <= r].sum()) for r in radii_km}
+    return result[radii_km[0]] if scalar else result

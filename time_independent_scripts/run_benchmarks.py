@@ -12,7 +12,8 @@ from pathlib import Path
 # Custom repository imports
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity, add_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_overview_map,
+from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
+                             plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
                              plot_location_trajectory,
                              plot_qq_calibration, plot_qq_prior_comparison)
@@ -254,16 +255,12 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
-# ── posterior-mass ────────────────────────────────────────
-fig = plot_prior_histograms(
+# ── posterior coverage at fixed radii (2×2 panel) ─────────────────────────
+fig = plot_coverage_panel(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,
-    column      = 'coverage',
-    bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — posterior coverage within location error',
-    xlabel      = 'Posterior Coverage',
+    title       = 'bEPIC posterior coverage at fixed radii — prior comparison',
     save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
-    color       = 'steelblue',
 )
 plt.show()
 

@@ -5,7 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
-from .metrics import usgs_credible_level, posterior_coverage, location_error_km
+from .metrics import usgs_credible_level, posterior_coverage, location_error_km, COVERAGE_RADII_KM
 
 
 def get_unique_stations(run_dir):
@@ -35,26 +35,29 @@ def make_epic_params(prior, use_prior, benchmark_params):
 
 def runner_results_to_df(runner):
     """Convert a BenchmarkRunner's results and metrics into a tidy DataFrame."""
+    cov_cols = [f'coverage_{r}km' for r in COVERAGE_RADII_KM]
     rows = []
     for (eid, ver), t in runner.results.items():
-        m = runner.metrics.get(eid, {})
-        is_final = (ver == m.get('final_version'))
-        rows.append({
+        m = runner.metrics.get((eid, ver), {})
+        row = {
             'event_id':            eid,
             'version':             ver,
+            'n_trigs':             runner.n_trigs.get((eid, ver)),
             'posterior_lat':       t.posterior_lat,
             'posterior_lon':       t.posterior_lon,
             'best_misfit':         t.best_misfit,
             'best_like':           t.best_like,
             'best_prior':          t.best_prior,
             'frac_misfit':         t.frac_misfit,
-            'map_err_km':          m.get('map_err_km')          if is_final else None,
-            'coverage':            m.get('coverage')            if is_final else None,
-            'usgs_credible_level': m.get('usgs_credible_level') if is_final else None,
-        })
-    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
-             'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-             'map_err_km', 'coverage', 'usgs_credible_level']
+            'map_err_km':          m.get('map_err_km'),
+            'usgs_credible_level': m.get('usgs_credible_level'),
+        }
+        for col in cov_cols:
+            row[col] = m.get(col)
+        rows.append(row)
+    _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
+              'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
+              'map_err_km'] + cov_cols + ['usgs_credible_level'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
@@ -150,7 +153,8 @@ class BenchmarkRunner:
         self.params  = params
         self.run_dir = run_dir
         self.results = {}   # {(event_id, version): SearchOut}
-        self.metrics = {}   # {event_id: {final_version, map_err_km, coverage, usgs_credible_level}}
+        self.metrics = {}   # {(event_id, version): {map_err_km, coverage, usgs_credible_level}}
+        self.n_trigs = {}   # {(event_id, version): int trigger count fed to bEPIC}
 
         if catalog_df is not None:
             self._ref_lookup = {
@@ -164,21 +168,19 @@ class BenchmarkRunner:
         df.columns = [c.replace(' ', '_') for c in df.columns]
         return df
 
-    def _compute_event_metrics(self, event_id, final_version, t, out_df):
-        """Compute and store posterior accuracy metrics for one event."""
+    def _compute_event_metrics(self, event_id, version, t, out_df):
+        """Compute and store posterior accuracy metrics for one (event, version)."""
         ref = self._ref_lookup.get(str(event_id))
         if ref is None or t is None or out_df is None:
             return
         usgs_lat, usgs_lon = ref
         err_km = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
-        cov    = posterior_coverage(out_df, usgs_lat, usgs_lon, radii_km=err_km)
+        cov    = posterior_coverage(out_df, usgs_lat, usgs_lon)
         cred   = usgs_credible_level(out_df, usgs_lat, usgs_lon)
-        self.metrics[event_id] = {
-            'final_version':       final_version,
-            'map_err_km':          err_km,
-            'coverage':            cov,
-            'usgs_credible_level': cred,
-        }
+        m = {'map_err_km': err_km, 'usgs_credible_level': cred}
+        for r in COVERAGE_RADII_KM:
+            m[f'coverage_{r}km'] = cov[r]
+        self.metrics[(event_id, version)] = m
 
     def run_event(self, event_id):
         """
@@ -206,12 +208,19 @@ class BenchmarkRunner:
         )
 
         # Iterate over the versions (new version every time new trigger)
-        last_t = last_out_df = None
-        last_version = None
+        prev_n_trigs = -1
         for version in sorted(df_run['version'].unique()):
             df_v = (df_run[df_run['version'] == version]
                     .sort_values('order')
                     .head(self.params.MAX_EVENT_TRIGS))
+
+            # Skip versions where the trigger count hasn't changed — the run
+            # file can contain many consecutive versions at the same count
+            # (bEPIC refreshes its solution without a new trigger arriving),
+            # which would otherwise produce duplicate rows in the output CSV.
+            if len(df_v) == prev_n_trigs:
+                continue
+            prev_n_trigs = len(df_v)
 
             event.trigs = []
             event.version = int(version)
@@ -228,13 +237,12 @@ class BenchmarkRunner:
 
             t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
             self.results[(event_id, version)] = t
-            last_t, last_out_df, last_version = t, out_df, version
+            self.n_trigs[(event_id, version)] = len(df_v)
+            if self._ref_lookup:
+                self._compute_event_metrics(event_id, version, t, out_df)
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break
-
-        if self._ref_lookup and last_t is not None:
-            self._compute_event_metrics(event_id, last_version, last_t, last_out_df)
 
     def _get_event_time(self, event_id):
         """Return the first trigger time in the run file as a proxy for event time."""

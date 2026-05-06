@@ -86,7 +86,7 @@ ETAS_INVERSION_CONFIG = {
     'timewindow_end':   '2007-01-01 00:00:00',
 
     # -- Magnitude completeness --
-    'mc':      3.6, # default value
+    'mc':      3.0, # default value
     'delta_m': 0.1,
 
     # -- Spatial region (California + PNW benchmark polygon, [lat, lon] pairs) --
