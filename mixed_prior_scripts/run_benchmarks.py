@@ -127,6 +127,7 @@ def blend_priors(ti_prior, etas_prior, alpha=0.5):
             np.column_stack([lat_mesh.ravel(), lon_mesh.ravel()])
         ).reshape(len(etas_prior.lats), len(etas_prior.lons))
         ti_grid = np.clip(ti_grid, 0.0, None)
+        ti_grid = np.nan_to_num(ti_grid, nan=0.0)
 
     ti_sum = ti_grid.sum()
     if ti_sum > 0:
