@@ -904,6 +904,76 @@ def plot_qq_calibration(
     return fig
 
 
+def plot_qq_calibration_prior(
+    prior_names,
+    output_dir,
+    title='bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    save_path=None,
+    filter_fn=None,
+):
+    """
+    Single-panel Q-Q calibration plot: usgs_prior_credible_level vs Uniform(0,1).
+
+    Analogous to plot_qq_calibration but evaluates the spatial *prior* rather
+    than the posterior.  Comparing the two plots reveals how much of the
+    calibration signal comes from the prior alone vs. the seismic data.
+
+    Interpretation is identical to plot_qq_calibration:
+    - Below diagonal: prior concentrates mass near the true location (prior is
+      well-placed / overconfident).
+    - Above diagonal: prior spreads mass away from the true location.
+
+    Note: for the Uniform prior, usgs_prior_credible_level is ~1.0 for every
+    event (a flat grid has no high-density region), so the Uniform line will
+    sit at the top of the plot and is usually uninformative.
+
+    Parameters
+    ----------
+    prior_names : list[str]
+    output_dir : str
+    title : str
+    save_path : str or None
+    filter_fn : callable(df) -> df, optional
+    """
+    colors = plt.cm.tab10.colors
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    for color, prior_name in zip(colors, prior_names):
+        csv_path = os.path.join(output_dir,
+                                f'{prior_name.lower()}_benchmark_results.csv')
+
+        if not os.path.exists(csv_path):
+            continue
+
+        df = pd.read_csv(csv_path)
+        final = df.dropna(subset=['usgs_prior_credible_level'])
+        if filter_fn is not None:
+            final = filter_fn(final)
+
+        vals = np.sort(final['usgs_prior_credible_level'].values)
+        n = len(vals)
+        if n == 0:
+            continue
+
+        theoretical = (np.arange(1, n + 1) - 0.5) / n
+        ax.plot(theoretical, vals, color=color, linewidth=1.5,
+                label=f'{prior_name}  (n={n})')
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
+    ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=11)
+    ax.set_ylabel('Empirical usgs_prior_credible_level', fontsize=11)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.legend(fontsize=9)
+    ax.set_title(title, fontsize=12)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig
+
+
 def plot_qq_prior_comparison(
     prior_names,
     output_dir,

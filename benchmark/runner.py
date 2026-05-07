@@ -5,7 +5,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
-from .metrics import usgs_credible_level, posterior_coverage, location_error_km, COVERAGE_RADII_KM
+from .metrics import (usgs_credible_level, usgs_prior_credible_level,
+                      posterior_coverage, location_error_km, COVERAGE_RADII_KM)
 
 
 def get_unique_stations(run_dir):
@@ -49,15 +50,17 @@ def runner_results_to_df(runner):
             'best_like':           t.best_like,
             'best_prior':          t.best_prior,
             'frac_misfit':         t.frac_misfit,
-            'map_err_km':          m.get('map_err_km'),
-            'usgs_credible_level': m.get('usgs_credible_level'),
+            'map_err_km':                m.get('map_err_km'),
+            'usgs_credible_level':       m.get('usgs_credible_level'),
+            'usgs_prior_credible_level': m.get('usgs_prior_credible_level'),
         }
         for col in cov_cols:
             row[col] = m.get(col)
         rows.append(row)
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-              'map_err_km'] + cov_cols + ['usgs_credible_level'])
+              'map_err_km'] + cov_cols
+             + ['usgs_credible_level', 'usgs_prior_credible_level'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
@@ -175,9 +178,11 @@ class BenchmarkRunner:
             return
         usgs_lat, usgs_lon = ref
         err_km = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
-        cov    = posterior_coverage(out_df, usgs_lat, usgs_lon)
-        cred   = usgs_credible_level(out_df, usgs_lat, usgs_lon)
-        m = {'map_err_km': err_km, 'usgs_credible_level': cred}
+        cov        = posterior_coverage(out_df, usgs_lat, usgs_lon)
+        cred       = usgs_credible_level(out_df, usgs_lat, usgs_lon)
+        prior_cred = usgs_prior_credible_level(out_df, usgs_lat, usgs_lon)
+        m = {'map_err_km': err_km, 'usgs_credible_level': cred,
+             'usgs_prior_credible_level': prior_cred}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]
         self.metrics[(event_id, version)] = m

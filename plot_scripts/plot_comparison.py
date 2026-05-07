@@ -28,7 +28,7 @@ from benchmark.metrics import COVERAGE_RADII_KM
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = None#"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -117,6 +117,8 @@ def load_per_version_stats(csv_path, metric, min_events=5):
                .agg(median='median',
                     q10=lambda x: x.quantile(0.1),
                     q90=lambda x: x.quantile(0.9),
+                    q5=lambda x: x.quantile(0.05),
+                    q95=lambda x: x.quantile(0.95),
                     min='min',
                     max='max',
                     count='count')
@@ -160,13 +162,15 @@ def plot_metric_vs_triggers(metric, ylabel, title, save_path=None,
         ax.plot(stats['n_trigs'], stats['median'],
                 color=color, linestyle='-', linewidth=1.8,
                 label=f"{spec['name']}  (n≈{n_max})")
-        ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
-                        color=color, alpha=0.10)
+        #ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
+        #                color=color, alpha=0.10)
         # ax.fill_between(stats['n_trigs'], stats['q10'], stats['q90'],
         #                 color=color, alpha=0.10)
-        ax.plot(stats['n_trigs'], stats['min'],
+        ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                        color=color, alpha=0.10)
+        ax.plot(stats['n_trigs'], stats['q5'],
                 color=color, linestyle='--', linewidth=0.8)
-        ax.plot(stats['n_trigs'], stats['max'],
+        ax.plot(stats['n_trigs'], stats['q95'],
                 color=color, linestyle='--', linewidth=0.8)
 
     if ref_line is not None:
@@ -233,13 +237,15 @@ for ax, radius_km in zip(axes_cov.flatten(), COVERAGE_RADII_KM):
         ax.plot(stats['n_trigs'], stats['median'],
                 color=color, linestyle='-', linewidth=1.8,
                 label=f"{spec['name']}  (n≈{n_max})")
-        ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
-                        color=color, alpha=0.10)
-        #ax.fill_between(stats['n_trigs'], stats['q10'], stats['q90'],
+        #ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
         #                color=color, alpha=0.10)
-        ax.plot(stats['n_trigs'], stats['min'],
+        # ax.fill_between(stats['n_trigs'], stats['q10'], stats['q90'],
+        #                 color=color, alpha=0.10)
+        ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                        color=color, alpha=0.10)
+        ax.plot(stats['n_trigs'], stats['q5'],
                 color=color, linestyle='--', linewidth=0.8)
-        ax.plot(stats['n_trigs'], stats['max'],
+        ax.plot(stats['n_trigs'], stats['q95'],
                 color=color, linestyle='--', linewidth=0.8)
     ax.set_xlabel('Number of triggers', fontsize=10)
     ax.set_ylabel(f'Median coverage  (↑ better)', fontsize=10)

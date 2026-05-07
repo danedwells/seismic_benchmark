@@ -16,7 +16,8 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
                              plot_location_trajectory,
-                             plot_qq_calibration, plot_qq_prior_comparison)
+                             plot_qq_calibration, plot_qq_calibration_prior,
+                             plot_qq_prior_comparison)
 from benchmark.metrics import usgs_credible_level, posterior_coverage
 from benchmark import runner as benchmark_runner
 from benchmark import config
@@ -270,6 +271,15 @@ fig = plot_qq_calibration(
     output_dir  = OUTPUT_DIR,
     title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
     save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
+)
+plt.show()
+
+# ── Prior calibration Q-Q: usgs_prior_credible_level vs U(0,1) ────────────
+fig = plot_qq_calibration_prior(
+    prior_names = PRIOR_ORDER,
+    output_dir  = OUTPUT_DIR,
+    title       = 'bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration_prior.png'),
 )
 plt.show()
 

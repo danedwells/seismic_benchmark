@@ -39,7 +39,8 @@ from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                               plot_posterior_grid, plot_location_trajectory,
                               plot_overview_map, plot_location_grid,
-                              plot_qq_calibration, plot_qq_prior_comparison)
+                              plot_qq_calibration, plot_qq_calibration_prior,
+                              plot_qq_prior_comparison)
 
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
@@ -93,7 +94,7 @@ CASE_STUDIES = {
 }
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'Ferndale'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -445,6 +446,15 @@ fig = plot_qq_calibration(
     output_dir  = CS_OUTPUT_DIR,
     title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
     save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration.png'),
+)
+plt.show()
+
+# ── Prior calibration Q-Q: usgs_prior_credible_level vs U(0,1) ────────────
+fig = plot_qq_calibration_prior(
+    prior_names = PRIOR_ORDER,
+    output_dir  = CS_OUTPUT_DIR,
+    title       = 'bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration_prior.png'),
 )
 plt.show()
 

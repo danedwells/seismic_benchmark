@@ -2,7 +2,7 @@
 benchmark/metrics.py — location accuracy and posterior probability metrics.
 
 These functions operate on the out_df grid returned by E2Location_locate
-(columns: lat, lon, post) and on SearchOut posterior coordinates.
+(columns: lat, lon, like, prior, post) and on SearchOut posterior coordinates.
 """
 import numpy as np
 from obspy.geodetics import gps2dist_azimuth
@@ -31,6 +31,27 @@ def usgs_credible_level(out_df, usgs_lat, usgs_lon):
     Returns a value in [0, 1]: lower is better (USGS is in a high-density region).
     """
     p = out_df['post'].values
+    p_norm = p / p.sum()
+
+    dlat = out_df['lat'].values - usgs_lat
+    # Correct for longitude compression at non-equatorial latitudes.
+    dlon = (out_df['lon'].values - usgs_lon) * np.cos(np.radians(usgs_lat))
+    p_usgs = p_norm[np.argmin(np.hypot(dlat, dlon))]
+
+    return float(p_norm[p_norm >= p_usgs].sum())
+
+
+def usgs_prior_credible_level(out_df, usgs_lat, usgs_lon):
+    """
+    Credible level of the smallest HDR of the *prior* that contains the USGS location.
+    Returns a value in [0, 1]: lower is better (USGS is in a high-density prior region).
+
+    Analogous to usgs_credible_level but uses the prior column instead of post.
+    Comparing the two reveals how much bEPIC's posterior improves on the raw prior.
+    When use_prior=False the prior grid is uniform, so this returns ~1.0 for most
+    events and the column should be excluded from analysis for Uniform runs.
+    """
+    p = out_df['prior'].values
     p_norm = p / p.sum()
 
     dlat = out_df['lat'].values - usgs_lat
