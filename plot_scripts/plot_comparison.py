@@ -43,7 +43,7 @@ MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                       f'max_trigs_{MAX_TRIGS}')
+                                       'time_independent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
                                        'time_dependent', f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison')
@@ -52,7 +52,7 @@ else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
-    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
                                       f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison')

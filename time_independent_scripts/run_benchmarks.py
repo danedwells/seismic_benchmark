@@ -40,8 +40,8 @@ SEIS_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismi
 RUN_DIR     = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', f'max_trigs_{MAX_TRIGS}')
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

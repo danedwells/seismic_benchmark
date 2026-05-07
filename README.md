@@ -4,10 +4,11 @@
 
 A benchmarking framework for evaluating the [bEPIC](https://github.com/danedwells/bEPIC) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
 
-Two parallel workflows are provided:
+Three parallel workflows are provided:
 
 - **Time-independent** (`time_independent_scripts/`) — five static spatial priors, unchanged per-event, evaluated in parallel.
 - **Time-dependent** (`time_dependent_scripts/`) — a dynamic ETAS prior that evolves as events are located, capturing the time-varying spatial distribution of aftershock hazard.
+- **Mixed** (`mixed_prior_scripts/`) — each of the five static priors linearly blended with the live ETAS prior, combining long-term background rates with short-term aftershock clustering.
 
 ---
 
@@ -23,6 +24,7 @@ For each event in the test catalog, bEPIC is run once per trigger version (i.e.,
 | `Smooth_seismicity` | Pre-built US/Canada smoothed seismicity grid | Time-independent |
 | `Uniform` | Uninformative baseline; equivalent to having no prior | Time-independent |
 | `ETAS` | Dynamic ETAS conditional intensity λ(x, y, t), updated before each event | Time-dependent |
+| `{prior}_etas_mixed` | Linear blend of each static prior with the dynamic ETAS prior (default α = 0.5) | Mixed |
 
 Results (posterior lat/lon, travel-time misfits, location errors vs. ANSS) are written to CSV and visualized as maps and histograms. Each run also produces a 2×3 posterior grid figure for a selected event showing the prior density background and bEPIC posterior contours side-by-side for all priors.
 
@@ -94,11 +96,14 @@ seismic_benchmark/
 │   ├── case_studies.py                 # Case-study workflow: download catalog → build .run files → run → plot
 │   ├── examine_catalog.py              # Catalog QC: maps, magnitude-time, USGS verification
 │   └── test_ss_prior.py                # Small diagnostic for the smooth_seismicity prior
-├── time_dependent_scripts/             # Dynamic ETAS prior workflow (new)
+├── time_dependent_scripts/             # Dynamic ETAS prior workflow
 │   ├── build_initial_prior.py          # ETAS parameter inversion — run once to regenerate parameters_benchmark.json
 │   ├── run_benchmarks.py               # Main workflow with time-evolving ETAS prior
 │   ├── case_studies.py                 # Case-study workflow with dynamic ETAS prior
 │   └── examine_catalog.py              # Catalog QC (same as time-independent version)
+├── mixed_prior_scripts/                # Mixed (TI + ETAS) prior workflow
+│   ├── run_benchmarks.py               # Main workflow: five TI × ETAS blended priors, serial event loop
+│   └── case_studies.py                 # Case-study workflow with blended priors
 ├── data/                               # Input data — not committed to git
 │   ├── run_files/                      # Per-event trigger sequences (*.run) for the standard benchmark
 │   ├── etas_inversion/                 # ETAS inversion outputs
@@ -113,11 +118,14 @@ seismic_benchmark/
 ├── results/                            # Generated outputs — not committed to git
 │   ├── output/
 │   │   ├── max_trigs_{N}/              # Static prior CSVs: {prior}_benchmark_results.csv
-│   │   └── time_dependent/max_trigs_{N}/  # Dynamic ETAS CSV
+│   │   ├── time_dependent/max_trigs_{N}/  # Dynamic ETAS CSV
+│   │   └── mixed/max_trigs_{N}/        # Mixed prior CSVs: {prior}_etas_mixed_benchmark_results.csv
 │   ├── figures/
 │   │   ├── max_trigs_{N}/              # Maps, histograms, posterior grids (static priors)
-│   │   └── time_dependent/max_trigs_{N}/  # Same figures for dynamic ETAS
+│   │   ├── time_dependent/max_trigs_{N}/  # Same figures for dynamic ETAS
+│   │   └── mixed/max_trigs_{N}/        # Same figures for mixed priors
 │   └── case_studies/                   # Per-case-study output and figures
+│       └── {name}/output/{time_independent,time_dependent,mixed}/
 ├── pyproject.toml
 ├── README.md
 └── CLAUDE.md                           # Developer notes
@@ -246,6 +254,44 @@ A standalone single-event test block is also included — it builds a fresh ETAS
 #### Step 3 — Case studies with dynamic ETAS (`time_dependent_scripts/case_studies.py`)
 
 Same structure as the time-independent case studies, but uses the dynamic ETAS prior. Downloads the catalog, builds `.run` files, and runs bEPIC with the time-evolving prior.
+
+---
+
+### Mixed prior workflow (blended TI + ETAS)
+
+Combines each of the five static priors with the dynamic ETAS prior using a weighted linear mixture evaluated at the ETAS grid resolution (0.1°):
+
+```
+combined = ALPHA * etas_prior + (1 - ALPHA) * ti_prior_resampled
+```
+
+The static prior is bilinearly resampled onto the ETAS grid before blending. `ALPHA = 0.5` by default and is set at the top of each script.
+
+**Prerequisites**: both `time_independent_scripts/build_priors.py` and `time_dependent_scripts/build_initial_prior.py` must have already been run.
+
+#### Step 1 — Mixed-prior benchmark (`mixed_prior_scripts/run_benchmarks.py`)
+
+Runs the same 700+ event catalog as the other workflows, but the five blended priors all share one `EtasPriorUpdater` and must run serially (causal ETAS state).
+
+Key flags:
+
+```python
+ALPHA                  = 0.5   # ETAS blend weight; (1-ALPHA) on the static prior
+ETAS_UPDATE_INTERVAL_S = 0     # 0 = update ETAS before every event
+RUN_MIXED              = True  # run the blended benchmark
+SKIP_RUN               = False # load existing CSVs instead
+DEBUG_PLOT_PRIOR       = False # plot raw ETAS grid before each update
+```
+
+The event loop evaluates the ETAS prior once per event, blends it with each of the five static priors, runs bEPIC five times, then appends the USGS reference location to the ETAS catalog before moving to the next event.
+
+Results go to `results/output/mixed/max_trigs_{N}/{prior}_etas_mixed_benchmark_results.csv` (five files, one per TI prior). The same figure set as the other workflows is produced under `results/figures/mixed/max_trigs_{N}/`.
+
+#### Step 2 — Mixed case studies (`mixed_prior_scripts/case_studies.py`)
+
+Downloads a USGS catalog, builds `.run` files, then runs the blended-prior benchmark over the aftershock sequence. Case-study events (not the USGS reference catalog) are fed to the ETAS updater incrementally. Includes a standalone single-event section that builds fresh blended priors for a configurable focus event and plots location trajectories for all five mixed priors.
+
+Set `ACTIVE_CASE_STUDY` to one of the same three sequences (`Ridgecrest`, `Ferndale`, `ElMayor`). Results appear in `results/case_studies/{name}/output/mixed/` and figures in `results/case_studies/{name}/figures/mixed/`.
 
 ---
 

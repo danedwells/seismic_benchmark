@@ -116,16 +116,16 @@ def blend_priors(ti_prior, etas_prior, alpha=0.5):
         ti_grid = np.ones_like(etas_prior.grid)
     else:
         interp = RegularGridInterpolator(
-            (ti_prior.lons, ti_prior.lats),
+            (ti_prior.lats, ti_prior.lons),
             ti_prior.grid,
             method='linear',
             bounds_error=False,
             fill_value=0.0,
         )
-        lon_mesh, lat_mesh = np.meshgrid(etas_prior.lons, etas_prior.lats, indexing='ij')
+        lat_mesh, lon_mesh = np.meshgrid(etas_prior.lats, etas_prior.lons, indexing='ij')
         ti_grid = interp(
-            np.column_stack([lon_mesh.ravel(), lat_mesh.ravel()])
-        ).reshape(len(etas_prior.lons), len(etas_prior.lats))
+            np.column_stack([lat_mesh.ravel(), lon_mesh.ravel()])
+        ).reshape(len(etas_prior.lats), len(etas_prior.lons))
         ti_grid = np.clip(ti_grid, 0.0, None)
 
     ti_sum = ti_grid.sum()
@@ -290,7 +290,7 @@ if RUN_MIXED and not SKIP_RUN:
 
     print(f"\nSaving results to:\n  {OUTPUT_DIR}")
     for name, runner in runners.items():
-        out_path = os.path.join(OUTPUT_DIR, f'{name}_etas_mixed_benchmark_results.csv')
+        out_path = os.path.join(OUTPUT_DIR, f'{name.lower()}_etas_mixed_benchmark_results.csv')
         runner_results_to_df(runner).to_csv(out_path, index=False)
         print(f'  {name} → {os.path.basename(out_path)}')
 

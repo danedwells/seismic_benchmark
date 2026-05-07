@@ -783,9 +783,6 @@ def plot_coverage_panel(
     -------
     fig : matplotlib.figure.Figure
     """
-    if bins is None:
-        bins = np.linspace(0, 1, 41)
-
     colors = plt.cm.tab10.colors
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
@@ -805,7 +802,14 @@ def plot_coverage_panel(
             values = final[col].dropna()
             if values.empty:
                 continue
-            ax.hist(values, bins=bins,
+            # Scale bin count to sample size so small case studies don't produce
+            # sparse isolated bars.  Cap at 40 bins for large benchmarks.
+            if bins is not None:
+                plot_bins = bins
+            else:
+                n_bins = min(max(int(np.sqrt(len(values)) * 2), 5), 40)
+                plot_bins = np.linspace(0, 1, n_bins + 1)
+            ax.hist(values, bins=plot_bins,
                     color=colors[i % len(colors)], alpha=0.6,
                     histtype='step', linewidth=1.8,
                     label=f'{prior_name}  (med={values.median():.2f})')
@@ -947,7 +951,11 @@ def plot_qq_calibration_prior(
             continue
 
         df = pd.read_csv(csv_path)
-        final = df.dropna(subset=['usgs_prior_credible_level'])
+        # Deduplicate by event: the prior is evaluated once per event, so all
+        # trigger versions share the same usgs_prior_credible_level.  Using all
+        # rows inflates n with identical values, creating rectangular plateaus.
+        final = (df.groupby('event_id').last().reset_index()
+                   .dropna(subset=['usgs_prior_credible_level']))
         if filter_fn is not None:
             final = filter_fn(final)
 
