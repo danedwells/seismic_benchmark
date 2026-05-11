@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 from priors import SeismicPrior
 
 
@@ -99,4 +100,34 @@ def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
         print("Smooth_seismicity: built and cached.")
     except Exception as e:
         print(f"Smooth_seismicity: failed — {e}")
+
+    if 'KDE_Seismicity' in cache_paths and cache_paths['KDE_Seismicity'] is not None:
+        try:
+            kde_params = construction_params.get('kde_seismicity_params', {})
+            catalog_path = kde_params.get('catalog_path')
+            if catalog_path is None or not os.path.exists(catalog_path):
+                raise FileNotFoundError(
+                    f"KDE catalog not found: {catalog_path!r}\n"
+                    "Set construction_params['kde_seismicity_params']['catalog_path'] "
+                    "to the background seismicity parquet before building."
+                )
+            catalog = (pd.read_parquet(catalog_path) if catalog_path.endswith('.parquet')
+                       else pd.read_csv(catalog_path))
+            min_mag = kde_params.get('min_mag')
+            if min_mag is not None:
+                catalog = catalog[catalog['mag'] >= min_mag]
+            p = SeismicPrior.from_kde_seismicity(
+                catalog        = catalog,
+                bounds         = shared_kwargs.get('bounds'),
+                grid_size      = kde_params.get('grid_size', 100),
+                bw_method      = kde_params.get('bw_method', 'scott'),
+                lon_col        = kde_params.get('lon_col', 'longitude'),
+                lat_col        = kde_params.get('lat_col', 'latitude'),
+                out_of_bounds_fill = oob_fills.get('KDE_Seismicity'),
+            )
+            p = _maybe_resample(p, 'KDE_Seismicity')
+            p.to_tt3(cache_paths['KDE_Seismicity'])
+            print(f"KDE_Seismicity: built from {len(catalog):,} events and cached.")
+        except Exception as e:
+            print(f"KDE_Seismicity: failed — {e}")
 

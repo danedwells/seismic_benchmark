@@ -11,6 +11,7 @@ PRIOR_CONSTRUCTION_PARAMS = {
         'NSHM':              5000000.,   # land-only source; offshore needs a background value
         'Helmstetter':       0.00001,   # CSEP testing region; offshore needs a background value
         'Smooth_seismicity': 0.0001,   # US/Canada file; may not extend to all offshore areas
+        'KDE_Seismicity':    0.0001,   # KDE tails may not fully cover offshore areas
     },
     # Optional resampling to a common resolution before caching.
     # Set to None to keep each prior's native resolution.
@@ -32,6 +33,7 @@ PRIOR_CONSTRUCTION_PARAMS = {
         'NSHM':              0.02,
         'Helmstetter':       0.02,
         'Smooth_seismicity': None,
+        'KDE_Seismicity':    None,  # resolution set by grid_size at build time
     },
     # Paths to source data files, relative to SeismicPrior.data_dir.
     # Helmstetter is omitted — its source data comes from pycsep at runtime.
@@ -50,7 +52,27 @@ PRIOR_FILENAMES = {
     'NSHM':              'USGS_NSHM_prior.tt3',
     'Helmstetter':       'helmstetter_prior.tt3',
     'Smooth_seismicity': 'prior_seis_grid_US_Canada_filled.tt3',
+    'KDE_Seismicity':    'kde_seismicity_prior.tt3',
     'Uniform':           None,
+}
+
+# ---------------------------------------------------------------------------
+# KDE seismicity prior configuration
+# ---------------------------------------------------------------------------
+# catalog_path  — parquet/CSV of historical seismicity (latitude, longitude cols).
+#                 Defaults to the benchmark background seismicity cache; override
+#                 to use a different catalog or date range.
+# lon_col/lat_col — column names in that file.
+# grid_size     — (nx, ny) or scalar; number of grid points per axis.
+# bw_method     — bandwidth selector passed to scipy.stats.gaussian_kde.
+# min_mag       — optional magnitude filter applied before fitting the KDE.
+KDE_SEISMICITY_PARAMS = {
+    'catalog_path': None,   # filled in at build time from the benchmark data dir
+    'lon_col':      'longitude',
+    'lat_col':      'latitude',
+    'grid_size':    100,
+    'bw_method':    'scott',
+    'min_mag':      None,
 }
 
 # ---------------------------------------------------------------------------

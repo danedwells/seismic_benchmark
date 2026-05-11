@@ -160,18 +160,14 @@ def plot_metric_vs_triggers(metric, ylabel, title, save_path=None,
         color = colors[i % len(colors)]
         n_max = int(stats['count'].max())
         ax.plot(stats['n_trigs'], stats['median'],
-                color=color, linestyle='-', linewidth=1.8,
+                color=color, linestyle='-', linewidth=2.5,
                 label=f"{spec['name']}  (n≈{n_max})")
-        #ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
-        #                color=color, alpha=0.10)
-        # ax.fill_between(stats['n_trigs'], stats['q10'], stats['q90'],
-        #                 color=color, alpha=0.10)
         ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
                         color=color, alpha=0.10)
         ax.plot(stats['n_trigs'], stats['q5'],
-                color=color, linestyle='--', linewidth=0.8)
+                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
         ax.plot(stats['n_trigs'], stats['q95'],
-                color=color, linestyle='--', linewidth=0.8)
+                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
 
     if ref_line is not None:
         ax.axhline(ref_line, color='gray', linestyle=':', linewidth=1,
@@ -235,18 +231,14 @@ for ax, radius_km in zip(axes_cov.flatten(), COVERAGE_RADII_KM):
         color = colors[i % len(colors)]
         n_max = int(stats['count'].max())
         ax.plot(stats['n_trigs'], stats['median'],
-                color=color, linestyle='-', linewidth=1.8,
+                color=color, linestyle='-', linewidth=2.5,
                 label=f"{spec['name']}  (n≈{n_max})")
-        #ax.fill_between(stats['n_trigs'], stats['min'], stats['max'],
-        #                color=color, alpha=0.10)
-        # ax.fill_between(stats['n_trigs'], stats['q10'], stats['q90'],
-        #                 color=color, alpha=0.10)
         ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
                         color=color, alpha=0.10)
         ax.plot(stats['n_trigs'], stats['q5'],
-                color=color, linestyle='--', linewidth=0.8)
+                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
         ax.plot(stats['n_trigs'], stats['q95'],
-                color=color, linestyle='--', linewidth=0.8)
+                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
     ax.set_xlabel('Number of triggers', fontsize=10)
     ax.set_ylabel(f'Median coverage  (↑ better)', fontsize=10)
     ax.set_title(f'Within {radius_km} km', fontsize=11)

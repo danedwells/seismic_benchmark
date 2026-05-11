@@ -38,7 +38,8 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
 # 0.0 = pure time-independent; 1.0 = pure ETAS; 0.5 = equal weight.
-ALPHA = 0.5
+ALPHA     = 0.9
+ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 
 # How often to re-evaluate the ETAS prior (seconds of event time).
 # 0 = update before every event (most accurate, slowest).
@@ -69,8 +70,8 @@ INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input', 'downloaded_catalog.csv')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'mixed', f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'mixed', f'max_trigs_{MAX_TRIGS}')
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

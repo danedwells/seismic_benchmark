@@ -82,7 +82,8 @@ CASE_STUDIES = {
     },
     'ElMayor': {
         'name':      'El Mayor-Cucapah 2010',
-        'starttime': '2010-04-04T22:00:00',
+        'starttime': '2010-04-04T22:00:00\
+            ',
         'endtime':   '2010-05-04T00:00:00',
         'bounds':    (-117.0, -114.5, 31.5, 33.5),
         'min_mag':   3.0,
@@ -91,12 +92,13 @@ CASE_STUDIES = {
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'ElMayor'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
-ALPHA = 0.5
+ALPHA     = 0.7
+ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 
 # How often to re-evaluate the ETAS prior (seconds of event time).
 # 0 = update before every event (most accurate, slowest).
@@ -123,9 +125,9 @@ MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'output', 'mixed', f'max_trigs_{MAX_TRIGS}')
+                               'output', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
 CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'figures', 'mixed', f'max_trigs_{MAX_TRIGS}')
+                               'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)

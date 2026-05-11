@@ -35,9 +35,10 @@ from benchmark.metrics import COVERAGE_RADII_KM
 # Configure
 # ---------------------------------------------------------------------------
 
-ACTIVE_CASE_STUDY  = "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
+ACTIVE_CASE_STUDY  = "Ridgecrest" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
 INCLUDE_BASELINES  = True   # overlay pure TI (dotted) and ETAS (dashed) for context
-ALPHA              = 0.5    # blend weight used when running mixed_prior_scripts/
+ALPHA              = 0.9    # blend weight used when running mixed_prior_scripts/
+ALPHA_TAG          = f'alpha_{ALPHA:.2f}'
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -53,25 +54,25 @@ MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_MIXED   = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                      'mixed', f'max_trigs_{MAX_TRIGS}')
+                                      'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
                                       'time_dependent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
                                       'time_independent', f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures',
-                                      'comparison_mixed')
+                                      'comparison_mixed', ALPHA_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_MIXED   = os.path.join(_cs_base, 'output', 'mixed',
-                                      f'max_trigs_{MAX_TRIGS}')
+                                      f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output', 'time_dependent',
                                       f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output', 'time_independent',
                                       f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison_mixed')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison_mixed', ALPHA_TAG)
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -89,7 +90,7 @@ PRIOR_SPECS = [
         'csv':       os.path.join(OUTPUT_DIR_MIXED,
                                   f'{name.lower()}_etas_mixed_benchmark_results.csv'),
         'ls':        '-',
-        'lw':        1.8,
+        'lw':        2.5,
         'group':     'mixed',
     }
     for name in TI_NAMES
@@ -99,8 +100,8 @@ PRIOR_SPECS += [
     {
         'name':  'ETAS (dynamic)',
         'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, 'etas_dynamic_benchmark_results.csv'),
-        'ls':    '--',
-        'lw':    2.0,
+        'ls':    '-',
+        'lw':    2.5,
         'group': 'dynamic',
     },
 ]
@@ -111,7 +112,7 @@ if INCLUDE_BASELINES:
             'name':  name,
             'csv':   os.path.join(OUTPUT_DIR_STATIC,
                                   f'{name.lower()}_benchmark_results.csv'),
-            'ls':    ':',
+            'ls':    '--',
             'lw':    1.2,
             'group': 'static',
         }
@@ -243,7 +244,7 @@ fig_cred = plot_metric_vs_triggers(
     ylim      = (0, 1),
     ref_line  = 0.5,
     ref_label = 'calibrated median  (0.5)',
-    save_path = os.path.join(FIGURES_DIR, 'credible_level_vs_triggers.png'),
+    save_path = os.path.join(FIGURES_DIR, f'credible_level_vs_triggers_{ALPHA_TAG}.png'),
 )
 plt.show()
 
@@ -288,7 +289,7 @@ fig_cov.suptitle(
     f'Posterior coverage vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
     fontsize=13)
 plt.tight_layout()
-_cov_path = os.path.join(FIGURES_DIR, 'coverage_vs_triggers.png')
+_cov_path = os.path.join(FIGURES_DIR, f'coverage_vs_triggers_{ALPHA_TAG}.png')
 plt.savefig(_cov_path, dpi=150, bbox_inches='tight')
 print(f'Saved: {_cov_path}')
 plt.show()
@@ -302,7 +303,7 @@ fig_err = plot_metric_vs_triggers(
     ylabel    = 'Median location error  km  (↓ better)',
     title     = f'Location error vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
     log_y     = True,
-    save_path = os.path.join(FIGURES_DIR, 'location_error_vs_triggers.png'),
+    save_path = os.path.join(FIGURES_DIR, f'location_error_vs_triggers_{ALPHA_TAG}.png'),
 )
 plt.show()
 
