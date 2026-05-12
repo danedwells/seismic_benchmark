@@ -67,12 +67,14 @@ PRIOR_FILENAMES = {
 # bw_method     — bandwidth selector passed to scipy.stats.gaussian_kde.
 # min_mag       — optional magnitude filter applied before fitting the KDE.
 KDE_SEISMICITY_PARAMS = {
-    'catalog_path': None,   # filled in at build time from the benchmark data dir
-    'lon_col':      'longitude',
-    'lat_col':      'latitude',
-    'grid_size':    850, 
-    'bw_method':    'scott',
-    'min_mag':      3, # None
+    'catalog_path':   None,   # filled in at build time from the benchmark data dir
+    'lon_col':        'longitude',
+    'lat_col':        'latitude',
+    'grid_size':      850,
+    'bw_method':      'scott',
+    'min_mag':        3.0,
+    'adaptive':       True,  # set True to use adaptive (variable-bandwidth) KDE
+    'adaptive_alpha': 0.5,    # Silverman sensitivity: 0=fixed, 0.5=standard, 1=max
 }
 
 # Start date for the shared KDE base catalog download.

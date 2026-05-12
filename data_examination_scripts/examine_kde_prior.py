@@ -77,7 +77,7 @@ if BUILD:
 # ---------------------------------------------------------------------------
 
 # Path to the .tt3 file to examine.  Set context_name to one of CONTEXTS keys.
-context_name = 'Ferndale'
+context_name = 'Ridgecrest'
 KDE_FILE = os.path.join(SeismicPrior.data_dir, f'kde_seismicity_{context_name}.tt3')
 
 # Map extent: (lon_min, lon_max, lat_min, lat_max).  None = auto from prior grid.

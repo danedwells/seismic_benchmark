@@ -228,6 +228,8 @@ def build_or_load_kde_prior(context_name, cutoff_date, kde_catalog_path, data_di
         bounds             = bounds,
         grid_size          = kde_params.get('grid_size', 100),
         bw_method          = kde_params.get('bw_method', 'scott'),
+        adaptive           = kde_params.get('adaptive', False),
+        adaptive_alpha     = kde_params.get('adaptive_alpha', 0.5),
         lon_col            = kde_params.get('lon_col', 'longitude'),
         lat_col            = kde_params.get('lat_col', 'latitude'),
         out_of_bounds_fill = oob_fills.get('KDE_Seismicity', 0.0001),
