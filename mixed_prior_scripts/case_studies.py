@@ -42,6 +42,7 @@ from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
                               make_epic_params)
+from benchmark.priors import build_or_load_kde_prior
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -218,6 +219,21 @@ def blend_priors(ti_prior, etas_prior, alpha=0.5):
 
 #%%
 # ---------------------------------------------------------------------------
+# KDE seismicity prior — build or load per-context cached .tt3
+# ---------------------------------------------------------------------------
+KDE_CATALOG_PATH  = os.path.join(PROJECT_ROOT, 'data', 'kde_catalogs', 'kde_base_seismicity.parquet')
+_kde_construction = {**config.PRIOR_CONSTRUCTION_PARAMS, 'kde_seismicity_params': config.KDE_SEISMICITY_PARAMS}
+cache_paths['KDE_Seismicity'] = build_or_load_kde_prior(
+    context_name        = ACTIVE_CASE_STUDY,
+    cutoff_date         = cs['starttime'],
+    kde_catalog_path    = KDE_CATALOG_PATH,
+    data_dir            = data_dir,
+    construction_params = _kde_construction,
+    kde_start           = config.KDE_START_DATE,
+)
+
+#%%
+# ---------------------------------------------------------------------------
 # 3. Load time-independent priors
 # ---------------------------------------------------------------------------
 
@@ -311,6 +327,7 @@ cs_ref_df = catalog_df.rename(columns={
 # Events run serially in chronological order.  The shared ETAS updater is
 # advanced once per event; each of the 5 TI priors is blended with the
 # current ETAS prior before running bEPIC.
+station_inventory = None
 
 if RUN_MIXED and not SKIP_RUN:
 
@@ -322,7 +339,8 @@ if RUN_MIXED and not SKIP_RUN:
     runners = {}
     for name, ti_prior in ti_priors.items():
         initial_mixed = blend_priors(ti_prior, _current_etas, ALPHA)
-        params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
+        params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS,
+                                         station_inventory=station_inventory)
         runners[name] = BenchmarkRunner(
             prior      = initial_mixed,
             params     = params,

@@ -16,11 +16,18 @@ def get_unique_stations(run_dir):
     return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
 
 
-def make_epic_params(prior, use_prior, benchmark_params):
+def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None):
     """Return a configured EPIC_PARAMS object from a benchmark params dict.
 
     benchmark_params must contain: grid_size, grid_km, max_trigs.
-    Optional keys (with defaults): migrate_grid (True), migrate_grid_min_triggers (1).
+    Optional keys (with defaults): migrate_grid (True), migrate_grid_min_triggers (1),
+    activity_mask_threshold (0.30).
+
+    station_inventory : pandas.DataFrame or None
+        DataFrame with columns station, network, longitude, latitude.
+        None (default) disables the activity mask.
+        Tier 1 (benchmark): pass get_unique_stations(run_dir).
+        Tier 2 (case study): pass get_fdsn_station_inventory(origin_time).
     """
     params = EPIC_locate_prelim.EPIC_PARAMS()
     params.prior                     = prior
@@ -31,6 +38,8 @@ def make_epic_params(prior, use_prior, benchmark_params):
     params.MAX_EVENT_TRIGS           = benchmark_params['max_trigs']
     params.migrate_grid              = benchmark_params.get('migrate_grid', True)
     params.migrate_grid_min_triggers = benchmark_params.get('migrate_grid_min_triggers', 1)
+    params.station_inventory         = station_inventory
+    params.activity_mask_threshold   = benchmark_params.get('activity_mask_threshold', 0.30)
     return params
 
 
@@ -477,7 +486,8 @@ def run_prior(args):
         p = SeismicPrior.from_tt3(cache_path)
         use_prior = True
 
-    params = make_epic_params(p, use_prior, args)
+    params = make_epic_params(p, use_prior, args,
+                              station_inventory=args.get('station_inventory'))
 
     catalog_df = args.get('catalog_df')
     if catalog_df is None:

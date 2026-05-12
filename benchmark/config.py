@@ -52,7 +52,7 @@ PRIOR_FILENAMES = {
     'NSHM':              'USGS_NSHM_prior.tt3',
     'Helmstetter':       'helmstetter_prior.tt3',
     'Smooth_seismicity': 'prior_seis_grid_US_Canada_filled.tt3',
-    'KDE_Seismicity':    'kde_seismicity_prior.tt3',
+    'KDE_Seismicity':    None,   # built per-context by build_or_load_kde_prior(); build_priors.py skips it
     'Uniform':           None,
 }
 
@@ -70,10 +70,14 @@ KDE_SEISMICITY_PARAMS = {
     'catalog_path': None,   # filled in at build time from the benchmark data dir
     'lon_col':      'longitude',
     'lat_col':      'latitude',
-    'grid_size':    100,
+    'grid_size':    850, 
     'bw_method':    'scott',
-    'min_mag':      None,
+    'min_mag':      3, # None
 }
+
+# Start date for the shared KDE base catalog download.
+# Events from this date to the day before each context's first event are used.
+KDE_START_DATE = '1990-01-01'
 
 # ---------------------------------------------------------------------------
 # ETAS inversion configuration
@@ -159,4 +163,5 @@ BENCHMARK_PARAMS = {
     'grid_km':                   200,
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
     'migrate_grid_min_triggers': 4,     # suppress migration until this many triggers have reported
+    'activity_mask_threshold':   0.30,  # paper default; pass station_inventory=None to disable mask
 }
