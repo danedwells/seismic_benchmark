@@ -90,10 +90,12 @@ seismic_benchmark/
 │   ├── plots.py                        # Reusable figure helpers: maps, histograms, posterior grids
 │   ├── usgs.py                         # USGS/IRIS download helpers; QuakeML parser; .run file builder
 │   └── background.py                   # Background seismicity download/cache from USGS ComCat
-├── time_independent_scripts/           # Static prior workflow (run these for the standard benchmark)
-│   ├── build_priors.py                 # One-time prior construction — run before anything else
+├── preparation_scripts/                # Run these once before any benchmarking workflow
+│   ├── build_priors.py                 # Construct all static prior .tt3 cache files
+│   └── case_study_preparation.py       # Download USGS catalogs + build .run files for all case studies
+├── time_independent_scripts/           # Static prior workflow
 │   ├── run_benchmarks.py               # Main workflow: load priors → run bEPIC → plot
-│   ├── case_studies.py                 # Case-study workflow: download catalog → build .run files → run → plot
+│   ├── case_studies.py                 # Case-study runner (preparation_scripts must run first)
 │   ├── examine_catalog.py              # Catalog QC: maps, magnitude-time, USGS verification
 │   └── test_ss_prior.py                # Small diagnostic for the smooth_seismicity prior
 ├── time_dependent_scripts/             # Dynamic ETAS prior workflow
@@ -156,17 +158,29 @@ Place source files under `SeismicPrior.data_dir` in the paths specified by `benc
 
 ## Running the benchmark
 
-### Time-independent workflow (static priors)
+### Preparation (run once before anything else)
 
-#### Step 1 — Build prior cache (`time_independent_scripts/build_priors.py`)
+#### Step 1 — Build prior cache (`preparation_scripts/build_priors.py`)
 
-**Run this once before anything else.** Constructs all static prior `.tt3` files from their raw source data and writes them to `SeismicPrior.data_dir`. Re-run whenever source data or construction parameters change.
+Constructs all static prior `.tt3` files from their raw source data and writes them to `SeismicPrior.data_dir`. Re-run whenever source data or construction parameters change.
 
 ```bash
-python time_independent_scripts/build_priors.py
+python preparation_scripts/build_priors.py
 ```
 
-#### Step 2 — Standard benchmark (`time_independent_scripts/run_benchmarks.py`)
+#### Step 2 — Case study data (`preparation_scripts/case_study_preparation.py`)
+
+Downloads USGS event catalogs and builds `.run` trigger files for all predefined case studies (Ridgecrest, Ferndale, El Mayor). Must be run before any `case_studies.py` workflow script. Set `REDOWNLOAD=True` or `REBUILD_RUN_FILES=True` to force a refresh.
+
+```bash
+python preparation_scripts/case_study_preparation.py
+```
+
+---
+
+### Time-independent workflow (static priors)
+
+#### Standard benchmark (`time_independent_scripts/run_benchmarks.py`)
 
 Evaluates bEPIC on a fixed catalog of pre-built `.run` trigger files. Written as a Jupyter-style script (cells delimited by `#%%`) — run cell-by-cell in an IDE or top-to-bottom as a plain script.
 
@@ -186,9 +200,9 @@ Results appear in `results/output/max_trigs_{N}/` and figures in `results/figure
 - `MTJ_posterior_grid_{event_id}.png` — 2×3 panel for a single auto-selected MTJ event showing prior density (Blues) and posterior contours (Reds); set `MTJ_EVENT_ID` to pin a specific event
 - Misfit and location error histograms for the full catalog and MTJ region
 
-#### Step 3 — Case studies (`time_independent_scripts/case_studies.py`)
+#### Case studies (`time_independent_scripts/case_studies.py`)
 
-Runs bEPIC on a user-defined aftershock sequence downloaded live from USGS. Unlike the standard benchmark, there are no pre-built `.run` files — they are constructed on the fly from USGS phase data.
+Runs bEPIC over a predefined aftershock sequence. **Requires `preparation_scripts/case_study_preparation.py` to have been run first** to download the catalog and build `.run` trigger files.
 
 Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
 
@@ -197,14 +211,6 @@ Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
 | `Ridgecrest` | Ridgecrest 2019 aftershock sequence |
 | `Ferndale` | Ferndale 2022 sequence |
 | `ElMayor` | El Mayor-Cucapah 2010 aftershock sequence |
-
-Three boolean flags control the stages:
-
-```python
-DOWNLOAD_CATALOG = False   # Re-download the USGS event catalog (else use cache)
-BUILD_RUN_FILES  = False   # Fetch USGS phase data and build .run trigger files
-RUN_ALL_PRIORS   = False   # Run all static priors in parallel
-```
 
 Results appear in `results/case_studies/{name}/output/` and figures in `results/case_studies/{name}/figures/`.
 
@@ -267,7 +273,7 @@ combined = ALPHA * etas_prior + (1 - ALPHA) * ti_prior_resampled
 
 The static prior is bilinearly resampled onto the ETAS grid before blending. `ALPHA = 0.5` by default and is set at the top of each script.
 
-**Prerequisites**: both `time_independent_scripts/build_priors.py` and `time_dependent_scripts/build_initial_prior.py` must have already been run.
+**Prerequisites**: both `preparation_scripts/build_priors.py` and `time_dependent_scripts/build_initial_prior.py` must have already been run.
 
 #### Step 1 — Mixed-prior benchmark (`mixed_prior_scripts/run_benchmarks.py`)
 
@@ -324,9 +330,27 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 
 ---
 
+
+## Key Decisions
+
+### Ongoing
+- Currently have retained priors/ as a separate repository, where all prior files live and a class to consistently read/write from them lives. This may be absorbed at a later date
+- Currently have retained etas/ as a separate repository, where the code to perform both an ETAS inversion and evaluation live. This may be absorbed at a later date.
+- Currently have bEPIC/ as a separate repository. This may be absorbed at a later date.
+
+### Done
+- Moved logic for catalog download and building run files into case_study_preparation.py. This file and build_priors.py now live in preparation_scripts/. These must be run before running benchmarking.
+- Moved plotting scripts into plot_scripts/. These scripts examine both time_independent, time_dependent, and mixed benchmarking together, hence the logic for a separate script and folder.
+- Separated the benchmarking scripts into 3 folders: time_independent_scripts, time_dependent_scripts, and mixed_prior_scripts. There is a lot of overlap between them. The reason for the separation is that time_dependent inherently must run differently - it is sequential, with the output each event affecting the prior for the next event.
+- Included metric of posterior coverage (how much of the posterior probability mass is within fixed distances of 10, 25, 50, and 100 km of the true USGS location), usgs_credible level (what confidene contour of the posterior distribution of the final location does the true USGS location fall on? lower is better), and location error (great circle distance in km).
+
+
+---
+
+
 ## Known limitations / work in progress
 
-- Current top priority - map the posterior mass of a final location from bEPIC to the distance to the 'true' (USGS) location to get a sense of how well the posterior is capturing true uncertainty. This will be implemented in both time_dependent and time_independent scripts.
+- Magnitude Calculation on a per station basis by will be implemented in the future. This will entail measuring peak displacement from .mseed files and calculating magnitude on a per-station basis. This calcluation will happen AFTER event location (not part of a simultaneous inversion).
 - The `REFERENCE` workflow (high-resolution reference locations) is currently disabled.
 - The benchmark_runner API may change without notice in future iterations as needed to accomplish research goals.
 - Streamlining of dependencies, and how they interact with this repository, will be done at some unknown point in the future.

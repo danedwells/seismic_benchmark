@@ -35,9 +35,9 @@ from benchmark.metrics import COVERAGE_RADII_KM
 # Configure
 # ---------------------------------------------------------------------------
 
-ACTIVE_CASE_STUDY  = "Ridgecrest" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
+ACTIVE_CASE_STUDY  = "Ferndale" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
 INCLUDE_BASELINES  = True   # overlay pure TI (dotted) and ETAS (dashed) for context
-ALPHA              = 0.9    # blend weight used when running mixed_prior_scripts/
+ALPHA              = 0.5    # blend weight used when running mixed_prior_scripts/
 ALPHA_TAG          = f'alpha_{ALPHA:.2f}'
 
 CASE_STUDIES = {

@@ -163,11 +163,11 @@ def plot_metric_vs_triggers(metric, ylabel, title, save_path=None,
                 color=color, linestyle='-', linewidth=2.5,
                 label=f"{spec['name']}  (n≈{n_max})")
         ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
-                        color=color, alpha=0.10)
+                        color=color, alpha=0.06)
         ax.plot(stats['n_trigs'], stats['q5'],
-                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
+                color=color, linestyle='solid', linewidth=0.6, alpha=0.5)
         ax.plot(stats['n_trigs'], stats['q95'],
-                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
+                color=color, linestyle='solid', linewidth=0.6, alpha=0.5)
 
     if ref_line is not None:
         ax.axhline(ref_line, color='gray', linestyle=':', linewidth=1,
@@ -234,11 +234,11 @@ for ax, radius_km in zip(axes_cov.flatten(), COVERAGE_RADII_KM):
                 color=color, linestyle='-', linewidth=2.5,
                 label=f"{spec['name']}  (n≈{n_max})")
         ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
-                        color=color, alpha=0.10)
+                        color=color, alpha=0.06)
         ax.plot(stats['n_trigs'], stats['q5'],
-                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
+                color=color, linestyle='solid', linewidth=0.6, alpha=0.5)
         ax.plot(stats['n_trigs'], stats['q95'],
-                color=color, linestyle='-', linewidth=0.6, alpha=0.6)
+                color=color, linestyle='solid', linewidth=0.6, alpha=0.5)
     ax.set_xlabel('Number of triggers', fontsize=10)
     ax.set_ylabel(f'Median coverage  (↑ better)', fontsize=10)
     ax.set_title(f'Within {radius_km} km', fontsize=11)

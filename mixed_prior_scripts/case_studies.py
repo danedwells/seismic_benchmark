@@ -42,7 +42,6 @@ from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
                               make_epic_params)
-from benchmark.priors import build_or_load_kde_prior
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -93,12 +92,12 @@ CASE_STUDIES = {
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
-ALPHA     = 0.7
+ALPHA     = 0.5
 ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 
 # How often to re-evaluate the ETAS prior (seconds of event time).
@@ -217,20 +216,7 @@ def blend_priors(ti_prior, etas_prior, alpha=0.5):
     mixed.grid = combined
     return mixed
 
-#%%
-# ---------------------------------------------------------------------------
-# KDE seismicity prior — build or load per-context cached .tt3
-# ---------------------------------------------------------------------------
-KDE_CATALOG_PATH  = os.path.join(PROJECT_ROOT, 'data', 'kde_catalogs', 'kde_base_seismicity.parquet')
-_kde_construction = {**config.PRIOR_CONSTRUCTION_PARAMS, 'kde_seismicity_params': config.KDE_SEISMICITY_PARAMS}
-cache_paths['KDE_Seismicity'] = build_or_load_kde_prior(
-    context_name        = ACTIVE_CASE_STUDY,
-    cutoff_date         = cs['starttime'],
-    kde_catalog_path    = KDE_CATALOG_PATH,
-    data_dir            = data_dir,
-    construction_params = _kde_construction,
-    kde_start           = config.KDE_START_DATE,
-)
+cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_CASE_STUDY}.tt3')
 
 #%%
 # ---------------------------------------------------------------------------

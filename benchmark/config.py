@@ -52,7 +52,7 @@ PRIOR_FILENAMES = {
     'NSHM':              'USGS_NSHM_prior.tt3',
     'Helmstetter':       'helmstetter_prior.tt3',
     'Smooth_seismicity': 'prior_seis_grid_US_Canada_filled.tt3',
-    'KDE_Seismicity':    None,   # built per-context by build_or_load_kde_prior(); build_priors.py skips it
+    'KDE_Seismicity':    None,   # filename varies per context; set explicitly in each script after build_priors.py
     'Uniform':           None,
 }
 
@@ -66,12 +66,13 @@ PRIOR_FILENAMES = {
 # grid_size     — (nx, ny) or scalar; number of grid points per axis.
 # bw_method     — bandwidth selector passed to scipy.stats.gaussian_kde.
 # min_mag       — optional magnitude filter applied before fitting the KDE.
+# NOTE NEED INFO FROM AMY TO REPRODUCE
 KDE_SEISMICITY_PARAMS = {
     'catalog_path':   None,   # filled in at build time from the benchmark data dir
     'lon_col':        'longitude',
     'lat_col':        'latitude',
-    'grid_size':      850,
-    'bw_method':      'scott',
+    'grid_size':      100,
+    'bw_method':      0.4, #'scott',
     'min_mag':        3.0,
     'adaptive':       True,  # set True to use adaptive (variable-bandwidth) KDE
     'adaptive_alpha': 0.5,    # Silverman sensitivity: 0=fixed, 0.5=standard, 1=max

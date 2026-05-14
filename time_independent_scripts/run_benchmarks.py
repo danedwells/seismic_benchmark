@@ -23,7 +23,6 @@ from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
                               run_single_event_get_grid, make_epic_params)
-from benchmark.priors import build_or_load_kde_prior
 
 
 # ---------------------------------------------------------------------------
@@ -63,21 +62,7 @@ _usgs_ref_lookup = (
     if catalog_df is not None else pd.DataFrame()
 )
 
-# ---------------------------------------------------------------------------
-# KDE seismicity prior — build or load per-context cached .tt3
-# ---------------------------------------------------------------------------
-KDE_CATALOG_PATH  = os.path.join(PROJECT_ROOT, 'data', 'kde_catalogs', 'kde_base_seismicity.parquet')
-_kde_construction = {**config.PRIOR_CONSTRUCTION_PARAMS, 'kde_seismicity_params': config.KDE_SEISMICITY_PARAMS}
-_kde_cutoff       = (catalog_df['usgs_time'].min()
-                     if catalog_df is not None else pd.Timestamp.now(tz='UTC'))
-cache_paths['KDE_Seismicity'] = build_or_load_kde_prior(
-    context_name        = 'benchmark',
-    cutoff_date         = _kde_cutoff,
-    kde_catalog_path    = KDE_CATALOG_PATH,
-    data_dir            = data_dir,
-    construction_params = _kde_construction,
-    kde_start           = config.KDE_START_DATE,
-)
+cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark.tt3')
 
 #%%
 # ---------------------------------------------------------------------------

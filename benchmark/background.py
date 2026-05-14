@@ -189,10 +189,14 @@ def load_background_seismicity(cache_path, bounds, start_year, end_year,
     """
     import os
     if not force_refresh and os.path.exists(cache_path):
+
         print(f"Loading background seismicity from cache: {cache_path}")
+        
         df = pd.read_parquet(cache_path)
+
         print(f"  {len(df):,} events  M≥{df['mag'].min():.1f}  "
               f"{df['time'].min().date()} → {df['time'].max().date()}")
+        
         return df
 
     return download_background_seismicity(
