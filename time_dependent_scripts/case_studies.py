@@ -2,9 +2,9 @@
 # =============================================================================
 # case_studies.py  —  bEPIC case-study runner with dynamic ETAS prior
 # =============================================================================
-# Downloads a USGS catalog for a predefined aftershock sequence, builds .run
-# trigger files from USGS phase data, then runs bEPIC with a time-evolving
-# ETAS prior that updates after every located event.
+# Runs bEPIC with a time-evolving ETAS prior over a predefined aftershock
+# sequence.  The ETAS prior updates after every located event so the spatial
+# prior reflects the current aftershock distribution.
 #
 # How the dynamic ETAS prior works
 # ---------------------------------
@@ -16,11 +16,11 @@
 # Causal order per event:
 #   update_prior(updater.update(t))  →  run_event()  →  updater.append_events()
 #
-# Prerequisite
-# ------------
-# Run time_dependent_scripts/build_initial_prior.py first to produce
-#   data/etas_inversion/parameters_benchmark.json
-# That file holds the pre-inverted ETAS parameters consumed here.
+# Prerequisites
+# -------------
+#   preparation_scripts/case_study_preparation.py  — download catalog + .run files
+#   time_dependent_scripts/build_initial_prior.py  — ETAS parameter inversion
+#     (produces data/etas_inversion/parameters_benchmark.json)
 #
 # Usage
 # -----
@@ -141,11 +141,9 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 # ---------------------------------------------------------------------------
 
 # --- Control flags ---
-DOWNLOAD_CATALOG   = False   # re-download even if cached
-BUILD_RUN_FILES    = False   # build / rebuild .run files from USGS phases
-RUN_DYNAMIC_PRIORS = True  # run all time-dependent priors (serial, event-by-event)
+RUN_DYNAMIC_PRIORS = True   # run all time-dependent priors (serial, event-by-event)
 SKIP_RUN           = False  # skip all bEPIC calls; go straight to figures
-DEBUG_PLOT_PRIOR   = False   # plot ETAS lambda grid before each event (comment out to disable)
+DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
@@ -153,32 +151,18 @@ PRIOR_ALPHA = 0.5
 
 #%%
 # ---------------------------------------------------------------------------
-# 1. Download (or load cached) catalog
+# Load catalog from cache (preparation_scripts/case_study_preparation.py must
+# have been run first)
 # ---------------------------------------------------------------------------
-catalog_df = download_case_study_catalog(
-    cs,
-    cache_dir=CS_DATA_DIR,
-    REDOWNLOAD=DOWNLOAD_CATALOG)
+catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
 
 print(f"{len(catalog_df)} events in {cs['name']} catalog.")
 print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
 #%%
-# ---------------------------------------------------------------------------
-# 2. Build .run files
-# ---------------------------------------------------------------------------
-if BUILD_RUN_FILES:
-    build_run_files_for_case_study(
-        catalog_df    = catalog_df,
-        run_dir       = CS_RUN_DIR,
-        max_dist_deg  = 5.0,
-        skip_existing = not DOWNLOAD_CATALOG,
-    )
-
-#%%
 
 # ---------------------------------------------------------------------------
-# 3. Dynamic prior runs (serial — prior state evolves event-by-event)
+# 1. Dynamic prior runs (serial — prior state evolves event-by-event)
 # ---------------------------------------------------------------------------
 # Time-dependent priors cannot use ProcessPoolExecutor because their updaters
 # hold mutable state (rolling catalog) that evolves through the sequence.

@@ -1,11 +1,14 @@
 #%%
 # =============================================================================
-# case_studies.py  —  bEPIC case-study runner
-# Prerequisite: run scripts/build_priors.py first to build the .tt3 cache files.
+# case_studies.py  —  bEPIC case-study runner (static priors)
 # =============================================================================
-# Downloads a USGS catalog for a predefined case study (aftershock sequence
-# or mainshock region), builds .run trigger files from USGS phase data, then
-# runs bEPIC across all five static spatial priors — mirroring run_benchmarks.py.
+# Runs bEPIC across all static spatial priors for a predefined aftershock
+# sequence, mirroring run_benchmarks.py.
+#
+# Prerequisites
+# -------------
+#   preparation_scripts/case_study_preparation.py  — download catalog + .run files
+#   preparation_scripts/build_priors.py            — build .tt3 prior cache
 #
 # Usage:
 #   Set ACTIVE_CASE_STUDY to one of the keys in CASE_STUDIES, flip the
@@ -74,7 +77,7 @@ CASE_STUDIES = {
 }
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'ElMayor'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -96,38 +99,22 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_
 # ---------------------------------------------------------------------------
 
 # --- Control flags ---
-DOWNLOAD_CATALOG    = False  # re-download even if cached
-BUILD_RUN_FILES     = False  # build / rebuild .run files from USGS phases
-RUN_ALL_PRIORS      = True # run all six priors in parallel
-SKIP_RUN            = False # Skip all runs - will toss an error if nothing has been run before AND run_all_priors == False
+RUN_ALL_PRIORS = True   # run all static priors in parallel
+SKIP_RUN       = False  # skip bEPIC calls and load existing CSVs instead
 
 # ---------------------------------------------------------------------------
-# 1. Download (or load cached) catalog
+# Load catalog from cache (preparation_scripts/case_study_preparation.py must
+# have been run first)
 # ---------------------------------------------------------------------------
 
-catalog_df = download_case_study_catalog(
-    cs,
-    cache_dir=CS_DATA_DIR,
-    REDOWNLOAD=DOWNLOAD_CATALOG)
+catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
 
 print(f"{len(catalog_df)} events in {cs['name']} catalog.")
 print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
 #%%
-# ---------------------------------------------------------------------------
-# 2. Build .run files
-# ---------------------------------------------------------------------------
-if BUILD_RUN_FILES:
-    build_run_files_for_case_study(
-        catalog_df    = catalog_df,
-        run_dir       = CS_RUN_DIR,
-        max_dist_deg  = 5.0,
-        skip_existing = not DOWNLOAD_CATALOG,
-    )
-
-#%%
 # ------------------------------------------------------------------------------
-# ── 3. Run bEPIC across priors ────────────────────────────────────────────
+# ── 1. Run bEPIC across priors ────────────────────────────────────────────
 # ------------------------------------------------------------------------------
 
 # Build reference catalog before job_args so it can be passed to each worker.

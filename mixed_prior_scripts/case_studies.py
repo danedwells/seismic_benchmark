@@ -2,10 +2,8 @@
 # =============================================================================
 # case_studies.py  —  bEPIC case-study runner with mixed (TI + ETAS) priors
 # =============================================================================
-# Downloads a USGS catalog for a predefined aftershock sequence, builds .run
-# trigger files from USGS phase data, then runs bEPIC with each of the five
-# time-independent spatial priors linearly blended with a time-evolving ETAS
-# prior:
+# Runs bEPIC with each of the five time-independent spatial priors linearly
+# blended with a time-evolving ETAS prior:
 #
 #   combined = ALPHA * etas_prior + (1 - ALPHA) * ti_prior
 #
@@ -15,7 +13,8 @@
 #
 # Prerequisites
 # -------------
-#   time_independent_scripts/build_priors.py  — builds .tt3 cache files
+#   preparation_scripts/case_study_preparation.py  — download catalog + .run files
+#   preparation_scripts/build_priors.py            — build .tt3 prior cache
 #   time_dependent_scripts/build_initial_prior.py  — ETAS parameter inversion
 #
 # Usage
@@ -92,7 +91,7 @@ CASE_STUDIES = {
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'ElMayor'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -139,37 +138,19 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 # Control flags
 # ---------------------------------------------------------------------------
 
-DOWNLOAD_CATALOG   = False  # re-download even if cached
-BUILD_RUN_FILES    = False  # build / rebuild .run files from USGS phases
-RUN_MIXED          = True   # run the blended prior benchmark
-SKIP_RUN           = False  # skip all bEPIC calls; go straight to figures
-DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
+RUN_MIXED        = True   # run the blended prior benchmark
+SKIP_RUN         = False  # skip all bEPIC calls; go straight to figures
+DEBUG_PLOT_PRIOR = False  # plot ETAS lambda grid before each event
 
 #%%
 # ---------------------------------------------------------------------------
-# 1. Download (or load cached) catalog
+# Load catalog from cache (preparation_scripts/case_study_preparation.py must
+# have been run first)
 # ---------------------------------------------------------------------------
 
-catalog_df = download_case_study_catalog(
-    cs,
-    cache_dir  = CS_DATA_DIR,
-    REDOWNLOAD = DOWNLOAD_CATALOG,
-)
+catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
 print(f"{len(catalog_df)} events in {cs['name']} catalog.")
 print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
-
-#%%
-# ---------------------------------------------------------------------------
-# 2. Build .run files
-# ---------------------------------------------------------------------------
-
-if BUILD_RUN_FILES:
-    build_run_files_for_case_study(
-        catalog_df    = catalog_df,
-        run_dir       = CS_RUN_DIR,
-        max_dist_deg  = 5.0,
-        skip_existing = not DOWNLOAD_CATALOG,
-    )
 
 #%%
 # ---------------------------------------------------------------------------

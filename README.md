@@ -95,17 +95,19 @@ seismic_benchmark/
 │   └── case_study_preparation.py       # Download USGS catalogs + build .run files for all case studies
 ├── time_independent_scripts/           # Static prior workflow
 │   ├── run_benchmarks.py               # Main workflow: load priors → run bEPIC → plot
-│   ├── case_studies.py                 # Case-study runner (preparation_scripts must run first)
-│   ├── examine_catalog.py              # Catalog QC: maps, magnitude-time, USGS verification
-│   └── test_ss_prior.py                # Small diagnostic for the smooth_seismicity prior
+│   └── case_studies.py                 # Case-study runner (preparation_scripts must run first)
 ├── time_dependent_scripts/             # Dynamic ETAS prior workflow
 │   ├── build_initial_prior.py          # ETAS parameter inversion — run once to regenerate parameters_benchmark.json
 │   ├── run_benchmarks.py               # Main workflow with time-evolving ETAS prior
-│   ├── case_studies.py                 # Case-study workflow with dynamic ETAS prior
-│   └── examine_catalog.py              # Catalog QC (same as time-independent version)
+│   └── case_studies.py                 # Case-study workflow with dynamic ETAS prior
 ├── mixed_prior_scripts/                # Mixed (TI + ETAS) prior workflow
 │   ├── run_benchmarks.py               # Main workflow: five TI × ETAS blended priors, serial event loop
 │   └── case_studies.py                 # Case-study workflow with blended priors
+├── tests/                              # pytest unit tests (run with `pytest`)
+│   ├── test_metrics.py                 # metrics.py — haversine, HDR levels, credible levels, coverage
+│   ├── test_config.py                  # config.py — structure and value sanity checks
+│   ├── test_runner.py                  # runner.py — DataFrame assembly, column normalisation, init
+│   └── test_priors.py                  # priors.py — build_and_cache_priors error handling
 ├── data/                               # Input data — not committed to git
 │   ├── run_files/                      # Per-event trigger sequences (*.run) for the standard benchmark
 │   ├── etas_inversion/                 # ETAS inversion outputs
@@ -202,7 +204,7 @@ Results appear in `results/output/max_trigs_{N}/` and figures in `results/figure
 
 #### Case studies (`time_independent_scripts/case_studies.py`)
 
-Runs bEPIC over a predefined aftershock sequence. **Requires `preparation_scripts/case_study_preparation.py` to have been run first** to download the catalog and build `.run` trigger files.
+Runs bEPIC over a predefined aftershock sequence. **Requires `preparation_scripts/case_study_preparation.py` to have been run first** — catalog download and `.run` file construction are handled entirely there.
 
 Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
 
@@ -211,6 +213,13 @@ Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
 | `Ridgecrest` | Ridgecrest 2019 aftershock sequence |
 | `Ferndale` | Ferndale 2022 sequence |
 | `ElMayor` | El Mayor-Cucapah 2010 aftershock sequence |
+
+Two boolean flags control the run:
+
+```python
+RUN_ALL_PRIORS = True   # run all static priors in parallel
+SKIP_RUN       = False  # load existing CSVs instead of running bEPIC
+```
 
 Results appear in `results/case_studies/{name}/output/` and figures in `results/case_studies/{name}/figures/`.
 
@@ -301,15 +310,14 @@ Set `ACTIVE_CASE_STUDY` to one of the same three sequences (`Ridgecrest`, `Fernd
 
 ---
 
-### Catalog examination
+### Running the unit tests
 
 ```bash
-python time_independent_scripts/examine_catalog.py
-# or
-python time_dependent_scripts/examine_catalog.py
+cd seismic_benchmark
+pytest
 ```
 
-Produces maps and a USGS online verification report for the standard test catalog. Outputs are saved to `data/reference/`.
+66 tests covering the pure-math and structural logic in the `benchmark` package — no network access or data files required. Requires `bEPIC` and `priors` to be installed.
 
 ---
 
@@ -350,6 +358,7 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 
 ## Known limitations / work in progress
 
+- Waveform processing is not currently used and will be implemented in the near future for magnitude calculation.
 - Magnitude Calculation on a per station basis by will be implemented in the future. This will entail measuring peak displacement from .mseed files and calculating magnitude on a per-station basis. This calcluation will happen AFTER event location (not part of a simultaneous inversion).
 - The `REFERENCE` workflow (high-resolution reference locations) is currently disabled.
 - The benchmark_runner API may change without notice in future iterations as needed to accomplish research goals.
