@@ -363,5 +363,5 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 - The `REFERENCE` workflow (high-resolution reference locations) is currently disabled.
 - The benchmark_runner API may change without notice in future iterations as needed to accomplish research goals.
 - Streamlining of dependencies, and how they interact with this repository, will be done at some unknown point in the future.
-- There is no formal test suite; validation is done by visual inspection of output figures.
+- There is a minimal formal test suite - basic mathematics and functionality are tested within tests/
 - Interfacing with other repositories for further benchmarking, inclusion of AI/ML models, and evaluation in real-time is expected in the future.

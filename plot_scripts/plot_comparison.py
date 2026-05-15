@@ -23,7 +23,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from benchmark import config
-from benchmark.metrics import COVERAGE_RADII_KM
+from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats
 
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
@@ -81,24 +81,8 @@ def load_per_version_stats(csv_path, metric, min_events=5):
     """
     Load a benchmark CSV and return per-trigger-count aggregate statistics.
 
-    Parameters
-    ----------
-    csv_path : str
-    metric : str
-        Column to aggregate (e.g. 'usgs_credible_level', 'map_err_km').
-    min_events : int
-        Drop trigger counts represented by fewer than this many events.
-
-    Returns
-    -------
-    DataFrame with columns [n_trigs, median, q10, q90, count], or None if
-    the file is missing or the metric column is entirely NaN.
-
-    Notes
-    -----
-    version is 0-indexed in the CSV (version 0 = first trigger to arrive),
-    so n_trigs = version + 1.  If existing CSVs only have metrics on the
-    final row (old format), only that single point will appear on the plot.
+    Returns a DataFrame with columns [n_trigs, median, q5, q95, count],
+    or None if the file is missing or the metric column is absent / all-NaN.
     """
     if not os.path.exists(csv_path):
         return None
@@ -108,19 +92,19 @@ def load_per_version_stats(csv_path, metric, min_events=5):
 
     df = df.dropna(subset=[metric]).copy()
     if 'n_trigs' not in df.columns:
-        # fallback for CSVs generated before n_trigs was added to the runner
         df['n_trigs'] = (df.groupby('event_id')['version']
                            .rank(method='dense')
                            .astype(int))
 
     stats = (df.groupby('n_trigs')[metric]
                .agg(median='median',
-                    q10=lambda x: x.quantile(0.1),
-                    q90=lambda x: x.quantile(0.9),
+                    mean = 'mean',
+                    q1=lambda x: x.quantial(0.01),
                     q5=lambda x: x.quantile(0.05),
                     q95=lambda x: x.quantile(0.95),
-                    min='min',
-                    max='max',
+                    q99=lambda x: x.quantile(0.99),
+                    min = 'min',
+                    max = 'max',
                     count='count')
                .reset_index())
     return stats[stats['count'] >= min_events]

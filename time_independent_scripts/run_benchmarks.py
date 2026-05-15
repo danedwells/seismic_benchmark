@@ -72,7 +72,6 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark
 # --- Control flags ---
 REFERENCE       = False   # run high-resolution reference locations
 RUN_ALL_PRIORS  = True  # run all six priors in parallel
-SKIP_RUN        = False
 
 # ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
@@ -91,7 +90,7 @@ job_args = [
         'catalog_path':              catalog_path,
         'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
         'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':                 MAX_TRIGS,
+        'max_trigs':                 config.BENCHMARK_PARAMS['max_trigs'],
         'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
         'station_inventory': None,
@@ -101,24 +100,6 @@ job_args = [
 
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
-else:
-    if SKIP_RUN == False:
-        benchmark_runner.run_prior({
-            'prior_name':                'Uniform',
-            'cache_path':                None,
-            'nshm_path':                 cache_paths['NSHM'],
-            'run_dir':                   RUN_DIR,
-            'output_dir':                OUTPUT_DIR,
-            'catalog_path':              catalog_path,
-            'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-            'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-            'max_trigs':                 MAX_TRIGS,
-            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-            'station_inventory': None,
-        })
-
-
 
 stations_df = get_unique_stations(RUN_DIR)
 

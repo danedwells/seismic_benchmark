@@ -66,7 +66,7 @@ PRIOR_FILENAMES = {
 # grid_size     — (nx, ny) or scalar; number of grid points per axis.
 # bw_method     — bandwidth selector passed to scipy.stats.gaussian_kde.
 # min_mag       — optional magnitude filter applied before fitting the KDE.
-# NOTE NEED INFO FROM AMY TO REPRODUCE
+
 KDE_SEISMICITY_PARAMS = {
     'catalog_path':   None,   # filled in at build time from the benchmark data dir
     'lon_col':        'longitude',
@@ -110,9 +110,13 @@ KDE_START_DATE = '1990-01-01'
 
 ETAS_INVERSION_CONFIG = {
     # -- Catalog time windows --
-    'auxiliary_start':  '1971-01-01 00:00:00', # These are default values for the example catalog
+    # auxiliary_start and timewindow_start are fixed across all contexts.
+    # timewindow_end is overridden per context in build_initial_prior.py
+    # (set to the cutoff date for each sequence).
+    # id is also overridden per context (e.g. 'benchmark', 'Ridgecrest', …).
+    'auxiliary_start':  '1971-01-01 00:00:00',
     'timewindow_start': '1981-01-01 00:00:00',
-    'timewindow_end':   '2007-01-01 00:00:00',
+    'timewindow_end':   None,   # set per-context in build_initial_prior.py
 
     # -- Magnitude completeness --
     'mc':      3.0, # default value
@@ -167,4 +171,47 @@ BENCHMARK_PARAMS = {
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
     'migrate_grid_min_triggers': 4,     # suppress migration until this many triggers have reported
     'activity_mask_threshold':   0.30,  # paper default; pass station_inventory=None to disable mask
+}
+
+# ---------------------------------------------------------------------------
+# Case study definitions — single authoritative source
+# ---------------------------------------------------------------------------
+# Shared by preparation_scripts/case_study_preparation.py and all case_studies.py
+# workflow scripts.  Add new sequences here; they become available everywhere.
+CASE_STUDIES = {
+    'Ridgecrest': {
+        'name':      'Ridgecrest 2019',
+        'starttime': '2019-07-04T17:00:00',
+        'endtime':   '2019-08-07T00:00:00',
+        'bounds':    (-118.5, -116.5, 35.0, 36.5),
+        'min_mag':   3.0,
+    },
+    'Ferndale': {
+        'name':      'Ferndale 2022',
+        'starttime': '2022-12-20T10:00:00',
+        'endtime':   '2023-01-20T00:00:00',
+        'bounds':    (-127.0, -122.5, 39, 41.0),
+        'min_mag':   3.0,
+    },
+    'ElMayor': {
+        'name':      'El Mayor-Cucapah 2010',
+        'starttime': '2010-04-04T22:00:00',
+        'endtime':   '2010-05-04T00:00:00',
+        'bounds':    (-117.0, -114.5, 31.5, 33.5),
+        'min_mag':   3.0,
+    },
+}
+
+# Representative aftershocks used for single-event posterior / trajectory figures.
+# Set _MS_ = True in any case_studies.py to use FOCUS_EVENTS_MAINSHOCK instead.
+FOCUS_EVENTS = {
+    'Ridgecrest': 'ci38548295',  # M 4.9 aftershock
+    'Ferndale':   'nc73831091',  # M 4.05 aftershock
+    'ElMayor':    'ci10148002',  # M 5.2 aftershock
+}
+
+FOCUS_EVENTS_MAINSHOCK = {
+    'Ridgecrest': 'ci38457511',  # M7.1 mainshock  2019-07-06
+    'Ferndale':   'nc73821036',  # M6.4 mainshock  2022-12-20
+    'ElMayor':    'ci14607652',  # M7.2 mainshock
 }

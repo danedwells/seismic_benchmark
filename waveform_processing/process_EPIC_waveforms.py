@@ -161,28 +161,44 @@ def bilinear(nsects,sn,sd):
     return(sn, sd)
 
 
+def _fdsn_client(network):
+    from obspy.clients.fdsn import Client
+    if   network == 'CI':           return Client("SCEDC")
+    elif network in ('BK', 'NC'):   return Client("NCEDC")
+    else:                           return Client("IRIS")
+
+
 def get_trace_t(network, station, location, channel, starttime, endtime):
-    from   obspy.clients.fdsn        import Client
-    from   obspy                     import UTCDateTime
-   
-    # client info
-    if    network =='CI':    client = Client("SCEDC")
-    elif  network =='BK':    client = Client("NCEDC")
-    elif  network =='NC':    client = Client("NCEDC")
-    else:                    client = Client("IRIS")
-    
-    # attempt to get stream
-    st = client.get_waveforms(network , station, location, channel, starttime, endtime)
-    
-    tr = st[0]
-    
-   
-    return(tr)
+    client = _fdsn_client(network)
+    st = client.get_waveforms(network, station, location, channel, starttime, endtime)
+    return st[0]
+
+
+def get_trace_with_metadata(network, station, location, channel, starttime, endtime):
+    """
+    Fetch waveform, gain (cm units), and station coordinates in one call.
+
+    Returns
+    -------
+    tr       : obspy Trace
+    gain_cm  : float  — instrument sensitivity in DU/(cm/s) or DU/(cm/s²)
+    sta_lat  : float
+    sta_lon  : float
+    """
+    client = _fdsn_client(network)
+    st  = client.get_waveforms(network, station, location, channel, starttime, endtime)
+    inv = client.get_stations(network=network, station=station,
+                              location=location, channel=channel,
+                              starttime=starttime, endtime=endtime,
+                              level='response')
+    tr  = st[0]
+    ch  = inv[0][0][0]
+    gain_cm = ch.response.instrument_sensitivity.value / 100  # DU/m → DU/cm
+    return tr, gain_cm, ch.latitude, ch.longitude
 
 def ToGroundTSPMoudle_EPIC(tr,gain):
     import numpy as np
     from datetime import datetime
-    import EPIC_python_utils
     
     '''
     Last updated: April 7 2025
@@ -275,26 +291,92 @@ def ToGroundTSPMoudle_EPIC(tr,gain):
     if(waveform_type == 'acceleration'): 
         #// 2-pole filter raw -> acc
         
-        data_a = EPIC_python_utils.applyFilter(riir, data_a, nsamps)
+        data_a = applyFilter(riir, data_a, nsamps)
         
         #// integration acc -> vel 
-        data_v, var_vuf0=EPIC_python_utils.mathfun_integrate(data_a,data_v,nsamps,var_a0, var_vuf0,dt2)
+        data_v, var_vuf0=mathfun_integrate(data_a,data_v,nsamps,var_a0, var_vuf0,dt2)
 
     else:
         #// differentiate vel -> acc
-        data_a, var_z0 = EPIC_python_utils.mathfun_differentiate(data_v,data_a,nsamps,var_z0,delta_t)
-        data_a = EPIC_python_utils.applyFilter(riir, data_a, nsamps)
+        data_a, var_z0 = mathfun_differentiate(data_v,data_a,nsamps,var_z0,delta_t)
+        data_a = applyFilter(riir, data_a, nsamps)
     
     var_a0 = data_a[nsamps-1];
-    data_v = EPIC_python_utils.applyFilter(riir, data_v, nsamps)
+    data_v = applyFilter(riir, data_v, nsamps)
 
     #// integrate vel -> disp
-    data_d, var_duf0=EPIC_python_utils.mathfun_integrate(data_v,data_d,nsamps,var_v0, var_duf0,dt2)
+    data_d, var_duf0=mathfun_integrate(data_v,data_d,nsamps,var_v0, var_duf0,dt2)
 
     #// 2-pole filter disp
-    data_d = EPIC_python_utils.applyFilter(riir, data_d, nsamps)
+    data_d = applyFilter(riir, data_d, nsamps)
     
     return(data_a,data_v,data_d)
 
 
+def get_station_latlon(network, station, location, channel, time):
+    """Fetch station latitude and longitude from FDSN at a given time."""
+    from obspy.clients.fdsn import Client
+    from obspy import UTCDateTime
 
+    if   network == 'CI':             client = Client("SCEDC")
+    elif network in ('BK', 'NC'):     client = Client("NCEDC")
+    else:                             client = Client("IRIS")
+
+    t = UTCDateTime(time)
+    inv = client.get_stations(network=network, station=station,
+                              location=location, channel=channel,
+                              starttime=t, endtime=t + 86400,
+                              level='channel')
+    cha = inv[0][0][0]
+    return cha.latitude, cha.longitude
+
+
+def hypocentral_dist_km(event_lat, event_lon, event_depth_km,
+                        station_lat, station_lon):
+    """Hypocentral distance in km."""
+    from obspy.geodetics import gps2dist_azimuth
+    epi_m, _, _ = gps2dist_azimuth(event_lat, event_lon, station_lat, station_lon)
+    return np.sqrt((epi_m / 1000.0) ** 2 + event_depth_km ** 2)
+
+
+def pd_magnitude(data_d, sampling_rate, trigger_sample, dist_km,
+                 window_s=4.0, coeffs=None):
+    """
+    Single-station Pd magnitude from peak displacement in a window after P arrival.
+
+    Relation (bEPIC paper):  M = c1*log10(Pd_cm) + c2*log10(R_km) + c3
+
+    Default coefficients: Williamson et al., 2023
+
+    The filter edge effect corrupts the first ~50 s of data_d (at 100 sps).
+    Ensure trigger_sample is well past that region (fetch at least 3 min before
+    the trigger, as shown in example_get_EPIC_waveform.py).
+
+    Parameters
+    ----------
+    data_d        : displacement array in cm (output of ToGroundTSPMoudle_EPIC)
+    sampling_rate : samples per second
+    trigger_sample: sample index of P-wave arrival
+    dist_km       : hypocentral distance in km (from hypocentral_dist_km)
+    window_s      : seconds after trigger to search for peak (default 4.0)
+    coeffs        : dict with keys c1, c2, c3 — override default scaling relation
+
+    Returns
+    -------
+    M : float, or np.nan if the window is empty or contains only NaNs
+    """
+    if coeffs is None:
+        coeffs = dict(c1=1.23, c2=1.39, c3=5.39)
+
+    end_sample = int(trigger_sample + window_s * sampling_rate)
+    window = data_d[trigger_sample:end_sample]
+
+    if len(window) == 0 or np.all(np.isnan(window)):
+        return np.nan
+
+    Pd = np.nanmax(np.abs(window))
+    if Pd <= 0:
+        return np.nan
+
+    c1, c2, c3 = coeffs['c1'], coeffs['c2'], coeffs['c3']
+    return c1 * np.log10(Pd) + c2 * np.log10(dist_km) + c3

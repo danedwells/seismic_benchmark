@@ -67,7 +67,8 @@ SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background
 RUN_DIR            = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
                                    f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input', 'downloaded_catalog.csv')
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+                                   f'catalog_{config.ETAS_INVERSION_CONFIG["id"]}.csv')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)

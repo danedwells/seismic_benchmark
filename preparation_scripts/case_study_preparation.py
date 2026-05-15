@@ -14,36 +14,12 @@
 # =============================================================================
 
 import os
+from benchmark import config
 from benchmark.usgs import download_case_study_catalog, build_run_files_for_case_study
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ---------------------------------------------------------------------------
-# Case study definitions — single authoritative source shared by all workflows
-# ---------------------------------------------------------------------------
-CASE_STUDIES = {
-    'Ridgecrest': {
-        'name':      'Ridgecrest 2019',
-        'starttime': '2019-07-04T17:00:00',
-        'endtime':   '2019-08-07T00:00:00',
-        'bounds':    (-118.5, -116.5, 35.0, 36.5),
-        'min_mag':   3.0,
-    },
-    'Ferndale': {
-        'name':      'Ferndale 2022',
-        'starttime': '2022-12-20T10:00:00',
-        'endtime':   '2023-01-20T00:00:00',
-        'bounds':    (-127.0, -122.5, 39, 41.0),
-        'min_mag':   3.0,
-    },
-    'ElMayor': {
-        'name':      'El Mayor-Cucapah 2010',
-        'starttime': '2010-04-04T22:00:00',
-        'endtime':   '2010-05-04T00:00:00',
-        'bounds':    (-117.0, -114.5, 31.5, 33.5),
-        'min_mag':   3.0,
-    },
-}
+CASE_STUDIES = config.CASE_STUDIES  # defined in benchmark/config.py
 
 # ---------------------------------------------------------------------------
 # Control flags

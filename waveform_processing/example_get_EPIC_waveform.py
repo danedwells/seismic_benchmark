@@ -1,5 +1,5 @@
 
-
+#%%
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -18,24 +18,21 @@ from   obspy.clients.fdsn        import Client
 
 import process_EPIC_waveforms
 
-network = 'CI'
-name    = 'SGL'
-channel = 'HNZ'
-location = '--'
-gain = 214168.50006901292 / 100 # because I have to convert from m to cm
+network      = 'CI'
+name         = 'SGL'
+channel      = 'HNZ'
+location     = '--'
 trigger_time = '2020-08-28T11:26:05.558'
-
-# getting gain: https://ds.iris.edu/mda/CI/SGL/
 
 # -------------------------------------------------------------------------- #
 
-starttime = UTCDateTime(trigger_time)  - 180
-endtime   = UTCDateTime(trigger_time)  + 60
+starttime = UTCDateTime(trigger_time) - 180
+endtime   = UTCDateTime(trigger_time) + 60
 
-# get the trace via obspy
-tr = process_EPIC_waveforms.get_trace_t(network, name, location, channel, starttime, endtime)
+tr, gain_cm, sta_lat, sta_lon = process_EPIC_waveforms.get_trace_with_metadata(
+    network, name, location, channel, starttime, endtime)
 
-(data_a,data_v,data_d) = process_EPIC_waveforms.ToGroundTSPMoudle_EPIC(tr,gain)
+(data_a, data_v, data_d) = process_EPIC_waveforms.ToGroundTSPMoudle_EPIC(tr, gain_cm)
 
 
 
@@ -49,7 +46,7 @@ data_v[0:5000]=np.nan
 data_d[0:5000]=np.nan
 
 
-
+#%%
 fig,ax = plt.subplots(figsize=(10,4))
 
 ax.plot(tr.times('matplotlib'),data_d,c='k')
@@ -62,3 +59,27 @@ ax.set_xlim([mdates.date2num(UTCDateTime(trigger_time)-5), mdates.date2num(UTCDa
 
 
 
+# -------------------------------------------------------------------------- #
+#  Pd magnitude example
+#  Event: M 4.6  2020-08-28  Fontana, CA
+#  USGS hypocenter used for distance calculation
+# -------------------------------------------------------------------------- #
+
+event_lat   =  34.066
+event_lon   = -117.504
+event_depth =  10.0    # km
+
+R_km = process_EPIC_waveforms.hypocentral_dist_km(
+    event_lat, event_lon, event_depth, sta_lat, sta_lon)
+
+# sample index of P arrival in the trace
+trigger_sample = int((UTCDateTime(trigger_time) - starttime) * tr.stats.sampling_rate)
+
+coeffs = dict(c1=1.23, c2=1.39, c3=5.39)
+M_pd = process_EPIC_waveforms.pd_magnitude(
+    data_d, tr.stats.sampling_rate, trigger_sample, R_km,
+    window_s=4.0, coeffs = coeffs)
+
+print(f'Station {name}  R={R_km:.1f} km  Pd-magnitude={M_pd:.2f}')
+
+#%%

@@ -49,32 +49,9 @@ print(PROJECT_ROOT)
 SEIS_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
 # ---------------------------------------------------------------------------
-# Case study definitions
+# Case study definitions — loaded from benchmark/config.py
 # ---------------------------------------------------------------------------
-CASE_STUDIES = {
-    'Ridgecrest': {
-        'name':      'Ridgecrest 2019',
-        'starttime': '2019-07-04T17:00:00',
-        'endtime':   '2019-08-07T00:00:00',
-        'bounds':    (-118.5, -116.5, 35.0, 36.5),
-        'min_mag':   3.0,
-    },
-    'Ferndale': {
-        'name':      'Ferndale 2022',
-        'starttime': '2022-12-20T10:00:00',
-        'endtime':   '2023-01-20T00:00:00',
-        'bounds':    (-127.0, -122.5, 39, 41.0),
-        'min_mag':   3.0,
-    },
-    
-    'ElMayor': {
-        'name':      'El Mayor-Cucapah 2010',
-        'starttime': '2010-04-04T22:00:00',
-        'endtime':   '2010-05-04T00:00:00',
-        'bounds':    (-117.0, -114.5, 31.5, 33.5),
-        'min_mag':   3.0,
-    },
-}
+CASE_STUDIES = config.CASE_STUDIES
 
 # --- Select active case study ---
 ACTIVE_CASE_STUDY = 'ElMayor'
@@ -100,7 +77,6 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_
 
 # --- Control flags ---
 RUN_ALL_PRIORS = True   # run all static priors in parallel
-SKIP_RUN       = False  # skip bEPIC calls and load existing CSVs instead
 
 # ---------------------------------------------------------------------------
 # Load catalog from cache (preparation_scripts/case_study_preparation.py must
@@ -146,22 +122,7 @@ job_args = [
 
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
-else:
-    if SKIP_RUN == False:
-    # Run the single prior from config
-        benchmark_runner.run_prior({
-            'prior_name': config.BENCHMARK_PARAMS['prior'],
-            'cache_path': cache_paths[config.BENCHMARK_PARAMS['prior']],
-            'nshm_path':  cache_paths['NSHM'],
-            'run_dir':    CS_RUN_DIR,
-            'output_dir': CS_OUTPUT_DIR,
-            'grid_size':  config.BENCHMARK_PARAMS['grid_size'],
-            'grid_km':    config.BENCHMARK_PARAMS['grid_km'],
-            'max_trigs':  MAX_TRIGS,
-            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-            'station_inventory': None,
-        })
+
 
 #%%
 # ---------------------------------------------------------------------------
@@ -314,26 +275,12 @@ plt.show()
 #                          FOCUS_EVENT_ID manually after this cell.
 # FOCUS_VERSION  : int or None — trigger version to plot; None = last available.
 #
-# To add or change representative events, edit FOCUS_EVENTS below.
+# To add or change representative events, edit config.FOCUS_EVENTS in benchmark/config.py.
 # Use examine_catalog.py (case-study section) to browse the catalog and pick IDs.
 # =============================================================================
 
-FOCUS_EVENTS = {
-    'Ridgecrest': 'ci38548295',  # M 4.9 aftershock 
-    'Ferndale':   'nc73831091',  # M 4.05 aftershock
-    'ElMayor':    'ci10148002',  # M 5.2 aftershock
-}
-
-# Mainshocks
-_MS_ = False
-if _MS_ == True:
-    FOCUS_EVENTS = {
-        'Ridgecrest': 'ci38457511',   # M7.1 mainshock  2019-07-06
-        'Ferndale':   'nc73821036',   # M6.4 mainshock  2022-12-20
-        'ElMayor':    'ci14607652',   # M7.2 mainshock
-    }
-
-FOCUS_EVENT_ID = FOCUS_EVENTS[ACTIVE_CASE_STUDY]
+_MS_ = False  # set True to use mainshock events instead of representative aftershocks
+FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
 FOCUS_VERSION  = None
 
 focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')

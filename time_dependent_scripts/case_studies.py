@@ -61,40 +61,20 @@ cache_paths = {
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(PROJECT_ROOT)
-SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
-                                f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input','example_catalog.csv')
 
 # ---------------------------------------------------------------------------
-# Case study definitions
+# Case study definitions — loaded from benchmark/config.py
 # ---------------------------------------------------------------------------
-CASE_STUDIES = {
-    'Ridgecrest': {
-        'name':      'Ridgecrest 2019',
-        'starttime': '2019-07-04T17:00:00',
-        'endtime':   '2019-08-07T00:00:00',
-        'bounds':    (-118.5, -116.5, 35.0, 36.5),
-        'min_mag':   3.0,
-    },
-    'Ferndale': {
-        'name':      'Ferndale 2022',
-        'starttime': '2022-12-20T10:00:00',
-        'endtime':   '2023-01-20T00:00:00',
-        'bounds':    (-127.0, -122.5, 39, 41.0),
-        'min_mag':   3.0,
-    },
-    'ElMayor': {
-        'name':      'El Mayor-Cucapah 2010',
-        'starttime': '2010-04-04T22:00:00',
-        'endtime':   '2010-05-04T00:00:00',
-        'bounds':    (-117.0, -114.5, 31.5, 33.5),
-        'min_mag':   3.0,
-    },
-}
+CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
 ACTIVE_CASE_STUDY = 'Ferndale'
+
+SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+                                f'parameters_{ACTIVE_CASE_STUDY}.json')
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+                                  f'catalog_{ACTIVE_CASE_STUDY}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -106,19 +86,8 @@ ETAS_UPDATE_INTERVAL_S = 0
 # Focus event for single-event posterior grid / trajectory figures.
 # The prior used for this event is saved to disk during the run so it can be
 # visualised even though every event has a different prior.
-_MS_ = False
-FOCUS_EVENTS = {
-    'Ridgecrest': 'ci38548295',   # M 4.9 aftershock
-    'Ferndale':   'nc73831091',   # M 4.05 aftershock
-    'ElMayor':    'ci10148002',   # M 5.2 aftershock
-}
-if _MS_: # Mainshocks
-    FOCUS_EVENTS = {
-        'Ridgecrest': 'ci38457511',
-        'Ferndale':   'nc73821036',
-        'ElMayor':    'ci14607652',
-    }
-FOCUS_EVENT_ID = FOCUS_EVENTS[ACTIVE_CASE_STUDY]
+_MS_ = False  # set True to use mainshock events instead of representative aftershocks
+FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
 FOCUS_VERSION  = None
 
 # Per-case-study directories
@@ -142,7 +111,6 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run all time-dependent priors (serial, event-by-event)
-SKIP_RUN           = False  # skip all bEPIC calls; go straight to figures
 DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
@@ -170,7 +138,7 @@ print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 #
 # Output: {prior}_benchmark_results.csv — same format as static priors.
 
-if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
+if RUN_DYNAMIC_PRIORS:
 
     # ── ETAS dynamic ──────────────────────────────────────────────────────────
 

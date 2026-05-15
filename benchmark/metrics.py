@@ -6,7 +6,41 @@ These functions operate on the out_df grid returned by E2Location_locate
 """
 import numpy as np
 from obspy.geodetics import gps2dist_azimuth
+import pandas as pd
+import os
+from scipy.stats import kstest
 
+def load_per_version_stats(csv_path, metric, min_events=5):
+    """
+    Load a benchmark CSV and return per-trigger-count aggregate statistics.
+
+    Returns a DataFrame with columns [n_trigs, median, q5, q95, count],
+    or None if the file is missing or the metric column is absent / all-NaN.
+    """
+    if not os.path.exists(csv_path):
+        return None
+    df = pd.read_csv(csv_path)
+    if metric not in df.columns or df[metric].isna().all():
+        return None
+
+    df = df.dropna(subset=[metric]).copy()
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                           .rank(method='dense')
+                           .astype(int))
+
+    stats = (df.groupby('n_trigs')[metric]
+               .agg(median='median',
+                    mean = 'mean',
+                    q1=lambda x: x.quantial(0.01),
+                    q5=lambda x: x.quantile(0.05),
+                    q95=lambda x: x.quantile(0.95),
+                    q99=lambda x: x.quantile(0.99),
+                    min = 'min',
+                    max = 'max',
+                    count='count')
+               .reset_index())
+    return stats[stats['count'] >= min_events]
 
 def hdr_levels(post_flat, credible_levels=(0.1, 0.50, 0.67, 0.90, 0.95)):
     p = post_flat / post_flat.sum()
@@ -109,3 +143,77 @@ def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=COVERAGE_RADII_KM):
     radii_km = (radii_km,) if scalar else radii_km
     result = {r: float(post[dists_km <= r].sum()) for r in radii_km}
     return result[radii_km[0]] if scalar else result
+
+
+def _nearest_cell_index(out_df, ref_lat, ref_lon):
+    """Index of the grid cell nearest to ref_lat/ref_lon (cosine-corrected)."""
+    dlat = out_df['lat'].values - ref_lat
+    dlon = (out_df['lon'].values - ref_lon) * np.cos(np.radians(ref_lat))
+    return int(np.argmin(np.hypot(dlat, dlon)))
+
+
+def log_score(out_df, ref_lat, ref_lon):
+    """
+    Log-score: log of the normalized posterior probability at the reference location.
+
+    Finds the grid cell nearest ref_lat/ref_lon and returns log(P_true), where
+    P_true is that cell's share of the total posterior mass.
+
+    Higher (less negative) is better. A posterior with all mass at the true cell
+    returns 0.0. Values are bounded below by log(1/G) for a G-cell uniform grid.
+
+    Note: comparisons are only meaningful across grids of the same resolution.
+    """
+    p = out_df['post'].values
+    p_norm = p / p.sum()
+    idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
+    p_true = float(p_norm[idx])
+    return float(np.log(max(p_true, 1e-300)))
+
+
+def brier_score(out_df, ref_lat, ref_lon):
+    """
+    Spatial Brier score: MSE of the normalized posterior against a point-mass at ref.
+
+    Treats the grid cell nearest ref_lat/ref_lon as the single true outcome
+    (O_j = 1) and all other cells as negative outcomes (O_j = 0).
+
+        BS = Σ_j (P_j − O_j)²  =  Σ_j P_j²  −  2·P_true  +  1
+
+    Lower is better. A posterior with all mass at the true cell gives 0.0;
+    a posterior with all mass on the wrong cell gives 2.0.
+
+    Note: like the log-score, this is grid-resolution dependent — only compare
+    across events or priors evaluated on the same grid.
+    """
+    p = out_df['post'].values
+    p_norm = p / p.sum()
+    idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
+    p_true = float(p_norm[idx])
+    return float(np.sum(p_norm ** 2) - 2.0 * p_true + 1.0)
+
+
+def ks_calibration(credible_levels):
+    """
+    KS statistic testing whether a vector of credible levels is Uniform[0, 1].
+
+    For a perfectly calibrated posterior, usgs_credible_level values are
+    i.i.d. Uniform[0, 1] across events. This function quantifies the departure
+    from that ideal using the two-sided Kolmogorov-Smirnov test.
+
+    Parameters
+    ----------
+    credible_levels : array-like
+        Per-event usgs_credible_level values, each in [0, 1].
+
+    Returns
+    -------
+    statistic : float
+        KS distance from the empirical CDF to Uniform[0, 1]. Lower = better
+        calibration; 0 is perfect.
+    p_value : float
+        Two-sided p-value. Small values indicate significant miscalibration.
+    """
+    vals = np.asarray(credible_levels, dtype=float)
+    stat, pval = kstest(vals, 'uniform')
+    return float(stat), float(pval)

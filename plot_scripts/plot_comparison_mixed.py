@@ -29,13 +29,12 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from benchmark import config
-from benchmark.metrics import COVERAGE_RADII_KM
-
+from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
 
-ACTIVE_CASE_STUDY  = "Ferndale" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
+ACTIVE_CASE_STUDY  = "ElMayor" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
 INCLUDE_BASELINES  = True   # overlay pure TI (dotted) and ETAS (dashed) for context
 ALPHA              = 0.5    # blend weight used when running mixed_prior_scripts/
 ALPHA_TAG          = f'alpha_{ALPHA:.2f}'
@@ -122,34 +121,6 @@ if INCLUDE_BASELINES:
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
-
-def load_per_version_stats(csv_path, metric, min_events=5):
-    """
-    Load a benchmark CSV and return per-trigger-count aggregate statistics.
-
-    Returns a DataFrame with columns [n_trigs, median, q5, q95, count],
-    or None if the file is missing or the metric column is absent / all-NaN.
-    """
-    if not os.path.exists(csv_path):
-        return None
-    df = pd.read_csv(csv_path)
-    if metric not in df.columns or df[metric].isna().all():
-        return None
-
-    df = df.dropna(subset=[metric]).copy()
-    if 'n_trigs' not in df.columns:
-        df['n_trigs'] = (df.groupby('event_id')['version']
-                           .rank(method='dense')
-                           .astype(int))
-
-    stats = (df.groupby('n_trigs')[metric]
-               .agg(median='median',
-                    q5=lambda x: x.quantile(0.05),
-                    q95=lambda x: x.quantile(0.95),
-                    count='count')
-               .reset_index())
-    return stats[stats['count'] >= min_events]
-
 
 def _group_color(group, i, colors):
     """Return a color for a spec, consistent within each group."""

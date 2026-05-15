@@ -31,8 +31,8 @@ SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background
 RUN_DIR            = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
                                    f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
-# This catalog is what was used for the ORIGINAL ETAS inersion
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input', 'downloaded_catalog.csv')
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+                                   f'catalog_{config.ETAS_INVERSION_CONFIG["id"]}.csv')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
@@ -66,7 +66,6 @@ _usgs_ref_lookup = (
 
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run time-dependent ETAS prior (serial, event-by-event)
-SKIP_RUN           = False
 DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # How often to re-evaluate the ETAS prior (in seconds of event time).
@@ -86,7 +85,7 @@ PRIOR_ALPHA = 0.5
 # hold mutable state (rolling catalog) that evolves through the sequence.
 # Events are sorted chronologically so ETAS updates remain causal.
 
-if RUN_DYNAMIC_PRIORS and not SKIP_RUN:
+if RUN_DYNAMIC_PRIORS:
 
     if not os.path.exists(INVERSION_JSON):
         raise FileNotFoundError(

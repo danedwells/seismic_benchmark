@@ -17,6 +17,9 @@ from benchmark.metrics import (
     _haversine_km,
     posterior_coverage,
     COVERAGE_RADII_KM,
+    log_score,
+    brier_score,
+    ks_calibration,
 )
 
 
@@ -236,3 +239,116 @@ def test_coverage_radii_constant_values():
 
 def test_coverage_radii_ascending():
     assert list(COVERAGE_RADII_KM) == sorted(COVERAGE_RADII_KM)
+
+
+# ---------------------------------------------------------------------------
+# log_score
+# ---------------------------------------------------------------------------
+
+def _single_cell_grid(lat=37.0, lon=-120.0, post=1.0):
+    return pd.DataFrame({'lat': [lat], 'lon': [lon], 'post': [post], 'prior': [1.0]})
+
+
+def test_log_score_all_mass_at_truth_is_zero():
+    """Posterior entirely at the true cell → log(1) = 0."""
+    df = _single_cell_grid()
+    assert log_score(df, 37.0, -120.0) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_log_score_nonpositive():
+    """log(P_true) ≤ 0 since P_true ≤ 1."""
+    assert log_score(_make_grid(), 37.0, -120.0) <= 0.0
+
+
+def test_log_score_higher_at_map_peak():
+    """Log-score is highest (least negative) when ref is at the MAP peak."""
+    df = _make_grid()
+    peak_idx = df['post'].idxmax()
+    score_at_peak = log_score(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
+    for idx in df.nsmallest(5, 'post').index:
+        score_other = log_score(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
+        assert score_at_peak >= score_other - 1e-9
+
+
+def test_log_score_floor_no_minus_inf():
+    """Returns a finite value even when the nearest cell has zero posterior mass."""
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -119.0],
+                       'post': [0.0, 1.0], 'prior': [0.5, 0.5]})
+    score = log_score(df, 37.0, -120.0)
+    assert np.isfinite(score)
+
+
+# ---------------------------------------------------------------------------
+# brier_score
+# ---------------------------------------------------------------------------
+
+def test_brier_score_all_mass_at_truth_is_zero():
+    """All posterior mass at the true cell → BS = 0."""
+    df = _single_cell_grid()
+    assert brier_score(df, 37.0, -120.0) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_brier_score_all_mass_wrong_cell():
+    """Two cells, all mass on the wrong cell → BS = 2·(1/2)² + (0−1)² wait, let me think...
+    P_j = [1, 0], O_j = [0, 1] (ref at second cell).
+    BS = (1−0)² + (0−1)² = 2.0
+    """
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -120.0],
+                       'post': [1.0, 0.0], 'prior': [0.5, 0.5]})
+    assert brier_score(df, 38.0, -120.0) == pytest.approx(2.0, abs=1e-9)
+
+
+def test_brier_score_in_range():
+    """BS ∈ [0, 2] for any normalized posterior."""
+    bs = brier_score(_make_grid(), 37.0, -120.0)
+    assert 0.0 <= bs <= 2.0 + 1e-9
+
+
+def test_brier_score_lower_at_map_peak():
+    """BS is minimized when ref is at the MAP peak."""
+    df = _make_grid()
+    peak_idx = df['post'].idxmax()
+    bs_at_peak = brier_score(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
+    for idx in df.nsmallest(5, 'post').index:
+        bs_other = brier_score(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
+        assert bs_at_peak <= bs_other + 1e-9
+
+
+def test_brier_score_uniform_two_cells():
+    """Uniform over two cells, ref at first: P=[0.5,0.5], O=[1,0].
+    BS = (0.5−1)² + (0.5−0)² = 0.25 + 0.25 = 0.5
+    """
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -120.0],
+                       'post': [1.0, 1.0], 'prior': [0.5, 0.5]})
+    assert brier_score(df, 37.0, -120.0) == pytest.approx(0.5, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# ks_calibration
+# ---------------------------------------------------------------------------
+
+def test_ks_calibration_uniform_gives_low_statistic():
+    """True U[0,1] samples should produce a small KS statistic."""
+    rng = np.random.default_rng(0)
+    samples = rng.uniform(0, 1, 500)
+    stat, _ = ks_calibration(samples)
+    assert stat < 0.1
+
+
+def test_ks_calibration_all_zeros_gives_high_statistic():
+    """Credible levels all at 0 (perfectly overconfident) → KS ≈ 1."""
+    stat, pval = ks_calibration(np.zeros(100))
+    assert stat > 0.9
+
+
+def test_ks_calibration_returns_floats():
+    stat, pval = ks_calibration([0.1, 0.3, 0.5, 0.7, 0.9])
+    assert isinstance(stat, float)
+    assert isinstance(pval, float)
+
+
+def test_ks_calibration_statistic_in_unit_interval():
+    rng = np.random.default_rng(1)
+    stat, pval = ks_calibration(rng.uniform(0, 1, 200))
+    assert 0.0 <= stat <= 1.0
+    assert 0.0 <= pval <= 1.0
