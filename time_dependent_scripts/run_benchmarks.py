@@ -325,15 +325,15 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
-# ── usgs_credible_level histograms ────────────────────────────────────────
+# ── posterior_confidence_level histograms ────────────────────────────────────────
 fig = plot_prior_histograms(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,
-    column      = 'usgs_credible_level',
+    column      = 'posterior_confidence_level',
     bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — usgs_credible_level distributions',
-    xlabel      = 'usgs_credible_level',
-    save_path   = os.path.join(FIGURES_DIR, 'usgs_credible_level_histograms.png'),
+    title       = 'bEPIC posterior calibration — posterior_confidence_level distributions',
+    xlabel      = 'posterior_confidence_level',
+    save_path   = os.path.join(FIGURES_DIR, 'posterior_confidence_level_histograms.png'),
     color       = 'steelblue',
 )
 plt.show()
@@ -346,11 +346,11 @@ fig = plot_coverage_panel(
     save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
 )
 
-# ── Calibration Q-Q: usgs_credible_level vs U(0,1) ────────────────────────
+# ── Calibration Q-Q: posterior_confidence_level vs U(0,1) ────────────────────────
 fig = plot_qq_calibration(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,
-    title       = 'bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    title       = 'bEPIC posterior calibration — posterior_confidence_level vs U(0,1)',
     save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
 )
 plt.show()
@@ -576,7 +576,7 @@ else:
 # # if 50% of the probability mass of hte posterior is contained within the contour 
 # # the the USGS location lies on. 
 # if _odf_cov is not None:
-#     usgs_contf = 100*usgs_credible_level(_odf_cov,_ref_lat,_ref_lon)
+#     usgs_contf = 100*posterior_confidence_level(_odf_cov,_ref_lat,_ref_lon)
 #     print("Posterior Coverage # 2")
 #     print(f'   Confidence contour of USGS location: {usgs_contf:5.1f}%')
 

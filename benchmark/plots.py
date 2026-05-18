@@ -12,9 +12,330 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import obspy
 
-from .metrics import hdr_levels, usgs_credible_level, posterior_coverage, COVERAGE_RADII_KM  # re-exported for scripts
-
+from .metrics import hdr_levels, posterior_confidence_level, posterior_coverage, COVERAGE_RADII_KM  # re-exported for scripts
+from .metrics import load_per_version_stats
+from .metrics import COVERAGE_RADII_KM
 # Plots
+
+def plot_median_vs_triggers(metric, ylabel, title, save_path=None,
+                            ylim=None, ref_line=None, ref_label=None,
+                            PRIOR_SPECS=None, log_y=False,
+                            shade_groups=('mixed', 'dynamic')):
+    """
+    Plot median metric vs trigger count for all priors, with 5–95 % band.
+
+    Mixed priors: solid lines.
+    ETAS dynamic: dashed black reference.
+    TI baselines (if INCLUDE_BASELINES): dotted lines, same color palette.
+    """
+    # Assign consistent colors: mixed and their TI counterparts share a color.
+    colors = plt.cm.tab10.colors
+    # Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
+    mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+    color_lookup = {s['name']: colors[i % len(colors)]
+                    for i, s in enumerate(mixed_specs)}
+    if mixed_specs:
+        for s in PRIOR_SPECS:
+            if s['group'] == 'static':
+                mixed_counterpart = f"{s['name']}+ETAS"
+                if mixed_counterpart in color_lookup:
+                    color_lookup[s['name']] = color_lookup[mixed_counterpart]
+    else:
+        for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'static'):
+            color_lookup[s['name']] = colors[i % len(colors)]
+    for s in PRIOR_SPECS:
+        if s['group'] == 'dynamic':
+            color_lookup[s['name']] = 'black'
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+
+    for spec in PRIOR_SPECS:
+        stats = load_per_version_stats(spec['csv'], metric)
+        if stats is None:
+            print(f"  [{spec['name']}] no data for '{metric}' — skipping")
+            continue
+
+        color   = color_lookup.get(spec['name'], 'gray')
+        n_max   = int(stats['count'].max())
+        label   = f"{spec['name']}  (n≈{n_max})"
+
+        ax.plot(stats['n_trigs'], stats['median'],
+                color=color, linestyle=spec['ls'], linewidth=spec['lw'],
+                label=label)
+
+        if spec['group'] in shade_groups:
+            ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                            color=color, alpha=0.10)
+            ax.plot(stats['n_trigs'], stats['q5'],
+                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+            ax.plot(stats['n_trigs'], stats['q95'],
+                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+
+    if ref_line is not None:
+        ax.axhline(ref_line, color='gray', linestyle=':', linewidth=1,
+                   label=ref_label or str(ref_line))
+
+    ax.set_xlabel('Number of triggers', fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_title(title, fontsize=13)
+    ax.set_xlim(left=1)
+    if log_y:
+        ax.set_yscale('log')
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+
+    # Split legend: mixed priors on left, references on right
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, fontsize=8, loc='upper right',
+              ncol=2 if len(handles) > 6 else 1)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved: {save_path}')
+    return fig
+
+def plot_mean_vs_triggers(metric, ylabel, title, save_path=None,
+                            ylim=None, ref_line=None, ref_label=None,
+                            PRIOR_SPECS=None, log_y=False,
+                            shade_groups=None):
+    """
+    Plot median metric vs trigger count for all priors, with IQR shading.
+
+    Parameters
+    ----------
+    metric : str
+        Column name in the benchmark CSVs.
+    ylabel : str
+        Y-axis label (include direction hint, e.g. '↓ better').
+    title : str
+        Figure title.
+    save_path : str or None
+    ylim : tuple or None
+        (ymin, ymax) passed to ax.set_ylim.  None = matplotlib auto.
+    ref_line : float or None
+        If given, draws a horizontal dashed reference line at this value.
+    ref_label : str or None
+        Legend label for the reference line.
+    """
+    # Assign consistent colors: mixed and their TI counterparts share a color.
+    colors = plt.cm.tab10.colors
+    # Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
+    mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+    color_lookup = {s['name']: colors[i % len(colors)]
+                    for i, s in enumerate(mixed_specs)}
+    if mixed_specs:
+        for s in PRIOR_SPECS:
+            if s['group'] == 'static':
+                mixed_counterpart = f"{s['name']}+ETAS"
+                if mixed_counterpart in color_lookup:
+                    color_lookup[s['name']] = color_lookup[mixed_counterpart]
+    else:
+        for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'static'):
+            color_lookup[s['name']] = colors[i % len(colors)]
+    for s in PRIOR_SPECS:
+        if s['group'] == 'dynamic':
+            color_lookup[s['name']] = 'black'
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for i, spec in enumerate(PRIOR_SPECS):
+        stats = load_per_version_stats(spec['csv'], metric)
+        if stats is None:
+            print(f"  [{spec['name']}] no data for '{metric}' — skipping")
+            continue
+
+        color = color_lookup.get(spec['name'], colors[i % len(colors)])
+        n_max = int(stats['count'].max())
+        ax.plot(stats['n_trigs'], stats['mean'],
+                color=color, linestyle=spec['ls'], linewidth=spec['lw'],
+                label=f"{spec['name']}  (n≈{n_max})")
+        if shade_groups is None or spec['group'] in shade_groups:
+            ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                            color=color, alpha=0.06)
+            ax.plot(stats['n_trigs'], stats['q5'],
+                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.5)
+            ax.plot(stats['n_trigs'], stats['q95'],
+                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.5)
+
+    if ref_line is not None:
+        ax.axhline(ref_line, color='gray', linestyle=':', linewidth=1,
+                   label=ref_label or str(ref_line))
+
+    ax.set_xlabel('Number of triggers', fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_title(title, fontsize=13)
+    ax.set_xlim(left=1)
+    if log_y:
+        ax.set_yscale('log')
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    ax.legend(fontsize=9, loc='upper right')
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved: {save_path}')
+    return fig
+
+def plot_median_posterior_coverage(
+    PRIOR_SPECS,
+    title,
+    save_path=None,
+    legend_ncol=1,
+    shade_groups=('mixed', 'dynamic'),
+):
+    """
+    2×2 panel: median posterior coverage vs trigger count for each of COVERAGE_RADII_KM.
+
+    Parameters
+    ----------
+    PRIOR_SPECS : list[dict]
+        Each dict must have: name, csv, ls, lw, group.
+        group in {'mixed', 'static', 'dynamic'}.
+    title : str
+        Figure suptitle.
+    save_path : str or None
+    legend_ncol : int
+        Number of columns in each subplot legend (default 1).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    colors = plt.cm.tab10.colors
+    color_lookup = {}
+
+    mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+    static_specs = [s for s in PRIOR_SPECS if s['group'] == 'static']
+
+    if mixed_specs:
+        for i, s in enumerate(mixed_specs):
+            color_lookup[s['name']] = colors[i % len(colors)]
+        for s in static_specs:
+            mixed_name = f"{s['name']}+ETAS"
+            color_lookup[s['name']] = color_lookup.get(mixed_name, 'gray')
+    else:
+        for i, s in enumerate(static_specs):
+            color_lookup[s['name']] = colors[i % len(colors)]
+
+    for s in PRIOR_SPECS:
+        if s['group'] == 'dynamic':
+            color_lookup[s['name']] = 'black'
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharey=False)
+
+    for ax, radius_km in zip(axes.flatten(), COVERAGE_RADII_KM):
+        col = f'coverage_{radius_km}km'
+        for spec in PRIOR_SPECS:
+            stats = load_per_version_stats(spec['csv'], col)
+            if stats is None:
+                print(f"  [{spec['name']}] no data for '{col}' — skipping")
+                continue
+            color = color_lookup.get(spec['name'], 'gray')
+            n_max = int(stats['count'].max())
+            ax.plot(stats['n_trigs'], stats['median'],
+                    color=color, linestyle=spec['ls'], linewidth=spec['lw'],
+                    label=f"{spec['name']}  (n≈{n_max})")
+            if spec['group'] in shade_groups:
+                ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                                color=color, alpha=0.10)
+                ax.plot(stats['n_trigs'], stats['q5'],
+                        color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+                ax.plot(stats['n_trigs'], stats['q95'],
+                        color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+        ax.set_xlabel('Number of triggers', fontsize=10)
+        ax.set_ylabel('Median coverage  (↑ better)', fontsize=10)
+        ax.set_title(f'Within {radius_km} km', fontsize=11)
+        ax.set_xlim(left=1)
+        ax.set_ylim(0, 1)
+        ax.legend(fontsize=7, loc='lower right', ncol=legend_ncol)
+
+    fig.suptitle(title, fontsize=13)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved: {save_path}')
+    return fig
+
+def plot_mean_posterior_coverage(
+    PRIOR_SPECS,
+    title,
+    save_path=None,
+    legend_ncol=1,
+    shade_groups=('mixed', 'dynamic'),
+):
+    """
+    2×2 panel: median posterior coverage vs trigger count for each of COVERAGE_RADII_KM.
+
+    Parameters
+    ----------
+    PRIOR_SPECS : list[dict]
+        Each dict must have: name, csv, ls, lw, group.
+        group in {'mixed', 'static', 'dynamic'}.
+    title : str
+        Figure suptitle.
+    save_path : str or None
+    legend_ncol : int
+        Number of columns in each subplot legend (default 1).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    colors = plt.cm.tab10.colors
+    color_lookup = {}
+
+    mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+    static_specs = [s for s in PRIOR_SPECS if s['group'] == 'static']
+
+    if mixed_specs:
+        for i, s in enumerate(mixed_specs):
+            color_lookup[s['name']] = colors[i % len(colors)]
+        for s in static_specs:
+            mixed_name = f"{s['name']}+ETAS"
+            color_lookup[s['name']] = color_lookup.get(mixed_name, 'gray')
+    else:
+        for i, s in enumerate(static_specs):
+            color_lookup[s['name']] = colors[i % len(colors)]
+
+    for s in PRIOR_SPECS:
+        if s['group'] == 'dynamic':
+            color_lookup[s['name']] = 'black'
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharey=False)
+
+    for ax, radius_km in zip(axes.flatten(), COVERAGE_RADII_KM):
+        col = f'coverage_{radius_km}km'
+        for spec in PRIOR_SPECS:
+            stats = load_per_version_stats(spec['csv'], col)
+            if stats is None:
+                print(f"  [{spec['name']}] no data for '{col}' — skipping")
+                continue
+            color = color_lookup.get(spec['name'], 'gray')
+            n_max = int(stats['count'].max())
+            ax.plot(stats['n_trigs'], stats['mean'],
+                    color=color, linestyle=spec['ls'], linewidth=spec['lw'],
+                    label=f"{spec['name']}  (n≈{n_max})")
+            if spec['group'] in shade_groups:
+                ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
+                                color=color, alpha=0.10)
+                ax.plot(stats['n_trigs'], stats['q5'],
+                        color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+                ax.plot(stats['n_trigs'], stats['q95'],
+                        color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
+        ax.set_xlabel('Number of triggers', fontsize=10)
+        ax.set_ylabel('Median coverage  (↑ better)', fontsize=10)
+        ax.set_title(f'Within {radius_km} km', fontsize=11)
+        ax.set_xlim(left=1)
+        ax.set_ylim(0, 1)
+        ax.legend(fontsize=7, loc='lower right', ncol=legend_ncol)
+
+    fig.suptitle(title, fontsize=13)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved: {save_path}')
+    return fig
 
 def plot_prior_histograms(
     prior_names,
@@ -830,15 +1151,15 @@ def plot_coverage_panel(
 def plot_qq_calibration(
     prior_names,
     output_dir,
-    title='bEPIC posterior calibration — usgs_credible_level vs U(0,1)',
+    title='bEPIC posterior calibration — posterior_confidence_level vs U(0,1)',
     save_path=None,
     filter_fn=None,
 ):
     """
-    Single-panel Q-Q calibration plot: usgs_credible_level vs Uniform(0,1).
+    Single-panel Q-Q calibration plot: posterior_confidence_level vs Uniform(0,1).
 
     Each prior is plotted as a separate colored line.  For a perfectly
-    calibrated posterior, usgs_credible_level is Uniform(0,1) across events
+    calibrated posterior, posterior_confidence_level is Uniform(0,1) across events
     and all lines fall on the diagonal.
 
     Interpretation of deviations (assuming roughly unimodal posteriors):
@@ -862,7 +1183,7 @@ def plot_qq_calibration(
         Full path for the saved PNG (written at 150 dpi).
     filter_fn : callable(df) -> df, optional
         Applied to the per-event final-trigger DataFrame before extracting
-        usgs_credible_level (e.g. a spatial subset like ``in_extent``).
+        posterior_confidence_level (e.g. a spatial subset like ``in_extent``).
 
     Returns
     -------
@@ -880,12 +1201,12 @@ def plot_qq_calibration(
             continue
 
         df = pd.read_csv(csv_path)
-        # usgs_credible_level is only set for the final trigger version per event
-        final = df.dropna(subset=['usgs_credible_level'])
+        # posterior_confidence_level is only set for the final trigger version per event
+        final = df.dropna(subset=['posterior_confidence_level'])
         if filter_fn is not None:
             final = filter_fn(final)
 
-        vals = np.sort(final['usgs_credible_level'].values)
+        vals = np.sort(final['posterior_confidence_level'].values)
         n = len(vals)
         if n == 0:
             continue
@@ -896,7 +1217,7 @@ def plot_qq_calibration(
 
     ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
     ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=11)
-    ax.set_ylabel('Empirical usgs_credible_level', fontsize=11)
+    ax.set_ylabel('Empirical posterior_confidence_level', fontsize=11)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.legend(fontsize=9)

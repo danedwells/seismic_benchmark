@@ -19,8 +19,7 @@ correctly in figure titles.
 #%%
 import os
 import sys
-import numpy as np
-import pandas as pd
+
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -30,13 +29,15 @@ if PROJECT_ROOT not in sys.path:
 
 from benchmark import config
 from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats
+from benchmark.plots import plot_median_vs_triggers, plot_mean_vs_triggers
+from benchmark.plots import plot_mean_posterior_coverage, plot_median_posterior_coverage
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
 
-ACTIVE_CASE_STUDY  = "ElMayor" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
+ACTIVE_CASE_STUDY  = "Ridgecrest" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
 INCLUDE_BASELINES  = True   # overlay pure TI (dotted) and ETAS (dashed) for context
-ALPHA              = 0.5    # blend weight used when running mixed_prior_scripts/
+ALPHA              = 0.1    # blend weight used when running mixed_prior_scripts/
 ALPHA_TAG          = f'alpha_{ALPHA:.2f}'
 
 CASE_STUDIES = {
@@ -118,104 +119,37 @@ if INCLUDE_BASELINES:
         for name in TI_NAMES
     ]
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-def _group_color(group, i, colors):
-    """Return a color for a spec, consistent within each group."""
-    if group == 'dynamic':
-        return 'black'
-    return colors[i % len(colors)]
-
-
-def plot_metric_vs_triggers(metric, ylabel, title, save_path=None,
-                            ylim=None, ref_line=None, ref_label=None,
-                            log_y=False):
-    """
-    Plot median metric vs trigger count for all priors, with 5–95 % band.
-
-    Mixed priors: solid lines.
-    ETAS dynamic: dashed black reference.
-    TI baselines (if INCLUDE_BASELINES): dotted lines, same color palette.
-    """
-    # Assign consistent colors: mixed and their TI counterparts share a color.
-    colors = plt.cm.tab10.colors
-    # Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
-    mixed_names  = [s['name'] for s in PRIOR_SPECS if s['group'] == 'mixed']
-    color_lookup = {s['name']: colors[i % len(colors)]
-                    for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'mixed')}
-    for s in PRIOR_SPECS:
-        if s['group'] == 'static':
-            ti_name = s['name']
-            mixed_counterpart = f'{ti_name}+ETAS'
-            if mixed_counterpart in color_lookup:
-                color_lookup[ti_name] = color_lookup[mixed_counterpart]
-        elif s['group'] == 'dynamic':
-            color_lookup[s['name']] = 'black'
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-
-    for spec in PRIOR_SPECS:
-        stats = load_per_version_stats(spec['csv'], metric)
-        if stats is None:
-            print(f"  [{spec['name']}] no data for '{metric}' — skipping")
-            continue
-
-        color   = color_lookup.get(spec['name'], 'gray')
-        n_max   = int(stats['count'].max())
-        label   = f"{spec['name']}  (n≈{n_max})"
-
-        ax.plot(stats['n_trigs'], stats['median'],
-                color=color, linestyle=spec['ls'], linewidth=spec['lw'],
-                label=label)
-
-        # Only shade IQR for mixed and dynamic (not baselines, to reduce clutter)
-        if spec['group'] in ('mixed', 'dynamic'):
-            ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
-                            color=color, alpha=0.10)
-            ax.plot(stats['n_trigs'], stats['q5'],
-                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
-            ax.plot(stats['n_trigs'], stats['q95'],
-                    color=color, linestyle=spec['ls'], linewidth=0.6, alpha=0.6)
-
-    if ref_line is not None:
-        ax.axhline(ref_line, color='gray', linestyle=':', linewidth=1,
-                   label=ref_label or str(ref_line))
-
-    ax.set_xlabel('Number of triggers', fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_title(title, fontsize=13)
-    ax.set_xlim(left=1)
-    if log_y:
-        ax.set_yscale('log')
-    if ylim is not None:
-        ax.set_ylim(*ylim)
-
-    # Split legend: mixed priors on left, references on right
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, fontsize=8, loc='upper right',
-              ncol=2 if len(handles) > 6 else 1)
-
-    plt.tight_layout()
-    if save_path is not None:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f'Saved: {save_path}')
-    return fig
 
 
 #%%
 # ---------------------------------------------------------------------------
-# Figure 1: usgs_credible_level vs trigger count
+# Figure 1: posterior_confidence_level vs trigger count
 # ---------------------------------------------------------------------------
-fig_cred = plot_metric_vs_triggers(
-    metric    = 'usgs_credible_level',
-    ylabel    = 'Median usgs_credible_level  (↓ better)',
+fig_cred = plot_median_vs_triggers(
+    metric    = 'posterior_confidence_level',
+    ylabel    = 'Median posterior_confidence_level  (↓ better)',
     title     = f'Posterior calibration vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
     ylim      = (0, 1),
     ref_line  = 0.5,
     ref_label = 'calibrated median  (0.5)',
-    save_path = os.path.join(FIGURES_DIR, f'credible_level_vs_triggers_{ALPHA_TAG}.png'),
+    PRIOR_SPECS = PRIOR_SPECS,
+    save_path = os.path.join(FIGURES_DIR, f'posterior_confidence_median_vs_triggers_{ALPHA_TAG}.png'),
+)
+plt.show()
+
+# ---------------------------------------------------------------------------
+# Figure 1: posterior_confidence_level vs trigger count
+# ---------------------------------------------------------------------------
+fig_cred = plot_mean_vs_triggers(
+    metric        = 'posterior_confidence_level',
+    ylabel        = 'Mean posterior_confidence_level  (↓ better)',
+    title         = f'Posterior calibration vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    ylim          = (0, 1),
+    ref_line      = 0.5,
+    ref_label     = 'calibrated median  (0.5)',
+    PRIOR_SPECS   = PRIOR_SPECS,
+    save_path     = os.path.join(FIGURES_DIR, f'posterior_confidence_mean_vs_triggers_{ALPHA_TAG}.png'),
+    shade_groups  = ('mixed', 'dynamic'),
 )
 plt.show()
 
@@ -223,59 +157,127 @@ plt.show()
 # ---------------------------------------------------------------------------
 # Figure 2: posterior coverage at fixed radii vs trigger count (2×2 panel)
 # ---------------------------------------------------------------------------
-colors = plt.cm.tab10.colors
+fig_cov = plot_median_posterior_coverage(
+    PRIOR_SPECS = PRIOR_SPECS,
+    title       = f'Posterior coverage vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    save_path   = os.path.join(FIGURES_DIR, f'coverage_vs_triggers_median_{ALPHA_TAG}.png'),
+    legend_ncol = 2 if INCLUDE_BASELINES else 1,
+)
+plt.show()
 
-mixed_names  = [s['name'] for s in PRIOR_SPECS if s['group'] == 'mixed']
-color_lookup = {s['name']: colors[i % len(colors)]
-                for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'mixed')}
-for s in PRIOR_SPECS:
-    if s['group'] == 'static':
-        color_lookup[s['name']] = color_lookup.get(f"{s['name']}+ETAS", 'gray')
-color_lookup['ETAS (dynamic)'] = 'black'
-
-fig_cov, axes_cov = plt.subplots(2, 2, figsize=(14, 9), sharey=False)
-
-for ax, radius_km in zip(axes_cov.flatten(), COVERAGE_RADII_KM):
-    col = f'coverage_{radius_km}km'
-    for spec in PRIOR_SPECS:
-        stats = load_per_version_stats(spec['csv'], col)
-        if stats is None:
-            continue
-        color = color_lookup.get(spec['name'], 'gray')
-        n_max = int(stats['count'].max())
-        ax.plot(stats['n_trigs'], stats['median'],
-                color=color, linestyle=spec['ls'], linewidth=spec['lw'],
-                label=f"{spec['name']}  (n≈{n_max})")
-        if spec['group'] in ('mixed', 'dynamic'):
-            ax.fill_between(stats['n_trigs'], stats['q5'], stats['q95'],
-                            color=color, alpha=0.10)
-    ax.set_xlabel('Number of triggers', fontsize=10)
-    ax.set_ylabel('Median coverage  (↑ better)', fontsize=10)
-    ax.set_title(f'Within {radius_km} km', fontsize=11)
-    ax.set_xlim(left=1)
-    ax.set_ylim(0, 1)
-    ax.legend(fontsize=7, loc='lower right', ncol=2 if INCLUDE_BASELINES else 1)
-
-fig_cov.suptitle(
-    f'Posterior coverage vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
-    fontsize=13)
-plt.tight_layout()
-_cov_path = os.path.join(FIGURES_DIR, f'coverage_vs_triggers_{ALPHA_TAG}.png')
-plt.savefig(_cov_path, dpi=150, bbox_inches='tight')
-print(f'Saved: {_cov_path}')
+fig_cov = plot_mean_posterior_coverage(
+    PRIOR_SPECS = PRIOR_SPECS,
+    title       = f'Posterior coverage vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    save_path   = os.path.join(FIGURES_DIR, f'coverage_vs_triggers_mean_{ALPHA_TAG}.png'),
+    legend_ncol = 2 if INCLUDE_BASELINES else 1,
+)
 plt.show()
 
 #%%
 # ---------------------------------------------------------------------------
 # Figure 3: location error (km) vs trigger count
 # ---------------------------------------------------------------------------
-fig_err = plot_metric_vs_triggers(
+fig_err = plot_median_vs_triggers(
     metric    = 'map_err_km',
     ylabel    = 'Median location error  km  (↓ better)',
     title     = f'Location error vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
     log_y     = True,
-    save_path = os.path.join(FIGURES_DIR, f'location_error_vs_triggers_{ALPHA_TAG}.png'),
+    PRIOR_SPECS = PRIOR_SPECS,
+    save_path = os.path.join(FIGURES_DIR, f'location_error_median_vs_triggers_{ALPHA_TAG}.png'),
 )
 plt.show()
 
+fig_err = plot_mean_vs_triggers(
+    metric       = 'map_err_km',
+    ylabel       = 'Mean location error  km  (↓ better)',
+    title        = f'Location error vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    log_y        = True,
+    PRIOR_SPECS  = PRIOR_SPECS,
+    save_path    = os.path.join(FIGURES_DIR, f'location_error_mean_vs_triggers_{ALPHA_TAG}.png'),
+    shade_groups = ('mixed', 'dynamic'),
+)
+plt.show()
+
+# %%
+
+import numpy as np
+import pandas as pd
+
+def load_final_values(csv_path, metric, n_trigs=None, min_events_warn=5):
+    import warnings
+    if not os.path.exists(csv_path):
+        return None
+    df = pd.read_csv(csv_path)
+    if metric not in df.columns or df[metric].isna().all():
+        return None
+
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                            .rank(method='dense')
+                            .astype(int))
+
+    if n_trigs is None:
+        vals = df.groupby('event_id').last()[metric].dropna().values
+    else:
+        max_available = int(df['n_trigs'].max())
+        if n_trigs > max_available:
+            raise ValueError(
+                f"Requested n_trigs={n_trigs} exceeds the maximum available "
+                f"({max_available}) in {os.path.basename(csv_path)}."
+            )
+        subset = df[df['n_trigs'] == n_trigs][metric].dropna()
+        if len(subset) < min_events_warn:
+            warnings.warn(
+                f"Only {len(subset)} events have data at n_trigs={n_trigs} "
+                f"in {os.path.basename(csv_path)} (min_events_warn={min_events_warn}). "
+                "Results may be unreliable.",
+                UserWarning, stacklevel=2,
+            )
+        vals = subset.values
+
+    return vals if len(vals) > 0 else None
+
+# Assign consistent colors: mixed and their TI counterparts share a color.
+trigger_number = 5
+colors = plt.cm.tab10.colors
+# Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
+mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+color_lookup = {s['name']: colors[i % len(colors)]
+                for i, s in enumerate(mixed_specs)}
+
+fig = plt.figure(figsize=(14,8),dpi=300)
+ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])  
+ax2 = fig.add_axes([0.36, 0.5, 0.28, 0.43])   
+ax3 = fig.add_axes([0.7, 0.5, 0.28, 0.43])   
+ax4 = fig.add_axes([0.02, 0.02, 0.28, 0.43])  
+ax5 = fig.add_axes([0.36, 0.02, 0.28, 0.43])   
+ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])   
+
+bins = np.logspace(-1,3,20)
+
+axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+
+for i,ax in enumerate(axes):
+    spec = PRIOR_SPECS[i]
+    stats = load_final_values(spec['csv'], 'map_err_km', n_trigs=trigger_number)
+    ax.hist(stats, bins = bins, rwidth=0.9, label=spec['name'], alpha=0.8)
+    ax.set_xscale('log')
+    ax.set_title(spec["name"])
+    ax.grid()
+
+# Enforce consistent y-axis across all panels
+y_max = max(ax.get_ylim()[1] for ax in axes)
+for ax in axes:
+    ax.set_ylim(0, y_max)
+
+for ax in [ax1,ax2,ax3]:
+    ax.set_xticklabels([])
+
+for ax in [ax2,ax3,ax5,ax6]:
+    ax.set_yticklabels([])
+
+fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}   Alpha: {ALPHA}",fontsize=16)
+
+plt.show()
+fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}_{ALPHA}.png"))
 # %%

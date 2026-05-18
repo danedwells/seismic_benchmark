@@ -12,7 +12,7 @@ import pytest
 from benchmark.metrics import (
     hdr_levels,
     location_error_km,
-    usgs_credible_level,
+    posterior_confidence_level,
     usgs_prior_credible_level,
     _haversine_km,
     posterior_coverage,
@@ -135,35 +135,35 @@ def test_location_error_symmetric():
 
 
 # ---------------------------------------------------------------------------
-# usgs_credible_level
+# posterior_confidence_level
 # ---------------------------------------------------------------------------
 
-def test_usgs_credible_level_at_map_peak_is_minimum():
+def test_posterior_confidence_level_at_map_peak_is_minimum():
     """USGS at the MAP peak gives the smallest credible level for this distribution.
 
-    usgs_credible_level returns the mass of the HDR that just contains the USGS
+    posterior_confidence_level returns the mass of the HDR that just contains the USGS
     location (cells with density >= density at USGS).  The MAP peak has the
     highest density, so its HDR is the smallest — it equals just the cell's own
     mass, which is less than or equal to any other cell's credible level.
     """
     df = _make_grid()
     peak_idx = df['post'].idxmax()
-    cred_at_peak = usgs_credible_level(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
+    cred_at_peak = posterior_confidence_level(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
     # Spot-check a few non-peak cells: their credible level should be >= the peak's
     for idx in df.nsmallest(5, 'post').index:
-        cred_other = usgs_credible_level(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
+        cred_other = posterior_confidence_level(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
         assert cred_at_peak <= cred_other + 1e-9
 
 
-def test_usgs_credible_level_in_unit_interval():
-    cred = usgs_credible_level(_make_grid(), 37.0, -120.0)
+def test_posterior_confidence_level_in_unit_interval():
+    cred = posterior_confidence_level(_make_grid(), 37.0, -120.0)
     assert 0.0 <= cred <= 1.0
 
 
-def test_usgs_credible_level_single_cell():
+def test_posterior_confidence_level_single_cell():
     """Grid with one cell: credible level is always 1.0."""
     df = pd.DataFrame({'lat': [37.0], 'lon': [-120.0], 'post': [1.0], 'prior': [1.0]})
-    assert usgs_credible_level(df, 37.0, -120.0) == pytest.approx(1.0)
+    assert posterior_confidence_level(df, 37.0, -120.0) == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

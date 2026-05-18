@@ -39,7 +39,7 @@ def _make_mock_runner(n_events=2):
         runner.results[key] = _MockSearchOut(37.0 + i * 0.1, -120.0 - i * 0.1)
         runner.metrics[key] = {
             'map_err_km':                float(i * 5),
-            'usgs_credible_level':       0.3,
+            'posterior_confidence_level':       0.3,
             'usgs_prior_credible_level': 0.4,
             **{f'coverage_{r}km': 0.5 for r in COVERAGE_RADII_KM},
         }
@@ -62,7 +62,7 @@ def test_results_to_df_required_columns():
         'event_id', 'version', 'n_trigs',
         'posterior_lat', 'posterior_lon',
         'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-        'map_err_km', 'usgs_credible_level', 'usgs_prior_credible_level',
+        'map_err_km', 'posterior_confidence_level', 'usgs_prior_credible_level',
     }
     assert required.issubset(set(df.columns))
 
@@ -90,7 +90,7 @@ def test_results_to_df_sorted_by_event_and_version():
 def test_results_to_df_metric_values_propagated():
     df = runner_results_to_df(_make_mock_runner(n_events=1))
     assert df.iloc[0]['map_err_km'] == pytest.approx(0.0)
-    assert df.iloc[0]['usgs_credible_level'] == pytest.approx(0.3)
+    assert df.iloc[0]['posterior_confidence_level'] == pytest.approx(0.3)
 
 
 def test_results_to_df_missing_metrics_become_none():

@@ -32,7 +32,7 @@ def load_per_version_stats(csv_path, metric, min_events=5):
     stats = (df.groupby('n_trigs')[metric]
                .agg(median='median',
                     mean = 'mean',
-                    q1=lambda x: x.quantial(0.01),
+                    q1=lambda x: x.quantile(0.01),
                     q5=lambda x: x.quantile(0.05),
                     q95=lambda x: x.quantile(0.95),
                     q99=lambda x: x.quantile(0.99),
@@ -59,7 +59,7 @@ def location_error_km(posterior_lat, posterior_lon, ref_lat, ref_lon):
     return m / 1000.0
 
 
-def usgs_credible_level(out_df, usgs_lat, usgs_lon):
+def posterior_confidence_level(out_df, usgs_lat, usgs_lon):
     """
     Credible level of the smallest HDR that contains the USGS location.
     Returns a value in [0, 1]: lower is better (USGS is in a high-density region).
@@ -80,7 +80,7 @@ def usgs_prior_credible_level(out_df, usgs_lat, usgs_lon):
     Credible level of the smallest HDR of the *prior* that contains the USGS location.
     Returns a value in [0, 1]: lower is better (USGS is in a high-density prior region).
 
-    Analogous to usgs_credible_level but uses the prior column instead of post.
+    Analogous to posterior_confidence_level but uses the prior column instead of post.
     Comparing the two reveals how much bEPIC's posterior improves on the raw prior.
     When use_prior=False the prior grid is uniform, so this returns ~1.0 for most
     events and the column should be excluded from analysis for Uniform runs.
@@ -197,14 +197,14 @@ def ks_calibration(credible_levels):
     """
     KS statistic testing whether a vector of credible levels is Uniform[0, 1].
 
-    For a perfectly calibrated posterior, usgs_credible_level values are
+    For a perfectly calibrated posterior, posterior_confidence_level values are
     i.i.d. Uniform[0, 1] across events. This function quantifies the departure
     from that ideal using the two-sided Kolmogorov-Smirnov test.
 
     Parameters
     ----------
     credible_levels : array-like
-        Per-event usgs_credible_level values, each in [0, 1].
+        Per-event posterior_confidence_level values, each in [0, 1].
 
     Returns
     -------

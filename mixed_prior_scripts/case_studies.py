@@ -422,15 +422,15 @@ fig = plot_prior_histograms(
 )
 plt.show()
 
-# ── usgs_credible_level histograms ────────────────────────────────────────
+# ── posterior_confidence_level histograms ────────────────────────────────────────
 fig = plot_prior_histograms(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    column      = 'usgs_credible_level',
+    column      = 'posterior_confidence_level',
     bins        = np.linspace(0, 1, 41),
     title       = f'bEPIC posterior calibration — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    xlabel      = 'usgs_credible_level',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'usgs_credible_level_histograms.png'),
+    xlabel      = 'posterior_confidence_level',
+    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_confidence_level_histograms.png'),
     color       = 'steelblue',
 )
 plt.show()
@@ -444,7 +444,7 @@ fig = plot_coverage_panel(
 )
 plt.show()
 
-# ── Calibration Q-Q: usgs_credible_level vs U(0,1) ───────────────────────
+# ── Calibration Q-Q: posterior_confidence_level vs U(0,1) ───────────────────────
 fig = plot_qq_calibration(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
