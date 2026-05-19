@@ -1056,9 +1056,7 @@ def plot_location_trajectory(
         ax.set_visible(False)
 
     fig.suptitle(title, fontsize=14)
-    plt.tight_layout()
-    # Shrink panels left to make room for the colorbar on the far right
-    plt.subplots_adjust(right=0.88)
+    plt.subplots_adjust(left=0.05, right=0.88, top=0.92, bottom=0.05)
 
     # Shared colorbar anchored to a manually placed axis outside the panel grid
     cbar_ax = fig.add_axes([0.905, 0.15, 0.015, 0.68])
@@ -1072,6 +1070,127 @@ def plot_location_trajectory(
     if save_path is not None:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
 
+    return fig
+
+
+def plot_score_scatter(
+    PRIOR_SPECS,
+    title=None,
+    save_path=None,
+    loc_err_clip_km=200.0,
+):
+    """
+    Scatter of log_score and brier_score vs location error (1×2 panel).
+
+    Each point is one event at its final trigger version.  Priors are colored
+    using the same tab10 scheme as the other PRIOR_SPECS-based plots.  Gray
+    dashed/dotted lines mark the pooled medians, forming four quadrants.
+
+    The key diagnostic quadrant is large error + good score (top-right for
+    log_score, bottom-right for brier_score): the posterior is confident but
+    spatially wrong, meaning the prior is misleading bEPIC.
+
+    Uses ``map_err_km`` from the CSV as the x-axis (per-version location error
+    already stored by the runner).  Priors whose CSVs are missing or whose
+    score columns have not yet been populated (requires a re-run) are skipped
+    with a printed notice.
+
+    Parameters
+    ----------
+    PRIOR_SPECS : list[dict]
+        Each dict must have ``name``, ``csv``, ``group`` keys, following the
+        same convention as ``plot_median_vs_triggers``.
+    title : str or None
+    save_path : str or None
+    loc_err_clip_km : float
+        X-axis upper limit; events beyond this are dropped as outliers.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    colors = plt.cm.tab10.colors
+
+    # Shared color logic (mirrors plot_median_vs_triggers)
+    mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+    color_lookup = {s['name']: colors[i % len(colors)]
+                    for i, s in enumerate(mixed_specs)}
+    if mixed_specs:
+        for s in PRIOR_SPECS:
+            if s['group'] == 'static':
+                mixed_counterpart = f"{s['name']}+ETAS"
+                if mixed_counterpart in color_lookup:
+                    color_lookup[s['name']] = color_lookup[mixed_counterpart]
+    else:
+        for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'static'):
+            color_lookup[s['name']] = colors[i % len(colors)]
+    for s in PRIOR_SPECS:
+        if s['group'] == 'dynamic':
+            color_lookup[s['name']] = 'black'
+
+    _panels = [
+        ('log_score',   'Log-score  (↑ better)'),
+        ('brier_score', 'Brier score  (↓ better)'),
+    ]
+
+    if title is None:
+        title = 'Scoring metrics vs location error — final trigger version'
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    for ax, (score_col, score_ylabel) in zip(axes, _panels):
+        all_x, all_y = [], []
+
+        for spec in PRIOR_SPECS:
+            if not os.path.exists(spec['csv']):
+                continue
+            df    = pd.read_csv(spec['csv'])
+            final = df.groupby('event_id').last().reset_index()
+
+            err_col = next((c for c in ('map_err_km', 'location_error_km')
+                            if c in final.columns and not final[c].isna().all()), None)
+            if err_col is None:
+                print(f"  [{spec['name']}] no location error column — skipping")
+                continue
+
+            if score_col not in final.columns or final[score_col].isna().all():
+                print(f"  [{spec['name']}] '{score_col}' absent — "
+                      "re-run benchmark to populate scoring columns")
+                continue
+
+            sub = final[[err_col, score_col]].dropna()
+            sub = sub[sub[err_col] <= loc_err_clip_km]
+            if sub.empty:
+                continue
+
+            x = sub[err_col].values
+            y = sub[score_col].values
+            color = color_lookup.get(spec['name'], 'gray')
+            ax.scatter(x, y, s=18, color=color, alpha=0.45,
+                       label=spec['name'], edgecolors='none',
+                       linestyle=spec.get('ls', '-'))
+            all_x.extend(x.tolist())
+            all_y.extend(y.tolist())
+
+        if all_x and all_y:
+            med_x = float(np.median(all_x))
+            med_y = float(np.median(all_y))
+            ax.axvline(med_x, color='gray', linewidth=0.9, linestyle='--', alpha=0.55,
+                       label=f'median error ({med_x:.0f} km)')
+            ax.axhline(med_y, color='gray', linewidth=0.9, linestyle=':',  alpha=0.55,
+                       label=f'median score ({med_y:.3g})')
+
+        ax.set_xlabel('Location error (km)  (↓ better)', fontsize=11)
+        ax.set_ylabel(score_ylabel, fontsize=11)
+        ax.set_xlim(0, loc_err_clip_km)
+        ax.legend(fontsize=8, loc='best', markerscale=1.4)
+
+    fig.suptitle(title, fontsize=13)
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved: {save_path}')
     return fig
 
 

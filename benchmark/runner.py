@@ -6,7 +6,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 from .metrics import (posterior_confidence_level, usgs_prior_credible_level,
-                      posterior_coverage, location_error_km, COVERAGE_RADII_KM)
+                      posterior_coverage, location_error_km, COVERAGE_RADII_KM,
+                      log_score, brier_score)
 
 
 def get_unique_stations(run_dir):
@@ -14,6 +15,26 @@ def get_unique_stations(run_dir):
     frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
               for f in Path(run_dir).glob('*.run')]
     return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
+
+
+def load_station_availability_cache(path):
+    """
+    Load the pre-built station availability cache produced by
+    preparation_scripts/build_station_availability.py.
+
+    Returns
+    -------
+    dict[int, pd.DataFrame]
+        Maps event_id → DataFrame(station, network, longitude, latitude)
+        containing the stations that had ??Z waveform data at event time.
+        Pass the per-event DataFrame to make_epic_params(station_inventory=...)
+        or set it directly on BenchmarkRunner via station_availability=.
+    """
+    df = pd.read_parquet(path)
+    return {
+        int(eid): grp.drop(columns='event_id').reset_index(drop=True)
+        for eid, grp in df.groupby('event_id')
+    }
 
 
 def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None):
@@ -38,8 +59,8 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     params.MAX_EVENT_TRIGS           = benchmark_params['max_trigs']
     params.migrate_grid              = benchmark_params.get('migrate_grid', True)
     params.migrate_grid_min_triggers = benchmark_params.get('migrate_grid_min_triggers', 1)
-    params.station_inventory         = station_inventory
-    params.activity_mask_threshold   = benchmark_params.get('activity_mask_threshold', 0.30)
+    params.station_inventory  = station_inventory
+    params.activity_threshold = benchmark_params.get('activity_threshold', 0.40)
     return params
 
 
@@ -50,17 +71,19 @@ def runner_results_to_df(runner):
     for (eid, ver), t in runner.results.items():
         m = runner.metrics.get((eid, ver), {})
         row = {
-            'event_id':            eid,
-            'version':             ver,
-            'n_trigs':             runner.n_trigs.get((eid, ver)),
-            'posterior_lat':       t.posterior_lat,
-            'posterior_lon':       t.posterior_lon,
-            'best_misfit':         t.best_misfit,
-            'best_like':           t.best_like,
-            'best_prior':          t.best_prior,
-            'frac_misfit':         t.frac_misfit,
+            'event_id':                  eid,
+            'version':                   ver,
+            'n_trigs':                   runner.n_trigs.get((eid, ver)),
+            'posterior_lat':             t.posterior_lat,
+            'posterior_lon':             t.posterior_lon,
+            'best_misfit':               t.best_misfit,
+            'best_like':                 t.best_like,
+            'best_prior':                t.best_prior,
+            'frac_misfit':               t.frac_misfit,
             'map_err_km':                m.get('map_err_km'),
-            'posterior_confidence_level':       m.get('posterior_confidence_level'),
+            'log_score':                 m.get('log_score'),
+            'brier_score':               m.get('brier_score'),
+            'posterior_confidence_level':    m.get('posterior_confidence_level'),
             'usgs_prior_credible_level': m.get('usgs_prior_credible_level'),
         }
         for col in cov_cols:
@@ -68,7 +91,7 @@ def runner_results_to_df(runner):
         rows.append(row)
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-              'map_err_km'] + cov_cols
+              'map_err_km', 'log_score', 'brier_score'] + cov_cols
              + ['posterior_confidence_level', 'usgs_prior_credible_level'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
@@ -160,13 +183,19 @@ class BenchmarkRunner:
         Directory containing <event_id>.run files.
     """
 
-    def __init__(self, prior, params, run_dir, catalog_df=None):
+    def __init__(self, prior, params, run_dir, catalog_df=None,
+                 station_availability=None):
         self.prior   = prior
         self.params  = params
         self.run_dir = run_dir
         self.results = {}   # {(event_id, version): SearchOut}
         self.metrics = {}   # {(event_id, version): {map_err_km, coverage, posterior_confidence_level}}
         self.n_trigs = {}   # {(event_id, version): int trigger count fed to bEPIC}
+
+        # Optional per-event station inventory from build_station_availability.py.
+        # If provided, params.station_inventory is set per event before locating.
+        # If None, params.station_inventory is left as-is (set by the caller or disabled).
+        self._station_availability = station_availability  # dict[int, DataFrame] or None
 
         if catalog_df is not None:
             self._ref_lookup = {
@@ -190,8 +219,11 @@ class BenchmarkRunner:
         cov        = posterior_coverage(out_df, usgs_lat, usgs_lon)
         cred       = posterior_confidence_level(out_df, usgs_lat, usgs_lon)
         prior_cred = usgs_prior_credible_level(out_df, usgs_lat, usgs_lon)
+        ls         = log_score(out_df, usgs_lat, usgs_lon)
+        bs         = brier_score(out_df, usgs_lat, usgs_lon)
         m = {'map_err_km': err_km, 'posterior_confidence_level': cred,
-             'usgs_prior_credible_level': prior_cred}
+             'usgs_prior_credible_level': prior_cred,
+             'log_score': ls, 'brier_score': bs}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]
         self.metrics[(event_id, version)] = m
@@ -207,6 +239,8 @@ class BenchmarkRunner:
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
         df_run   = self._normalize_columns(pd.read_csv(run_path))
         self.params.prior = self.prior
+        if self._station_availability is not None:
+            self.params.station_inventory = self._station_availability.get(int(event_id))
 
         first = df_run.sort_values('order').iloc[0]
 

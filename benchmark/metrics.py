@@ -10,6 +10,40 @@ import pandas as pd
 import os
 from scipy.stats import kstest
 
+def load_final_values(csv_path, metric, n_trigs=None, min_events_warn=5):
+    import warnings
+    if not os.path.exists(csv_path):
+        return None
+    df = pd.read_csv(csv_path)
+    if metric not in df.columns or df[metric].isna().all():
+        return None
+
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                            .rank(method='dense')
+                            .astype(int))
+
+    if n_trigs is None:
+        vals = df.groupby('event_id').last()[metric].dropna().values
+    else:
+        max_available = int(df['n_trigs'].max())
+        if n_trigs > max_available:
+            raise ValueError(
+                f"Requested n_trigs={n_trigs} exceeds the maximum available "
+                f"({max_available}) in {os.path.basename(csv_path)}."
+            )
+        subset = df[df['n_trigs'] == n_trigs][metric].dropna()
+        if len(subset) < min_events_warn:
+            warnings.warn(
+                f"Only {len(subset)} events have data at n_trigs={n_trigs} "
+                f"in {os.path.basename(csv_path)} (min_events_warn={min_events_warn}). "
+                "Results may be unreliable.",
+                UserWarning, stacklevel=2,
+            )
+        vals = subset.values
+
+    return vals if len(vals) > 0 else None
+
 def load_per_version_stats(csv_path, metric, min_events=5):
     """
     Load a benchmark CSV and return per-trigger-count aggregate statistics.

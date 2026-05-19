@@ -22,22 +22,26 @@ import sys
 
 import matplotlib.pyplot as plt
 from pathlib import Path
+import numpy as np
+import pandas as pd
+from matplotlib.ticker import FuncFormatter
 
 PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from benchmark import config
-from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats
+from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats, load_final_values
 from benchmark.plots import plot_median_vs_triggers, plot_mean_vs_triggers
 from benchmark.plots import plot_mean_posterior_coverage, plot_median_posterior_coverage
+from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
 
-ACTIVE_CASE_STUDY  = "Ridgecrest" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
+ACTIVE_CASE_STUDY  = "Ferndale" # "ElMayor"  # None = main benchmark; 'Ridgecrest' / 'Ferndale' / 'ElMayor'
 INCLUDE_BASELINES  = True   # overlay pure TI (dotted) and ETAS (dashed) for context
-ALPHA              = 0.1    # blend weight used when running mixed_prior_scripts/
+ALPHA              = 0.5    # blend weight used when running mixed_prior_scripts/
 ALPHA_TAG          = f'alpha_{ALPHA:.2f}'
 
 CASE_STUDIES = {
@@ -199,46 +203,46 @@ fig_err = plot_mean_vs_triggers(
 plt.show()
 
 # %%
+# ---------------------------------------------------------------------------
+# Figure 4: log-score vs trigger count
+# ---------------------------------------------------------------------------
+fig_ls = plot_median_vs_triggers(
+    metric       = 'log_score',
+    ylabel       = 'Median log-score  (↑ better)',
+    title        = f'Log-score vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    PRIOR_SPECS  = PRIOR_SPECS,
+    save_path    = os.path.join(FIGURES_DIR, f'log_score_median_vs_triggers_{ALPHA_TAG}.png'),
+    shade_groups = ('mixed', 'dynamic'),
+)
+plt.show()
 
-import numpy as np
-import pandas as pd
+# ---------------------------------------------------------------------------
+# Figure 5: Brier score vs trigger count
+# ---------------------------------------------------------------------------
+fig_bs = plot_median_vs_triggers(
+    metric       = 'brier_score',
+    ylabel       = 'Median Brier score  (↓ better)',
+    title        = f'Brier score vs trigger count — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    PRIOR_SPECS  = PRIOR_SPECS,
+    save_path    = os.path.join(FIGURES_DIR, f'brier_score_median_vs_triggers_{ALPHA_TAG}.png'),
+    shade_groups = ('mixed', 'dynamic'),
+)
+plt.show()
 
-def load_final_values(csv_path, metric, n_trigs=None, min_events_warn=5):
-    import warnings
-    if not os.path.exists(csv_path):
-        return None
-    df = pd.read_csv(csv_path)
-    if metric not in df.columns or df[metric].isna().all():
-        return None
+# ---------------------------------------------------------------------------
+# Figure 6: scoring metrics vs location error scatter (1×2 panel)
+# ---------------------------------------------------------------------------
+fig_sc = plot_score_scatter(
+    PRIOR_SPECS = PRIOR_SPECS,
+    title       = f'Scoring metrics vs location error — mixed priors (α={ALPHA}) — {PLOT_TITLE_SUFFIX}',
+    save_path   = os.path.join(FIGURES_DIR, f'score_vs_location_error_{ALPHA_TAG}.png'),
+)
+plt.show()
 
-    if 'n_trigs' not in df.columns:
-        df['n_trigs'] = (df.groupby('event_id')['version']
-                            .rank(method='dense')
-                            .astype(int))
-
-    if n_trigs is None:
-        vals = df.groupby('event_id').last()[metric].dropna().values
-    else:
-        max_available = int(df['n_trigs'].max())
-        if n_trigs > max_available:
-            raise ValueError(
-                f"Requested n_trigs={n_trigs} exceeds the maximum available "
-                f"({max_available}) in {os.path.basename(csv_path)}."
-            )
-        subset = df[df['n_trigs'] == n_trigs][metric].dropna()
-        if len(subset) < min_events_warn:
-            warnings.warn(
-                f"Only {len(subset)} events have data at n_trigs={n_trigs} "
-                f"in {os.path.basename(csv_path)} (min_events_warn={min_events_warn}). "
-                "Results may be unreliable.",
-                UserWarning, stacklevel=2,
-            )
-        vals = subset.values
-
-    return vals if len(vals) > 0 else None
+# %%
 
 # Assign consistent colors: mixed and their TI counterparts share a color.
-trigger_number = 5
+trigger_number = 10
 colors = plt.cm.tab10.colors
 # Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
 mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
@@ -256,14 +260,24 @@ ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])
 bins = np.logspace(-1,3,20)
 
 axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+spec = PRIOR_SPECS[5] # Uniform as reference
+ref_stats = load_final_values(spec['csv'], 'map_err_km', n_trigs = trigger_number)
 
 for i,ax in enumerate(axes):
     spec = PRIOR_SPECS[i]
+
+    # Skip uniform as a dedicated plot - go to dynamic etas
+    if spec['name'] == 'Uniform+ETAS':
+        i = i+1
+        spec = PRIOR_SPECS[i]
     stats = load_final_values(spec['csv'], 'map_err_km', n_trigs=trigger_number)
-    ax.hist(stats, bins = bins, rwidth=0.9, label=spec['name'], alpha=0.8)
+    ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=['Uniform + ETAS (ref)'], alpha=0.4)
+    ax.hist(stats, bins = bins, rwidth=0.9, color='r', alpha=0.6)
     ax.set_xscale('log')
     ax.set_title(spec["name"])
     ax.grid()
+    if i == 0:
+        ax.legend()
 
 # Enforce consistent y-axis across all panels
 y_max = max(ax.get_ylim()[1] for ax in axes)
@@ -276,7 +290,11 @@ for ax in [ax1,ax2,ax3]:
 for ax in [ax2,ax3,ax5,ax6]:
     ax.set_yticklabels([])
 
-fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}   Alpha: {ALPHA}",fontsize=16)
+for ax in [ax4, ax5, ax6]:
+    
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+
+fig.suptitle(f"Location error (km):  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}   Alpha: {ALPHA}",fontsize=16)
 
 plt.show()
 fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}_{ALPHA}.png"))

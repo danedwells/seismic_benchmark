@@ -64,7 +64,7 @@ CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 # Background seismicity catalog (plotting only)
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
@@ -82,6 +82,11 @@ ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 # How often to re-evaluate the ETAS prior (seconds of event time).
 # 0 = update before every event (most accurate, slowest).
 ETAS_UPDATE_INTERVAL_S = 0
+
+# Power-law tempering applied to the raw ETAS grid before blending.
+# Values < 1 compress dynamic range (reduce aftershock cluster dominance).
+# 1 = no change.
+PRIOR_ALPHA = 1
 
 # Focus event for the standalone posterior / trajectory figures.
 _MS_ = False  # set True to use mainshock events instead of representative aftershocks
@@ -125,18 +130,26 @@ print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 # Blending utility
 # ---------------------------------------------------------------------------
 
-def blend_priors(ti_prior, etas_prior, alpha=0.5):
+def blend_priors(ti_prior, etas_prior, alpha=0.5, prior_alpha=1):
     """
     Blend ti_prior onto the ETAS grid and return a new SeismicPrior:
 
-        combined = alpha * etas_prior.grid + (1 - alpha) * ti_resampled
+        combined = alpha * etas_tempered + (1 - alpha) * ti_resampled
 
-    ti_prior  — SeismicPrior (static) or None for a Uniform base prior.
-    etas_prior — SeismicPrior (time-dependent); defines the output grid.
-    alpha      — weight on the ETAS component in [0, 1].
+    ti_prior    — SeismicPrior (static) or None for a Uniform base prior.
+    etas_prior  — SeismicPrior (time-dependent); defines the output grid.
+    alpha       — weight on the ETAS component in [0, 1].
+    prior_alpha — power-law exponent applied to the ETAS grid before blending.
+                  Values < 1 compress dynamic range (reduce cluster dominance).
+                  1 = no change.
     """
+    etas_grid = etas_prior.grid.copy()
+    if prior_alpha != 1.0:
+        etas_grid  = etas_grid ** prior_alpha
+        etas_grid /= etas_grid.sum()
+
     if ti_prior is None:
-        ti_grid = np.ones_like(etas_prior.grid)
+        ti_grid = np.ones_like(etas_grid)
     else:
         interp = RegularGridInterpolator(
             (ti_prior.lats, ti_prior.lons),
@@ -156,9 +169,9 @@ def blend_priors(ti_prior, etas_prior, alpha=0.5):
     if ti_sum > 0:
         ti_grid /= ti_sum
     else:
-        ti_grid = np.ones_like(etas_prior.grid) / etas_prior.grid.size
+        ti_grid = np.ones_like(etas_grid) / etas_grid.size
 
-    combined      = alpha * etas_prior.grid + (1.0 - alpha) * ti_grid
+    combined      = alpha * etas_grid + (1.0 - alpha) * ti_grid
     combined     /= combined.sum()
 
     mixed      = copy.deepcopy(etas_prior)
@@ -273,7 +286,7 @@ if RUN_MIXED:
 
     runners = {}
     for name, ti_prior in ti_priors.items():
-        initial_mixed = blend_priors(ti_prior, _current_etas, ALPHA)
+        initial_mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
         params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS,
                                          station_inventory=station_inventory)
         runners[name] = BenchmarkRunner(
@@ -314,7 +327,7 @@ if RUN_MIXED:
 
         # Run bEPIC for each blended prior
         for name, ti_prior in ti_priors.items():
-            mixed = blend_priors(ti_prior, _current_etas, ALPHA)
+            mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
             runners[name].update_prior(mixed)
             runners[name].run_event(event_id)
 
@@ -566,7 +579,7 @@ else:
         _standalone_prior_order = PRIOR_ORDER
         for name, ti_prior in ti_priors.items():
             mixed_name   = f'{name}_etas_mixed'
-            mixed_prior  = blend_priors(ti_prior, _standalone_etas, ALPHA)
+            mixed_prior  = blend_priors(ti_prior, _standalone_etas, ALPHA, PRIOR_ALPHA)
             _s_params    = make_epic_params(mixed_prior, True, config.BENCHMARK_PARAMS)
             _s_runner    = BenchmarkRunner(
                 prior   = mixed_prior,

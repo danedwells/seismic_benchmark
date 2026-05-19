@@ -75,7 +75,7 @@ ETAS_UPDATE_INTERVAL_S = 0
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
-PRIOR_ALPHA = 0.5
+PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
 
 #%%
 # ---------------------------------------------------------------------------

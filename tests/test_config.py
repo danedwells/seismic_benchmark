@@ -105,9 +105,10 @@ def test_etas_inversion_config_time_ordering():
     cfg = config.ETAS_INVERSION_CONFIG
     t_aux   = pd.Timestamp(cfg['auxiliary_start'])
     t_start = pd.Timestamp(cfg['timewindow_start'])
-    t_end   = pd.Timestamp(cfg['timewindow_end'])
     assert t_aux <= t_start, "auxiliary_start should be <= timewindow_start"
-    assert t_start < t_end,  "timewindow_start should be < timewindow_end"
+    if cfg['timewindow_end'] is not None:
+        t_end = pd.Timestamp(cfg['timewindow_end'])
+        assert t_start < t_end, "timewindow_start should be < timewindow_end"
 
 
 def test_etas_inversion_config_mc_positive():

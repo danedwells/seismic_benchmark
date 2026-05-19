@@ -68,7 +68,7 @@ print(PROJECT_ROOT)
 CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
@@ -115,7 +115,7 @@ DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
-PRIOR_ALPHA = 0.5
+PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
 
 #%%
 # ---------------------------------------------------------------------------
