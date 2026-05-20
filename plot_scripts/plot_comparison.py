@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = None #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -370,6 +370,9 @@ plt.show()
 # ---------------------------------------------------------------------------
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from priors import SeismicPrior
+from matplotlib.colors import LogNorm
+trigger_number = 6
 
 ERROR_BINS  = [0, 10, 25, 50, 100, np.inf]
 BIN_LABELS  = ['< 10 km', '10–25 km', '25–50 km', '50–100 km', '≥ 100 km']
@@ -400,6 +403,22 @@ else:
     extent = [all_lons.min() - buf, all_lons.max() + buf,
               all_lats.min() - buf, all_lats.max() + buf]
 
+    # Pre-load .tt3 priors for background shading.
+    # Skips ETAS (dynamic) and Uniform — neither has a .tt3 in PRIOR_FILENAMES.
+    # KDE_Seismicity uses a context-specific filename resolved here.
+    _context = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
+    _kde_override = {'KDE_Seismicity': f'kde_seismicity_{_context}.tt3'}
+
+    prior_grids = {}
+    for spec in map_specs:
+        fn = _kde_override.get(spec['name']) or config.PRIOR_FILENAMES.get(spec['name'])
+        if fn is None:
+            continue
+        path = os.path.join(SeismicPrior.data_dir, fn)
+        if not os.path.exists(path):
+            continue
+        prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
+
     proj = ccrs.PlateCarree()
     fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
                                      subplot_kw={'projection': proj})
@@ -412,6 +431,23 @@ else:
         ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
         ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+
+        if name in prior_grids:
+            p    = prior_grids[name]
+            buf2 = 0.5
+            lon_mask = (p.lons >= extent[0] - buf2) & (p.lons <= extent[1] + buf2)
+            lat_mask = (p.lats >= extent[2] - buf2) & (p.lats <= extent[3] + buf2)
+            if lon_mask.any() and lat_mask.any():
+                sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
+                sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
+                pos = sub_grid[sub_grid > 0]
+                if len(pos) > 0:
+                    vmin = float(np.percentile(pos, 5))
+                    vmax = float(np.percentile(pos, 99))
+                    if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
+                        ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=proj,
+                                      cmap='YlOrBr', shading='auto', alpha=0.35,
+                                      norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
 
         for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
             mask = (sub['map_err_km'] >= lo) & (sub['map_err_km'] < hi)
@@ -445,4 +481,9 @@ else:
     print(f'Saved: {_save}')
     plt.show()
 
+# %%
+
+for name in prior_grids:
+    p = prior_grids[name]
+    print(np.nanmax(p.grid))
 # %%
