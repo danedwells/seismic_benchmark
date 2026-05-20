@@ -64,7 +64,7 @@ CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'Ferndale'
 
 # Background seismicity catalog (plotting only)
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
@@ -76,6 +76,8 @@ HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
+# Higher alpha = ETAS prior more important
+# Lower alpha = STATIC prior more important
 ALPHA     = 0.5
 ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 

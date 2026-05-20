@@ -7,7 +7,12 @@ from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 from .metrics import (posterior_confidence_level, usgs_prior_credible_level,
                       posterior_coverage, location_error_km, COVERAGE_RADII_KM,
-                      log_score, brier_score)
+                      log_score, brier_score, energy_score)
+
+# When the nearest triggered station is farther than this after the first
+# location, the trigger set is resampled to simulate real-system uncertainty.
+_DISTANT_EVENT_THRESHOLD_KM = 200.0
+_DISTANT_EVENT_SEED_TRIGS   = 3
 
 
 def get_unique_stations(run_dir):
@@ -59,8 +64,9 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     params.MAX_EVENT_TRIGS           = benchmark_params['max_trigs']
     params.migrate_grid              = benchmark_params.get('migrate_grid', True)
     params.migrate_grid_min_triggers = benchmark_params.get('migrate_grid_min_triggers', 1)
-    params.station_inventory  = station_inventory
-    params.activity_threshold = benchmark_params.get('activity_threshold', 0.40)
+    params.station_inventory         = station_inventory
+    params.activity_threshold        = benchmark_params.get('activity_threshold', 0.40)
+    params.resample_distant_events   = benchmark_params.get('resample_distant_events', True)
     return params
 
 
@@ -80,18 +86,19 @@ def runner_results_to_df(runner):
             'best_like':                 t.best_like,
             'best_prior':                t.best_prior,
             'frac_misfit':               t.frac_misfit,
-            'map_err_km':                m.get('map_err_km'),
-            'log_score':                 m.get('log_score'),
-            'brier_score':               m.get('brier_score'),
+            'map_err_km':                    m.get('map_err_km'),
+            'log_score':                     m.get('log_score'),
+            'brier_score':                   m.get('brier_score'),
+            'energy_score':                  m.get('energy_score'),
             'posterior_confidence_level':    m.get('posterior_confidence_level'),
-            'usgs_prior_credible_level': m.get('usgs_prior_credible_level'),
+            'usgs_prior_credible_level':     m.get('usgs_prior_credible_level'),
         }
         for col in cov_cols:
             row[col] = m.get(col)
         rows.append(row)
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-              'map_err_km', 'log_score', 'brier_score'] + cov_cols
+              'map_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
              + ['posterior_confidence_level', 'usgs_prior_credible_level'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
@@ -184,13 +191,20 @@ class BenchmarkRunner:
     """
 
     def __init__(self, prior, params, run_dir, catalog_df=None,
-                 station_availability=None):
+                 station_availability=None, rng=None,
+                 resample_distant_events=None):
         self.prior   = prior
         self.params  = params
         self.run_dir = run_dir
         self.results = {}   # {(event_id, version): SearchOut}
         self.metrics = {}   # {(event_id, version): {map_err_km, coverage, posterior_confidence_level}}
         self.n_trigs = {}   # {(event_id, version): int trigger count fed to bEPIC}
+
+        self._rng = np.random.default_rng(rng)
+        if resample_distant_events is None:
+            self.resample_distant_events = getattr(params, 'resample_distant_events', True)
+        else:
+            self.resample_distant_events = resample_distant_events
 
         # Optional per-event station inventory from build_station_availability.py.
         # If provided, params.station_inventory is set per event before locating.
@@ -204,6 +218,60 @@ class BenchmarkRunner:
             }
         else:
             self._ref_lookup = {}
+
+    def _build_resample_sequence(self, df_run):
+        """
+        Build a synthetic trigger sequence for a distant event.
+
+        Takes the full trigger set from the final run-file version, randomly
+        picks _DISTANT_EVENT_SEED_TRIGS as the starting subset, then appends
+        the remaining triggers in their original arrival order (by 'order' column).
+
+        Returns a list of DataFrames, one per synthetic version, each containing
+        the cumulative trigger set for that version.
+        """
+        all_trigs = (df_run[df_run['version'] == df_run['version'].max()]
+                     .sort_values('order')
+                     .head(self.params.MAX_EVENT_TRIGS)
+                     .reset_index(drop=True))
+        n = len(all_trigs)
+        k = min(_DISTANT_EVENT_SEED_TRIGS, n)
+
+        seed_idx = sorted(self._rng.choice(n, size=k, replace=False).tolist())
+        rest_idx = [i for i in range(n) if i not in set(seed_idx)]
+        # Seed triggers first (in arrival order), then remaining in arrival order.
+        ordered = seed_idx + rest_idx
+
+        return [all_trigs.iloc[ordered[:end]] for end in range(k, n + 1)]
+
+    def _run_resample_event(self, event_id, event, df_run):
+        """
+        Run the synthetic trigger sequence for a distant event.
+
+        Iterates the versions produced by _build_resample_sequence and stores
+        results under version keys offset by 10000 to avoid collision with any
+        normal-mode versions already stored for this event.
+        """
+        for syn_idx, syn_df_v in enumerate(self._build_resample_sequence(df_run)):
+            syn_version   = 10000 + syn_idx
+            event.trigs   = []
+            event.version = syn_version
+            for row in syn_df_v.itertuples(index=False):
+                event.trigs.append(EPIC_locate_prelim.TriggerManager(
+                    lon          = row.longitude,
+                    lat          = row.latitude,
+                    trigger_time = row.trigger_time,
+                    sta          = row.station,
+                    net          = row.network,
+                    chan         = row.channel,
+                ))
+            t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
+            self.results[(event_id, syn_version)] = t
+            self.n_trigs[(event_id, syn_version)] = len(syn_df_v)
+            if self._ref_lookup:
+                self._compute_event_metrics(event_id, syn_version, t, out_df)
+            if len(syn_df_v) >= self.params.MAX_EVENT_TRIGS:
+                break
 
     def _normalize_columns(self, df):
         df.columns = [c.replace(' ', '_') for c in df.columns]
@@ -221,9 +289,10 @@ class BenchmarkRunner:
         prior_cred = usgs_prior_credible_level(out_df, usgs_lat, usgs_lon)
         ls         = log_score(out_df, usgs_lat, usgs_lon)
         bs         = brier_score(out_df, usgs_lat, usgs_lon)
+        es         = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
         m = {'map_err_km': err_km, 'posterior_confidence_level': cred,
              'usgs_prior_credible_level': prior_cred,
-             'log_score': ls, 'brier_score': bs}
+             'log_score': ls, 'brier_score': bs, 'energy_score': es}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]
         self.metrics[(event_id, version)] = m
@@ -288,6 +357,16 @@ class BenchmarkRunner:
             self.n_trigs[(event_id, version)] = len(df_v)
             if self._ref_lookup:
                 self._compute_event_metrics(event_id, version, t, out_df)
+
+            # If every triggered station is farther than the threshold, the
+            # initial estimate is unreliable.  Resample the trigger set:
+            # randomly pick _DISTANT_EVENT_SEED_TRIGS as the new starting
+            # subset, then add the rest one by one in original arrival order.
+            if self.resample_distant_events:
+                min_dist_km = min(trig.dist for trig in event.trigs)
+                if min_dist_km > _DISTANT_EVENT_THRESHOLD_KM:
+                    self._run_resample_event(event_id, event, df_run)
+                    return
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break

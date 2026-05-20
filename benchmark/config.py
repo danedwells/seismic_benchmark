@@ -172,6 +172,7 @@ BENCHMARK_PARAMS = {
     'migrate_grid_min_triggers': 6,     # suppress migration until this many triggers have reported
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
+    'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
 }
 
 # ---------------------------------------------------------------------------

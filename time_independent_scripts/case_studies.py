@@ -54,7 +54,7 @@ SEIS_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismic
 CASE_STUDIES = config.CASE_STUDIES
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 

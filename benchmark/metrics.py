@@ -227,6 +227,59 @@ def brier_score(out_df, ref_lat, ref_lon):
     return float(np.sum(p_norm ** 2) - 2.0 * p_true + 1.0)
 
 
+def energy_score(out_df, ref_lat, ref_lon, n_samples=1000, rng=None):
+    """
+    Energy Score for a 2-D gridded posterior vs a point observation.
+
+    ES(F, y) = E[‖X − y‖] − ½ E[‖X − X'‖]
+
+    where X, X' are independent draws from the posterior and y is the reference
+    location.  The multivariate generalisation of CRPS to 2-D; reduces to CRPS
+    when the forecast is 1-D.  Lower is better; a posterior with all mass at the
+    true location gives 0.
+
+    Term 1 is computed exactly over the full grid (O(G)).  Term 2 uses a
+    split-sample Monte Carlo estimator: n_samples indices are drawn once, then
+    pairwise distances between the two halves estimate ½ E[‖X − X'‖] (O(n_samples)).
+
+    Parameters
+    ----------
+    out_df : pd.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon, post.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+    n_samples : int
+        Number of posterior samples for the MC term (default 1000).
+    rng : np.random.Generator or None
+        Random generator; a fresh default_rng() is used if None.
+
+    Returns
+    -------
+    float
+        Energy Score in km.  Lower is better.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    p = out_df['post'].values
+    p = p / p.sum()
+    lats = out_df['lat'].values
+    lons = out_df['lon'].values
+
+    # Term 1: exact posterior-weighted mean distance to reference, O(G)
+    term1 = float(np.dot(p, _haversine_km(ref_lat, ref_lon, lats, lons)))
+
+    # Term 2: ½ E[‖X − X'‖] via split-sample MC, O(n_samples)
+    idx = rng.choice(len(p), size=n_samples, p=p, replace=True)
+    mid = n_samples // 2
+    term2 = 0.5 * float(np.mean(
+        _haversine_km(lats[idx[:mid]], lons[idx[:mid]],
+                      lats[idx[mid:]], lons[idx[mid:]])
+    ))
+
+    return term1 - term2
+
+
 def ks_calibration(credible_levels):
     """
     KS statistic testing whether a vector of credible levels is Uniform[0, 1].

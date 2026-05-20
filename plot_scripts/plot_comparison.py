@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = None #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -279,4 +279,170 @@ plt.show()
 fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}.png"))
 
 # %%
+# ---------------------------------------------------------------------------
+# Figure 7: count of events with location error >= threshold vs trigger count
+# ---------------------------------------------------------------------------
+# 2×2 panel, one per radius in COVERAGE_RADII_KM (10, 25, 50, 100 km).
+# Each panel tallies how many events still have MAP error ≥ that threshold at
+# each trigger count.  Lower = better.  Mirrors the posterior_coverage() radii.
+# ---------------------------------------------------------------------------
+from benchmark.metrics import COVERAGE_RADII_KM
 
+colors = plt.cm.tab10.colors
+mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+color_lookup = {s['name']: colors[i % len(colors)]
+                for i, s in enumerate(mixed_specs)}
+if mixed_specs:
+    for s in PRIOR_SPECS:
+        if s['group'] == 'static':
+            mixed_counterpart = f"{s['name']}+ETAS"
+            if mixed_counterpart in color_lookup:
+                color_lookup[s['name']] = color_lookup[mixed_counterpart]
+else:
+    for i, s in enumerate(s for s in PRIOR_SPECS if s['group'] == 'static'):
+        color_lookup[s['name']] = colors[i % len(colors)]
+for s in PRIOR_SPECS:
+    if s['group'] == 'dynamic':
+        color_lookup[s['name']] = 'black'
+
+# Pre-load CSVs once; skip priors without usable data
+loaded = {}
+for spec in PRIOR_SPECS:
+    if not os.path.exists(spec['csv']):
+        print(f"  [{spec['name']}] CSV not found — skipping")
+        continue
+    df = pd.read_csv(spec['csv'])
+    if 'map_err_km' not in df.columns or df['map_err_km'].isna().all():
+        print(f"  [{spec['name']}] no map_err_km data — skipping")
+        continue
+    df = df.dropna(subset=['map_err_km']).copy()
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                           .rank(method='dense')
+                           .astype(int))
+    loaded[spec['name']] = (spec, df)
+
+fig_large, axes_large = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
+axes_large = axes_large.flatten()
+
+for ax, threshold in zip(axes_large, COVERAGE_RADII_KM):
+    for name, (spec, df) in loaded.items():
+        counts = (df.groupby('n_trigs')['map_err_km']
+                    .apply(lambda x: (x >= threshold).sum())
+                    .reset_index(name='n_large_errors'))
+        color    = color_lookup.get(name, 'gray')
+        n_events = df['event_id'].nunique()
+        ax.plot(counts['n_trigs'], counts['n_large_errors'],
+                color=color, linestyle=spec['ls'], linewidth=spec['lw'],
+                label=f"{name}  (n={n_events})")
+
+    ax.set_title(f'Error ≥ {threshold} km', fontsize=11)
+    ax.set_xlim(left=4 if ACTIVE_CASE_STUDY is None else 1)
+    ax.set_yscale('log')
+    ax.grid(True, alpha=0.3)
+
+for ax in axes_large[2:]:
+    ax.set_xlabel('Number of triggers', fontsize=11)
+for ax in axes_large[::2]:
+    ax.set_ylabel('Event count  (↓ better)', fontsize=11)
+
+handles, labels = axes_large[0].get_legend_handles_labels()
+fig_large.legend(handles, labels, fontsize=8, loc='lower center',
+                 ncol=min(len(loaded), 4), bbox_to_anchor=(0.5, -0.02))
+fig_large.suptitle(f'Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
+                   fontsize=13)
+plt.tight_layout(rect=[0, 0.06, 1, 1])
+
+_save = os.path.join(FIGURES_DIR, 'large_error_count_vs_triggers.png')
+fig_large.savefig(_save, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save}')
+plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 8: spatial map of location errors — 6 panels, one per prior
+#           (all priors except Smooth_seismicity)
+# ---------------------------------------------------------------------------
+# Events at trigger_number are plotted at their posterior location.
+# Colour and marker size encode the error bin; thresholds match
+# COVERAGE_RADII_KM (10, 25, 50, 100 km).  Larger/darker = larger error.
+# Reuses the `loaded` dict and `trigger_number` from the cells above.
+# ---------------------------------------------------------------------------
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
+ERROR_BINS  = [0, 10, 25, 50, 100, np.inf]
+BIN_LABELS  = ['< 10 km', '10–25 km', '25–50 km', '50–100 km', '≥ 100 km']
+BIN_COLORS  = ['#2196F3', '#66BB6A', '#FFA726', '#EF5350', '#7B1FA2']
+BIN_SIZES   = [12, 28, 50, 75, 105]
+
+map_specs = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
+
+map_data = {}
+for spec in map_specs:
+    name = spec['name']
+    if name not in loaded:
+        continue
+    _, df = loaded[name]
+    sub = (df[df['n_trigs'] == trigger_number]
+           [['posterior_lat', 'posterior_lon', 'map_err_km']]
+           .dropna())
+    if len(sub) == 0:
+        continue
+    map_data[name] = (spec, sub)
+
+if not map_data:
+    print('No data for error map — ensure Figure 7 cell has run.')
+else:
+    all_lats = pd.concat([d for _, d in map_data.values()])['posterior_lat']
+    all_lons = pd.concat([d for _, d in map_data.values()])['posterior_lon']
+    buf = 1.5
+    extent = [all_lons.min() - buf, all_lons.max() + buf,
+              all_lats.min() - buf, all_lats.max() + buf]
+
+    proj = ccrs.PlateCarree()
+    fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                     subplot_kw={'projection': proj})
+    axes_map_flat = axes_map.flatten()
+
+    for ax_idx, (name, (spec, sub)) in enumerate(map_data.items()):
+        ax = axes_map_flat[ax_idx]
+        ax.set_extent(extent, crs=proj)
+        ax.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
+        ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
+        ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+
+        for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
+            mask = (sub['map_err_km'] >= lo) & (sub['map_err_km'] < hi)
+            pts  = sub[mask]
+            if len(pts) == 0:
+                continue
+            ax.scatter(pts['posterior_lon'].values, pts['posterior_lat'].values,
+                       c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.75,
+                       transform=proj, zorder=5,
+                       linewidths=0.3, edgecolors='white')
+
+        ax.set_title(name, fontsize=11)
+
+    for ax in axes_map_flat[len(map_data):]:
+        ax.set_visible(False)
+
+    legend_handles = [
+        plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
+                    label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
+        for i in range(len(BIN_LABELS))
+    ]
+    fig_map.legend(handles=legend_handles, loc='lower center', ncol=5,
+                   fontsize=9, bbox_to_anchor=(0.5, 0.01))
+    fig_map.suptitle(
+        f'Posterior location errors at {trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
+        fontsize=13)
+    plt.tight_layout(rect=[0, 0.07, 1, 0.97])
+
+    _save = os.path.join(FIGURES_DIR, f'error_map_{trigger_number}trigs.png')
+    fig_map.savefig(_save, dpi=150, bbox_inches='tight')
+    print(f'Saved: {_save}')
+    plt.show()
+
+# %%
