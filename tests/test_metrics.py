@@ -13,7 +13,7 @@ from benchmark.metrics import (
     hdr_levels,
     location_error_km,
     posterior_confidence_level,
-    usgs_prior_credible_level,
+    prior_confidence_level,
     _haversine_km,
     posterior_coverage,
     COVERAGE_RADII_KM,
@@ -167,21 +167,21 @@ def test_posterior_confidence_level_single_cell():
 
 
 # ---------------------------------------------------------------------------
-# usgs_prior_credible_level
+# prior_confidence_level
 # ---------------------------------------------------------------------------
 
-def test_usgs_prior_credible_level_in_unit_interval():
-    cred = usgs_prior_credible_level(_make_grid(), 37.0, -120.0)
+def test_prior_confidence_level_in_unit_interval():
+    cred = prior_confidence_level(_make_grid(), 37.0, -120.0)
     assert 0.0 <= cred <= 1.0
 
 
-def test_usgs_prior_credible_level_at_prior_peak_is_minimum():
+def test_prior_confidence_level_at_prior_peak_is_minimum():
     """Prior credible level at the prior MAP peak is the minimum for this distribution."""
     df = _make_grid()
     peak_idx = df['prior'].idxmax()
-    cred_at_peak = usgs_prior_credible_level(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
+    cred_at_peak = prior_confidence_level(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
     for idx in df.nsmallest(5, 'prior').index:
-        cred_other = usgs_prior_credible_level(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
+        cred_other = prior_confidence_level(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
         assert cred_at_peak <= cred_other + 1e-9
 
 

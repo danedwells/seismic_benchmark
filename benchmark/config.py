@@ -168,7 +168,7 @@ BENCHMARK_PARAMS = {
     'max_trigs':                 15,
     'grid_size':                 100,
     'grid_km':                   200,
-    'migrate_grid':              True,  # re-centre grid on posterior MAP between versions
+    'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
     'migrate_grid_min_triggers': 6,     # suppress migration until this many triggers have reported
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,

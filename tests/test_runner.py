@@ -22,6 +22,8 @@ class _MockSearchOut:
     def __init__(self, lat=37.0, lon=-120.0):
         self.posterior_lat = lat
         self.posterior_lon = lon
+        self.exp_lat       = lat
+        self.exp_lon       = lon
         self.best_misfit   = 0.5
         self.best_like     = 1.2
         self.best_prior    = 0.001
@@ -40,7 +42,7 @@ def _make_mock_runner(n_events=2):
         runner.metrics[key] = {
             'map_err_km':                float(i * 5),
             'posterior_confidence_level':       0.3,
-            'usgs_prior_credible_level': 0.4,
+            'prior_confidence_level': 0.4,
             **{f'coverage_{r}km': 0.5 for r in COVERAGE_RADII_KM},
         }
         runner.n_trigs[key] = i + 1
@@ -62,7 +64,7 @@ def test_results_to_df_required_columns():
         'event_id', 'version', 'n_trigs',
         'posterior_lat', 'posterior_lon',
         'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-        'map_err_km', 'posterior_confidence_level', 'usgs_prior_credible_level',
+        'map_err_km', 'posterior_confidence_level', 'prior_confidence_level',
     }
     assert required.issubset(set(df.columns))
 

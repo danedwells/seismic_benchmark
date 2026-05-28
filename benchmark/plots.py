@@ -1351,12 +1351,12 @@ def plot_qq_calibration(
 def plot_qq_calibration_prior(
     prior_names,
     output_dir,
-    title='bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    title='bEPIC prior calibration — prior_confidence_level vs U(0,1)',
     save_path=None,
     filter_fn=None,
 ):
     """
-    Single-panel Q-Q calibration plot: usgs_prior_credible_level vs Uniform(0,1).
+    Single-panel Q-Q calibration plot: prior_confidence_level vs Uniform(0,1).
 
     Analogous to plot_qq_calibration but evaluates the spatial *prior* rather
     than the posterior.  Comparing the two plots reveals how much of the
@@ -1367,7 +1367,7 @@ def plot_qq_calibration_prior(
       well-placed / overconfident).
     - Above diagonal: prior spreads mass away from the true location.
 
-    Note: for the Uniform prior, usgs_prior_credible_level is ~1.0 for every
+    Note: for the Uniform prior, prior_confidence_level is ~1.0 for every
     event (a flat grid has no high-density region), so the Uniform line will
     sit at the top of the plot and is usually uninformative.
 
@@ -1392,14 +1392,14 @@ def plot_qq_calibration_prior(
 
         df = pd.read_csv(csv_path)
         # Deduplicate by event: the prior is evaluated once per event, so all
-        # trigger versions share the same usgs_prior_credible_level.  Using all
+        # trigger versions share the same prior_confidence_level.  Using all
         # rows inflates n with identical values, creating rectangular plateaus.
         final = (df.groupby('event_id').last().reset_index()
-                   .dropna(subset=['usgs_prior_credible_level']))
+                   .dropna(subset=['prior_confidence_level']))
         if filter_fn is not None:
             final = filter_fn(final)
 
-        vals = np.sort(final['usgs_prior_credible_level'].values)
+        vals = np.sort(final['prior_confidence_level'].values)
         n = len(vals)
         if n == 0:
             continue
@@ -1410,7 +1410,7 @@ def plot_qq_calibration_prior(
 
     ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
     ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=11)
-    ax.set_ylabel('Empirical usgs_prior_credible_level', fontsize=11)
+    ax.set_ylabel('Empirical prior_confidence_level', fontsize=11)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.legend(fontsize=9)

@@ -109,7 +109,7 @@ def posterior_confidence_level(out_df, usgs_lat, usgs_lon):
     return float(p_norm[p_norm >= p_usgs].sum())
 
 
-def usgs_prior_credible_level(out_df, usgs_lat, usgs_lon):
+def prior_confidence_level(out_df, usgs_lat, usgs_lon):
     """
     Credible level of the smallest HDR of the *prior* that contains the USGS location.
     Returns a value in [0, 1]: lower is better (USGS is in a high-density prior region).

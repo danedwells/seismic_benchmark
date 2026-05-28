@@ -480,7 +480,7 @@ fig = plot_qq_calibration(
 )
 plt.show()
 
-# ── Prior calibration Q-Q: usgs_prior_credible_level vs U(0,1) ──────────
+# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ──────────
 fig = plot_qq_calibration_prior(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,

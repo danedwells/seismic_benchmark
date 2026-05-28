@@ -32,7 +32,8 @@ from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params)
+                              run_single_event_get_grid, make_epic_params,
+                              load_station_availability_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,8 @@ cache_paths = {
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(PROJECT_ROOT)
-SEIS_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+#AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 
 # ---------------------------------------------------------------------------
 # Case study definitions — loaded from benchmark/config.py
@@ -55,7 +57,7 @@ CASE_STUDIES = config.CASE_STUDIES
 
 # --- Select active case study ---
 ACTIVE_CASE_STUDY = 'Ridgecrest'
-
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Per-case-study directories
@@ -102,6 +104,8 @@ _cs_ref_df = catalog_df.rename(columns={
     'longitude': 'usgs_lon',
 })[['event_id', 'usgs_lat', 'usgs_lon']]
 
+_avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
+
 job_args = [
     {
         'prior_name': name,
@@ -115,7 +119,7 @@ job_args = [
         'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
         'catalog_df': _cs_ref_df,
-        'station_inventory': None,
+        'station_availability': _avail,
     }
     for name, path in cache_paths.items()
 ]
@@ -245,11 +249,11 @@ fig = plot_qq_calibration(
 )
 plt.show()
 
-# ── Prior calibration Q-Q: usgs_prior_credible_level vs U(0,1) ────────────
+# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ────────────
 fig = plot_qq_calibration_prior(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    title       = 'bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    title       = 'bEPIC prior calibration — prior_confidence_level vs U(0,1)',
     save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration_prior.png'),
 )
 plt.show()

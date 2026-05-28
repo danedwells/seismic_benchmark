@@ -5,7 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
-from .metrics import (posterior_confidence_level, usgs_prior_credible_level,
+from .metrics import (posterior_confidence_level, prior_confidence_level,
                       posterior_coverage, location_error_km, COVERAGE_RADII_KM,
                       log_score, brier_score, energy_score)
 
@@ -37,7 +37,7 @@ def load_station_availability_cache(path):
     """
     df = pd.read_parquet(path)
     return {
-        int(eid): grp.drop(columns='event_id').reset_index(drop=True)
+        str(eid): grp.drop(columns='event_id').reset_index(drop=True)
         for eid, grp in df.groupby('event_id')
     }
 
@@ -82,24 +82,34 @@ def runner_results_to_df(runner):
             'n_trigs':                   runner.n_trigs.get((eid, ver)),
             'posterior_lat':             t.posterior_lat,
             'posterior_lon':             t.posterior_lon,
+            'exp_lat':                   t.exp_lat,
+            'exp_lon':                   t.exp_lon,
+            'like_lon':                  t.like_lon,
+            'like_lat':                  t.like_lat,
+            'like_exp_lon':              t.like_exp_lon,
+            'like_exp_lat':              t.like_exp_lat,
             'best_misfit':               t.best_misfit,
             'best_like':                 t.best_like,
             'best_prior':                t.best_prior,
             'frac_misfit':               t.frac_misfit,
             'map_err_km':                    m.get('map_err_km'),
+            'exp_err_km':                    m.get('exp_err_km'),
+            'like_err_km':                   m.get('like_err_km'),
+            'like_exp_err_km':               m.get('like_exp_err_km'),
             'log_score':                     m.get('log_score'),
             'brier_score':                   m.get('brier_score'),
             'energy_score':                  m.get('energy_score'),
             'posterior_confidence_level':    m.get('posterior_confidence_level'),
-            'usgs_prior_credible_level':     m.get('usgs_prior_credible_level'),
+            'prior_confidence_level':     m.get('prior_confidence_level'),
         }
         for col in cov_cols:
             row[col] = m.get(col)
         rows.append(row)
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
+              'exp_lat', 'exp_lon', 'like_lon', 'like_lat','like_exp_lon','like_exp_lat',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
-              'map_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
-             + ['posterior_confidence_level', 'usgs_prior_credible_level'])
+              'map_err_km', 'exp_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
+             + ['posterior_confidence_level', 'prior_confidence_level'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
@@ -283,15 +293,21 @@ class BenchmarkRunner:
         if ref is None or t is None or out_df is None:
             return
         usgs_lat, usgs_lon = ref
-        err_km = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
+        err_km     = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
+        exp_err_km = location_error_km(t.exp_lat,       t.exp_lon,       usgs_lat, usgs_lon)
+        like_err_km =  location_error_km(t.like_lat,       t.like_lon,   usgs_lat, usgs_lon)
+        like_exp_err_km =  location_error_km(t.like_exp_lat,t.like_exp_lon, usgs_lat, usgs_lon)
         cov        = posterior_coverage(out_df, usgs_lat, usgs_lon)
         cred       = posterior_confidence_level(out_df, usgs_lat, usgs_lon)
-        prior_cred = usgs_prior_credible_level(out_df, usgs_lat, usgs_lon)
+        prior_cred = prior_confidence_level(out_df, usgs_lat, usgs_lon)
         ls         = log_score(out_df, usgs_lat, usgs_lon)
         bs         = brier_score(out_df, usgs_lat, usgs_lon)
         es         = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
-        m = {'map_err_km': err_km, 'posterior_confidence_level': cred,
-             'usgs_prior_credible_level': prior_cred,
+        m = {'map_err_km': err_km, 'exp_err_km': exp_err_km, 
+             'like_err_km': like_err_km,
+             'like_exp_err_km': like_exp_err_km,
+             'posterior_confidence_level': cred,
+             'prior_confidence_level': prior_cred,
              'log_score': ls, 'brier_score': bs, 'energy_score': es}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]
@@ -309,7 +325,11 @@ class BenchmarkRunner:
         df_run   = self._normalize_columns(pd.read_csv(run_path))
         self.params.prior = self.prior
         if self._station_availability is not None:
-            self.params.station_inventory = self._station_availability.get(int(event_id))
+            self.params.station_inventory = self._station_availability.get(str(event_id))
+
+        # Reset per-event state so previous event's posterior doesn't leak in
+        self.params.prev_posterior_lat = None
+        self.params.prev_posterior_lon = None
 
         first = df_run.sort_values('order').iloc[0]
 
@@ -353,6 +373,8 @@ class BenchmarkRunner:
                 event.trigs.append(trig)
 
             t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
+            self.params.prev_posterior_lat = t.posterior_lat
+            self.params.prev_posterior_lon = t.posterior_lon
             self.results[(event_id, version)] = t
             self.n_trigs[(event_id, version)] = len(df_v)
             if self._ref_lookup:
@@ -551,10 +573,12 @@ def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"REFERENCE_{ref_params['max_trigs']}.csv")
     _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
+             'exp_lat', 'exp_lon',
              'best_misfit', 'best_like', 'best_prior', 'frac_misfit']
     pd.DataFrame(
         [{'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
-          'posterior_lon': t.posterior_lon, 'best_misfit': t.best_misfit,
+          'posterior_lon': t.posterior_lon, 'exp_lat': t.exp_lat,
+          'exp_lon': t.exp_lon, 'best_misfit': t.best_misfit,
           'best_like': t.best_like, 'best_prior': t.best_prior,
           'frac_misfit': t.frac_misfit}
          for (eid, ver), t in runner.results.items()],
@@ -609,7 +633,8 @@ def run_prior(args):
             catalog_df = load_reference_catalog(catalog_path)
 
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
-                             catalog_df=catalog_df)
+                             catalog_df=catalog_df,
+                             station_availability=args.get('station_availability'))
     stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
     try:
         event_ids = sorted(int(s) for s in stems)

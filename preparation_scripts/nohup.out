@@ -1,0 +1,87 @@
+=== Attempt 1 ===
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/clients/fdsn/client.py:251: ObsPyDeprecationWarning: IRIS is now EarthScope, please consider changing the FDSN client short URL to 'EARTHSCOPE'.
+  warnings.warn(msg, ObsPyDeprecationWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/clients/fdsn/client.py:251: ObsPyDeprecationWarning: IRIS is now EarthScope, please consider changing the FDSN client short URL to 'EARTHSCOPE'.
+  warnings.warn(msg, ObsPyDeprecationWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3072 to 3199.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3200 to 3327.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3328 to 3455.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3456 to 3583.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2560 to 2687.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2688 to 2815.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2816 to 2943.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2944 to 3071.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3584 to 3711.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3712 to 3839.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3840 to 3967.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3968 to 4095.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4096 to 4223.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4224 to 4351.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4352 to 4479.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4480 to 4607.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 7168 to 7295.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 7296 to 7423.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 7424 to 7551.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 7552 to 7679.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/clients/fdsn/client.py:251: ObsPyDeprecationWarning: IRIS is now EarthScope, please consider changing the FDSN client short URL to 'EARTHSCOPE'.
+  warnings.warn(msg, ObsPyDeprecationWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3072 to 3199.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3200 to 3327.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3328 to 3455.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3456 to 3583.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2560 to 2687.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2688 to 2815.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2816 to 2943.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 2944 to 3071.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3584 to 3711.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3712 to 3839.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3840 to 3967.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 3968 to 4095.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4096 to 4223.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4224 to 4351.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4352 to 4479.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 4480 to 4607.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 8192 to 8319.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 8320 to 8447.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 8448 to 8575.
+  warnings.warn(_w, InternalMSEEDWarning)
+/home/a01738353/.conda/envs/myeq3.12/lib/python3.12/site-packages/obspy/io/mseed/headers.py:807: InternalMSEEDWarning: readMSEEDBuffer(): Not a SEED record. Will skip bytes 8576 to 8703.
+  warnings.warn(_w, InternalMSEEDWarning)

@@ -19,7 +19,7 @@ check to use actual data availability rather than a proxy inventory.
 Output
 ------
 data/reference/station_availability_cache.parquet
-  Columns: event_id (int), station (str), network (str),
+  Columns: event_id (str), station (str), network (str),
            longitude (float64), latitude (float64)
 
 Usage
@@ -45,13 +45,20 @@ from obspy.clients.fdsn import Client
 # ---------------------------------------------------------------------------
 
 HERE         = Path(__file__).parent.parent   # seismic_benchmark/
-RUN_DIR      = HERE / 'data' / 'run_files'
-CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
-OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
+
+# Main benchmark
+#RUN_DIR      = HERE / 'data' / 'run_files'
+#CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
+#OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
+
+CASE_STUDY = 'Ridgecrest'
+RUN_DIR      = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'run_files'
+CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2019_catalog.parquet'
+OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
 
 # ShakeAlert contributing networks (western US)
 # TODO - from benchmark catalog - replace with full list
-SHAKEALERT_NETWORKS = 'AZ, BC, BK, CC, CE, CI, CN, IU, NC, NN, NP, SB, SN, UO, US, UW'
+SHAKEALERT_NETWORKS = 'AZ,BC,BK,CC,CE,CI,CN,IU,NC,NN,NP,SB,SN,UO,US,UW'
 
 FDSN_CLIENT         = 'IRIS'
 SEARCH_RADIUS_KM    = 300.0  # generous upper bound on R_MAX; runtime filtering
@@ -73,12 +80,12 @@ def _parse_catalog_date(s):
 
 
 def load_reference_catalog(path):
-    """Return dict {postgres_id (int): (lat, lon, UTCDateTime)}."""
+    """Return dict {postgres_id (str): (lat, lon, UTCDateTime)}."""
     df = pd.read_csv(path, sep='\t')
     df.columns = [c.strip() for c in df.columns] # get rid of whitespaces in col names
     out = {}
     for _, row in df.iterrows():
-        pid = int(row['postgres id'])
+        pid = str(row['postgres id']).strip()
         out[pid] = (
             float(row['ANSS lat']),
             float(row['ANSS lon']),
@@ -86,6 +93,17 @@ def load_reference_catalog(path):
         )
     return out
 
+def load_case_study_catalog(path):
+    """Return dict {event_id (str): (lat, lon, UTCDateTime)} from a case-study parquet."""
+    df = pd.read_parquet(path)
+    out = {}
+    for _, row in df.iterrows():
+        out[str(row['id'])] = (
+            float(row['latitude']),
+            float(row['longitude']),
+            UTCDateTime(row['time'].isoformat()),
+        )
+    return out
 
 def event_info_from_run(run_path):
     """
@@ -122,7 +140,7 @@ def query_candidates(client, lat, lon, t_event, radius_km, networks):
             level='station',
         )
     except Exception as exc:
-        warnings.warn(f"get_stations failed: {exc}")
+        print(f"  get_stations failed ({type(exc).__name__}): {exc}")
         return pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
 
     rows = []
@@ -133,9 +151,10 @@ def query_candidates(client, lat, lon, t_event, radius_km, networks):
     return pd.DataFrame(rows, columns=['station', 'network', 'longitude', 'latitude'])
 
 
-def _probe_one(client, net, sta, t_start, duration):
+def _probe_one(fdsn_client_name, net, sta, t_start, duration):
     """Return True if the station returns any ??Z trace in the probe window."""
     try:
+        client = Client(fdsn_client_name)  # own Client per thread — libmseed isn't thread-safe
         st = client.get_waveforms(
             network=net, station=sta, location='*', channel='??Z',
             starttime=t_start, endtime=t_start + duration,
@@ -145,7 +164,7 @@ def _probe_one(client, net, sta, t_start, duration):
         return False
 
 
-def probe_active(client, candidates_df, t_probe, max_workers, duration):
+def probe_active(fdsn_client_name, candidates_df, t_probe, max_workers, duration):
     """
     Probe candidate stations in parallel.
     Returns the subset of candidates_df for which waveform data was found.
@@ -156,7 +175,7 @@ def probe_active(client, candidates_df, t_probe, max_workers, duration):
     active_idx = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {
-            pool.submit(_probe_one, client, row.network, row.station,
+            pool.submit(_probe_one, fdsn_client_name, row.network, row.station,
                         t_probe, duration): idx
             for idx, row in candidates_df.iterrows()
         }
@@ -185,22 +204,24 @@ def _flush(chunks, existing_df, path):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
+FLUSH_EVERY = 1
 def main():
     client = Client(FDSN_CLIENT)
 
     # Resumability: skip events already in the cache
     if OUTPUT_PATH.exists():
         existing = pd.read_parquet(OUTPUT_PATH)
-        done_ids = set(existing['event_id'].astype(int).unique())
+        done_ids = set(existing['event_id'].astype(str).unique())
         print(f"Resuming: {len(done_ids)} events already cached.")
     else:
         existing = pd.DataFrame()
         done_ids = set()
 
-    catalog   = load_reference_catalog(CATALOG_PATH)
+    # Get catalogs of events - need station availability per event
+    #catalog   = load_reference_catalog(CATALOG_PATH)
+    catalog = load_case_study_catalog(CATALOG_PATH)
     run_files = sorted(RUN_DIR.glob('*.run'))
-    pending   = [int(f.stem) for f in run_files if int(f.stem) not in done_ids]
+    pending   = [f.stem for f in run_files if f.stem not in done_ids]
     print(f"{len(pending)} events to process ({len(run_files)} total).\n")
 
     chunks = []
@@ -223,7 +244,7 @@ def main():
         trig_in_radius   = candidates[is_triggered].reset_index(drop=True)
         untrig_in_radius = candidates[~is_triggered].reset_index(drop=True)
 
-        active_untrig = probe_active(client, untrig_in_radius, t_first,
+        active_untrig = probe_active(FDSN_CLIENT, untrig_in_radius, t_first,
                                      MAX_WORKERS, PROBE_DURATION_S)
 
         event_active = pd.concat([trig_in_radius, active_untrig], ignore_index=True)

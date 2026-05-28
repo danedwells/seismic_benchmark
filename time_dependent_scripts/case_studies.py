@@ -115,7 +115,7 @@ DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
-PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
+PRIOR_ALPHA = 0.1 # UNCHANGED behavior if this == 1
 
 #%%
 # ---------------------------------------------------------------------------
@@ -401,11 +401,11 @@ fig = plot_qq_calibration(
 )
 plt.show()
 
-# ── Prior calibration Q-Q: usgs_prior_credible_level vs U(0,1) ────────────
+# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ────────────
 fig = plot_qq_calibration_prior(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    title       = 'bEPIC prior calibration — usgs_prior_credible_level vs U(0,1)',
+    title       = 'bEPIC prior calibration — prior_confidence_level vs U(0,1)',
     save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration_prior.png'),
 )
 plt.show()

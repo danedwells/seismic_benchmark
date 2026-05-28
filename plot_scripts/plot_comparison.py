@@ -82,6 +82,26 @@ PRIOR_SPECS = [
      'group': 'dynamic'},
 ]
 
+# Choose location type - Expectatoin ('exp') or Maximum posterior ('map')
+location_type = 'map' # exp, map, like, or like_exp
+if location_type == 'exp':
+    column_lat = 'exp_lat'
+    column_lon = 'exp_lon'
+    column_err = 'exp_err_km'
+elif location_type == 'map':
+    column_lat = 'posterior_lat'
+    column_lon = 'posterior_lon'
+    column_err = 'map_err_km'
+elif location_type == 'like':
+    column_lat = 'like_lat'
+    column_lon = 'like_lon'
+    column_err = 'like_err_km'
+elif location_type == 'like_exp':
+    column_lat = 'like_exp_lat'
+    column_lon = 'like_exp_lon'
+    column_err = 'like_exp_err_km'
+else:
+    raise ValueError("location type must be 'exp' or 'map'")
 
 #%%
 # ---------------------------------------------------------------------------
@@ -150,7 +170,7 @@ plt.show()
 # outliers are kept visible via the IQR band rather than being clipped.
 # ---------------------------------------------------------------------------
 fig_err = plot_median_vs_triggers(
-    metric       = 'map_err_km',
+    metric       = column_err,
     ylabel       = 'Median location error  km  (↓ better)',
     title        = f'Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
     log_y        = True,
@@ -161,7 +181,7 @@ fig_err = plot_median_vs_triggers(
 plt.show()
 
 fig_err = plot_mean_vs_triggers(
-    metric    = 'map_err_km',
+    metric    = column_err,
     ylabel    = 'Mean location error  km  (↓ better)',
     title     = f'Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
     log_y     = True,
@@ -207,80 +227,10 @@ fig_sc = plot_score_scatter(
 )
 plt.show()
 
-# %%
-
-
-
-
-# Assign consistent colors: mixed and their TI counterparts share a color.
-trigger_number = 7
-colors = plt.cm.tab10.colors
-# Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
-mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
-color_lookup = {s['name']: colors[i % len(colors)]
-                for i, s in enumerate(mixed_specs)}
-
-fig = plt.figure(figsize=(14,8),dpi=300)
-ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])  
-ax2 = fig.add_axes([0.36, 0.5, 0.28, 0.43])   
-ax3 = fig.add_axes([0.7, 0.5, 0.28, 0.43])   
-ax4 = fig.add_axes([0.02, 0.02, 0.28, 0.43])  
-ax5 = fig.add_axes([0.36, 0.02, 0.28, 0.43])   
-ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])   
-
-bins = np.logspace(-1,3,20)
-
-
-axes = [ax1, ax2, ax3, ax4, ax5, ax6]
-spec_ref = PRIOR_SPECS[5] # Uniform as reference
-ref_stats = load_final_values(spec_ref['csv'], 'map_err_km', n_trigs = trigger_number)
-
-for i,ax in enumerate(axes):
-    spec = PRIOR_SPECS[i]
-
-    # Skip uniform as a dedicated plot - go to dynamic etas
-    if spec['name'] == 'Uniform':
-        i = i+1
-        spec = PRIOR_SPECS[i]
-    
-    # Get stats
-    stats = load_final_values(spec['csv'], 'map_err_km', n_trigs=trigger_number)
-    # Plot ref
-    ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=['Uniform  (ref)'], alpha=0.4)
-    # Plot stats
-    ax.hist(stats, bins = bins, rwidth=0.9, color='r', alpha=0.6)
-    ax.set_xscale('log')
-    ax.set_title(spec["name"])
-    ax.grid()
-
-    # Label the ref in one plot only
-    if i == 0:
-        ax.legend()
-
-# Enforce consistent y-axis across all panels
-y_max = max(ax.get_ylim()[1] for ax in axes)
-for ax in axes:
-    ax.set_ylim(0, y_max)
-
-for ax in [ax1,ax2,ax3]:
-    ax.set_xticklabels([])
-
-for ax in [ax2,ax3,ax5,ax6]:
-    ax.set_yticklabels([])
-
-for ax in [ax4, ax5, ax6]:
-    
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
-
-
-fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
-
-plt.show()
-fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}.png"))
 
 # %%
 # ---------------------------------------------------------------------------
-# Figure 7: count of events with location error >= threshold vs trigger count
+# Figure 8: count of events with location error >= threshold vs trigger count
 # ---------------------------------------------------------------------------
 # 2×2 panel, one per radius in COVERAGE_RADII_KM (10, 25, 50, 100 km).
 # Each panel tallies how many events still have MAP error ≥ that threshold at
@@ -312,10 +262,11 @@ for spec in PRIOR_SPECS:
         print(f"  [{spec['name']}] CSV not found — skipping")
         continue
     df = pd.read_csv(spec['csv'])
-    if 'map_err_km' not in df.columns or df['map_err_km'].isna().all():
+    df['event_id'] = df['event_id'].astype(str)
+    if column_err not in df.columns or df[column_err].isna().all():
         print(f"  [{spec['name']}] no map_err_km data — skipping")
         continue
-    df = df.dropna(subset=['map_err_km']).copy()
+    df = df.dropna(subset=[column_err]).copy()
     if 'n_trigs' not in df.columns:
         df['n_trigs'] = (df.groupby('event_id')['version']
                            .rank(method='dense')
@@ -327,7 +278,7 @@ axes_large = axes_large.flatten()
 
 for ax, threshold in zip(axes_large, COVERAGE_RADII_KM):
     for name, (spec, df) in loaded.items():
-        counts = (df.groupby('n_trigs')['map_err_km']
+        counts = (df.groupby('n_trigs')[column_err]
                     .apply(lambda x: (x >= threshold).sum())
                     .reset_index(name='n_large_errors'))
         color    = color_lookup.get(name, 'gray')
@@ -353,14 +304,85 @@ fig_large.suptitle(f'Events exceeding error threshold vs trigger count — {PLOT
                    fontsize=13)
 plt.tight_layout(rect=[0, 0.06, 1, 1])
 
-_save = os.path.join(FIGURES_DIR, 'large_error_count_vs_triggers.png')
+_save = os.path.join(FIGURES_DIR, f'large_error_count_vs_triggers_{location_type}.png')
 fig_large.savefig(_save, dpi=150, bbox_inches='tight')
 print(f'Saved: {_save}')
 plt.show()
 
+# ---------------------------------------------------------------------------
+# Figure 8: Histogram of event locations
+# ---------------------------------------------------------------------------
+# Assign consistent colors: mixed and their TI counterparts share a color.
+trigger_number = 15
+colors = plt.cm.tab10.colors
+# Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
+mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
+color_lookup = {s['name']: colors[i % len(colors)]
+                for i, s in enumerate(mixed_specs)}
+
+fig = plt.figure(figsize=(14,8),dpi=300)
+ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])  
+ax2 = fig.add_axes([0.36, 0.5, 0.28, 0.43])   
+ax3 = fig.add_axes([0.7, 0.5, 0.28, 0.43])   
+ax4 = fig.add_axes([0.02, 0.02, 0.28, 0.43])  
+ax5 = fig.add_axes([0.36, 0.02, 0.28, 0.43])   
+ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])   
+
+bins = np.logspace(-1,3,20)
+
+
+axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+spec_ref = PRIOR_SPECS[5] # Uniform as reference
+ref_stats = load_final_values(spec_ref['csv'], column_err, n_trigs = trigger_number)
+
+for i,ax in enumerate(axes):
+    spec = PRIOR_SPECS[i]
+
+    # Skip uniform as a dedicated plot - go to dynamic etas
+    if spec['name'] == 'Uniform':
+        i = i+1
+        spec = PRIOR_SPECS[i]
+    
+    # Get stats
+    stats = load_final_values(spec['csv'], column_err, n_trigs=trigger_number)
+    # Plot ref
+    ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=['Uniform  (ref)'], alpha=0.4)
+    # Plot stats
+    ax.hist(stats, bins = bins, rwidth=0.9, color='r', alpha=0.6)
+    ax.set_xscale('log')
+    ax.set_title(spec["name"])
+    ax.grid()
+
+    # Label the ref in one plot only
+    if i == 0:
+        ax.legend()
+
+# Enforce consistent y-axis across all panels
+y_max = max(ax.get_ylim()[1] for ax in axes)
+for ax in axes:
+    ax.set_ylim(0, y_max)
+
+for ax in [ax1,ax2,ax3]:
+    ax.set_xticklabels([])
+
+for ax in [ax2,ax3,ax5,ax6]:
+    ax.set_yticklabels([])
+
+for ax in [ax4, ax5, ax6]:
+    
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+
+
+fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
+
+plt.show()
+fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}_{location_type}.png"))
+
+
+
 # %%
 # ---------------------------------------------------------------------------
-# Figure 8: spatial map of location errors — 6 panels, one per prior
+# Figure 9: spatial map of location errors — 6 panels, one per prior
 #           (all priors except Smooth_seismicity)
 # ---------------------------------------------------------------------------
 # Events at trigger_number are plotted at their posterior location.
@@ -372,7 +394,28 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from priors import SeismicPrior
 from matplotlib.colors import LogNorm
-trigger_number = 6
+from benchmark.runner import load_reference_catalog
+
+if ACTIVE_CASE_STUDY is not None:
+    import glob as _glob
+    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+                                           ACTIVE_CASE_STUDY, '*.parquet'))
+    if _cs_parquets:
+        _cs_df = pd.read_parquet(_cs_parquets[0])
+        ref_catalog = (_cs_df.rename(columns={'id': 'event_id',
+                                               'latitude': 'usgs_lat',
+                                               'longitude': 'usgs_lon'})
+                             [['event_id', 'usgs_lat', 'usgs_lon']])
+    else:
+        ref_catalog = None
+else:
+    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+    if os.path.exists(_catalog_path):
+        _raw = load_reference_catalog(_catalog_path)
+        ref_catalog = _raw[['event_id', 'usgs_lat', 'usgs_lon']].copy()
+        ref_catalog['event_id'] = ref_catalog['event_id'].astype(str)
+    else:
+        ref_catalog = None
 
 ERROR_BINS  = [0, 10, 25, 50, 100, np.inf]
 BIN_LABELS  = ['< 10 km', '10–25 km', '25–50 km', '50–100 km', '≥ 100 km']
@@ -388,7 +431,7 @@ for spec in map_specs:
         continue
     _, df = loaded[name]
     sub = (df[df['n_trigs'] == trigger_number]
-           [['posterior_lat', 'posterior_lon', 'map_err_km']]
+           [['event_id', column_lat, column_lon, column_err]]
            .dropna())
     if len(sub) == 0:
         continue
@@ -397,8 +440,8 @@ for spec in map_specs:
 if not map_data:
     print('No data for error map — ensure Figure 7 cell has run.')
 else:
-    all_lats = pd.concat([d for _, d in map_data.values()])['posterior_lat']
-    all_lons = pd.concat([d for _, d in map_data.values()])['posterior_lon']
+    all_lats = pd.concat([d for _, d in map_data.values()])[column_lat]
+    all_lons = pd.concat([d for _, d in map_data.values()])[column_lon]
     buf = 1.5
     extent = [all_lons.min() - buf, all_lons.max() + buf,
               all_lats.min() - buf, all_lats.max() + buf]
@@ -449,12 +492,32 @@ else:
                                       cmap='YlOrBr', shading='auto', alpha=0.35,
                                       norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
 
+        if ref_catalog is not None and not sub.empty:
+            sub['event_id'] = sub['event_id'].astype(str)
+            matched = sub.merge(
+                ref_catalog[['event_id', 'usgs_lon', 'usgs_lat']],
+                on='event_id', how='inner',
+            )
+            if not matched.empty:
+                n = len(matched)
+                seg_lons = np.empty(n * 3)
+                seg_lats = np.empty(n * 3)
+                seg_lons[0::3] = matched['usgs_lon'].values
+                seg_lons[1::3] = matched[column_lon].values
+                seg_lons[2::3] = np.nan
+                seg_lats[0::3] = matched['usgs_lat'].values
+                seg_lats[1::3] = matched[column_lat].values
+                seg_lats[2::3] = np.nan
+                ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
+                        alpha=0.35, transform=proj, zorder=4)
+                ax.scatter(matched['usgs_lon'],matched['usgs_lat'], c='gray',s=10,alpha=0.2)
+
         for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
-            mask = (sub['map_err_km'] >= lo) & (sub['map_err_km'] < hi)
+            mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
             pts  = sub[mask]
             if len(pts) == 0:
                 continue
-            ax.scatter(pts['posterior_lon'].values, pts['posterior_lat'].values,
+            ax.scatter(pts[column_lon].values, pts[column_lat].values,
                        c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.75,
                        transform=proj, zorder=5,
                        linewidths=0.3, edgecolors='white')
@@ -476,7 +539,7 @@ else:
         fontsize=13)
     plt.tight_layout(rect=[0, 0.07, 1, 0.97])
 
-    _save = os.path.join(FIGURES_DIR, f'error_map_{trigger_number}trigs.png')
+    _save = os.path.join(FIGURES_DIR, f'error_map_{trigger_number}trigs_{location_type}.png')
     fig_map.savefig(_save, dpi=150, bbox_inches='tight')
     print(f'Saved: {_save}')
     plt.show()
@@ -486,4 +549,606 @@ else:
 for name in prior_grids:
     p = prior_grids[name]
     print(np.nanmax(p.grid))
+# %%
+# Only run this for the non-active case study (all of california test catalog)
+if ACTIVE_CASE_STUDY == None:
+    # ---------------------------------------------------------------------------
+    # Figures 10–12: MTJ region — identical to Figures 7–9 filtered to events
+    #                in the Mendocino Triple Junction area.
+    # ---------------------------------------------------------------------------
+    # Adjust these four values to zoom into a different sub-region.
+    # Format: [lon_min, lon_max, lat_min, lat_max]  (matches Cartopy set_extent)
+    MTJ_LON_MIN, MTJ_LON_MAX = -129.5, -121.5
+    MTJ_LAT_MIN, MTJ_LAT_MAX =   37.5,   43.5
+    MTJ_EXTENT = [MTJ_LON_MIN, MTJ_LON_MAX, MTJ_LAT_MIN, MTJ_LAT_MAX]
+
+    if ref_catalog is not None:
+        _mtj_mask = (
+            ref_catalog['usgs_lat'].between(MTJ_LAT_MIN, MTJ_LAT_MAX) &
+            ref_catalog['usgs_lon'].between(MTJ_LON_MIN, MTJ_LON_MAX)
+        )
+        mtj_event_ids = set(ref_catalog.loc[_mtj_mask, 'event_id'])
+        print(f'MTJ region: {len(mtj_event_ids)} events')
+    else:
+        mtj_event_ids = set()
+        print('Warning: ref_catalog not loaded — MTJ event filter cannot be applied.')
+
+    #
+    # ---------------------------------------------------------------------------
+    # Figure 10: Events exceeding error threshold — MTJ region (mirror of Figure 8)
+    # ---------------------------------------------------------------------------
+    fig11, _axes11 = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
+    _axes11 = _axes11.flatten()
+
+    for ax, threshold in zip(_axes11, COVERAGE_RADII_KM):
+        for name, (spec, df) in loaded.items():
+            df_mtj = df[df['event_id'].isin(mtj_event_ids)] if mtj_event_ids else df.iloc[0:0]
+            counts = (df_mtj.groupby('n_trigs')[column_err]
+                            .apply(lambda x: (x >= threshold).sum())
+                            .reset_index(name='n_large_errors'))
+            n_events = df_mtj['event_id'].nunique()
+            ax.plot(counts['n_trigs'], counts['n_large_errors'],
+                    color=color_lookup.get(name, 'gray'),
+                    linestyle=spec['ls'], linewidth=spec['lw'],
+                    label=f"{name}  (n={n_events})")
+        ax.set_title(f'Error ≥ {threshold} km', fontsize=11)
+        ax.set_xlim(left=4 if ACTIVE_CASE_STUDY is None else 1)
+        ax.set_yscale('log')
+        ax.grid(True, alpha=0.3)
+
+    for ax in _axes11[2:]:
+        ax.set_xlabel('Number of triggers', fontsize=11)
+    for ax in _axes11[::2]:
+        ax.set_ylabel('Event count  (↓ better)', fontsize=11)
+
+    _handles11, _labels11 = _axes11[0].get_legend_handles_labels()
+    fig11.legend(_handles11, _labels11, fontsize=8, loc='lower center',
+                ncol=min(len(loaded), 4), bbox_to_anchor=(0.5, -0.02))
+    fig11.suptitle(
+        f'MTJ region  |  Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
+        fontsize=13)
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+
+    _save11 = os.path.join(FIGURES_DIR, f'large_error_count_vs_triggers_MTJ_{location_type}.png')
+    fig11.savefig(_save11, dpi=150, bbox_inches='tight')
+    print(f'Saved: {_save11}')
+    plt.show()
+
+    #
+    # ---------------------------------------------------------------------------
+    # Figure 11: Histogram of MTJ location errors (mirror of Figure 7)
+    # ---------------------------------------------------------------------------
+    _trigger_number = 6
+
+    def _mtj_hist_vals(name, n_trigs):
+        if name not in loaded or not mtj_event_ids:
+            return None
+        _, df = loaded[name]
+        sub = df[df['event_id'].isin(mtj_event_ids) & (df['n_trigs'] == n_trigs)]
+        vals = sub[column_err].dropna().values
+        return vals if len(vals) > 0 else None
+
+    fig10 = plt.figure(figsize=(14, 8), dpi=300)
+    _ax1  = fig10.add_axes([0.02, 0.5,  0.28, 0.43])
+    _ax2  = fig10.add_axes([0.36, 0.5,  0.28, 0.43])
+    _ax3  = fig10.add_axes([0.7,  0.5,  0.28, 0.43])
+    _ax4  = fig10.add_axes([0.02, 0.02, 0.28, 0.43])
+    _ax5  = fig10.add_axes([0.36, 0.02, 0.28, 0.43])
+    _ax6  = fig10.add_axes([0.7,  0.02, 0.28, 0.43])
+    _axes10 = [_ax1, _ax2, _ax3, _ax4, _ax5, _ax6]
+
+    _bins10 = np.logspace(-1, 3, 20)
+    _ref_stats10 = _mtj_hist_vals(PRIOR_SPECS[5]['name'], _trigger_number)
+
+    for i, ax in enumerate(_axes10):
+        spec = PRIOR_SPECS[i]
+        if spec['name'] == 'Uniform':
+            i += 1
+            spec = PRIOR_SPECS[i]
+        _stats10 = _mtj_hist_vals(spec['name'], _trigger_number)
+        if _ref_stats10 is not None:
+            ax.hist(_ref_stats10, bins=_bins10, rwidth=0.9, color='b',
+                    label=['Uniform  (ref)'], alpha=0.4)
+        if _stats10 is not None:
+            ax.hist(_stats10, bins=_bins10, rwidth=0.9, color='r', alpha=0.6)
+        ax.set_xscale('log')
+        ax.set_title(spec['name'])
+        ax.grid()
+        if i == 0:
+            ax.legend()
+
+    _y_max10 = max(ax.get_ylim()[1] for ax in _axes10)
+    for ax in _axes10:
+        ax.set_ylim(0, _y_max10)
+    for ax in [_ax1, _ax2, _ax3]:
+        ax.set_xticklabels([])
+    for ax in [_ax2, _ax3, _ax5, _ax6]:
+        ax.set_yticklabels([])
+    for ax in [_ax4, _ax5, _ax6]:
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+
+    fig10.suptitle(
+        f'MTJ region  |  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {_trigger_number}',
+        fontsize=16)
+    plt.show()
+    fig10.savefig(os.path.join(FIGURES_DIR, f'hist_location_error_{_trigger_number}_MTJ_{location_type}.png'))
+
+
+
+    # 
+    # ---------------------------------------------------------------------------
+    # Figure 12: Spatial map — MTJ region (mirror of Figure 9)
+    # ---------------------------------------------------------------------------
+
+    _map_data_mtj = {}
+    for spec in map_specs:
+        name = spec['name']
+        if name not in loaded:
+            continue
+        _, df = loaded[name]
+        df_mtj = df[df['event_id'].isin(mtj_event_ids)] if mtj_event_ids else df.iloc[0:0]
+        sub = (df_mtj[df_mtj['n_trigs'] == _trigger_number]
+                    [['event_id', column_lat, column_lon, column_err]]
+                    .dropna())
+        if len(sub) == 0:
+            continue
+        _map_data_mtj[name] = (spec, sub)
+
+    if not _map_data_mtj:
+        print('No MTJ data for error map.')
+    else:
+        _proj12 = ccrs.PlateCarree()
+        fig12, _axes12 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                    subplot_kw={'projection': _proj12})
+        _axes12_flat = _axes12.flatten()
+
+        for ax_idx, (name, (spec, sub)) in enumerate(_map_data_mtj.items()):
+            ax = _axes12_flat[ax_idx]
+            ax.set_extent(MTJ_EXTENT, crs=_proj12)
+            ax.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
+            ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
+            ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+
+            if name in prior_grids:
+                p    = prior_grids[name]
+                buf2 = 0.5
+                lon_mask = (p.lons >= MTJ_EXTENT[0] - buf2) & (p.lons <= MTJ_EXTENT[1] + buf2)
+                lat_mask = (p.lats >= MTJ_EXTENT[2] - buf2) & (p.lats <= MTJ_EXTENT[3] + buf2)
+                if lon_mask.any() and lat_mask.any():
+                    sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
+                    sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
+                    pos = sub_grid[sub_grid > 0]
+                    if len(pos) > 0:
+                        vmin = float(np.percentile(pos, 5))
+                        vmax = float(np.percentile(pos, 99))
+                        if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
+                            ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=_proj12,
+                                        cmap='YlOrBr', shading='auto', alpha=0.35,
+                                        norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
+
+            if ref_catalog is not None and not sub.empty:
+                matched = sub.merge(
+                    ref_catalog[['event_id', 'usgs_lon', 'usgs_lat']],
+                    on='event_id', how='inner',
+                )
+                if not matched.empty:
+                    n = len(matched)
+                    seg_lons = np.empty(n * 3)
+                    seg_lats = np.empty(n * 3)
+                    seg_lons[0::3] = matched['usgs_lon'].values
+                    seg_lons[1::3] = matched[column_lon].values
+                    seg_lons[2::3] = np.nan
+                    seg_lats[0::3] = matched['usgs_lat'].values
+                    seg_lats[1::3] = matched[column_lat].values
+                    seg_lats[2::3] = np.nan
+                    ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
+                            alpha=0.35, transform=_proj12, zorder=4)
+                    ax.scatter(matched['usgs_lon'],matched['usgs_lat'], c='gray',s=10,alpha=0.2)
+
+            for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
+                mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
+                pts  = sub[mask]
+                if len(pts) == 0:
+                    continue
+                ax.scatter(pts[column_lon].values, pts[column_lat].values,
+                        c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.75,
+                        transform=_proj12, zorder=5,
+                        linewidths=0.3, edgecolors='white')
+
+            ax.set_title(name, fontsize=11)
+
+        for ax in _axes12_flat[len(_map_data_mtj):]:
+            ax.set_visible(False)
+
+        _legend_handles12 = [
+            plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
+                        label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
+            for i in range(len(BIN_LABELS))
+        ]
+        fig12.legend(handles=_legend_handles12, loc='lower center', ncol=5,
+                    fontsize=9, bbox_to_anchor=(0.5, 0.01))
+        fig12.suptitle(
+            f'MTJ region  |  Posterior location errors at {_trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
+            fontsize=13)
+        plt.tight_layout(rect=[0, 0.07, 1, 0.97])
+
+        _save12 = os.path.join(FIGURES_DIR, f'error_map_{_trigger_number}trigs_MTJ_{location_type}.png')
+        fig12.savefig(_save12, dpi=150, bbox_inches='tight')
+        print(f'Saved: {_save12}')
+        plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figures 13–14: MAP vs expectation location estimate comparison
+# ---------------------------------------------------------------------------
+_trigger_number_comp = 6  # trigger count to compare at
+
+_comp_data = {}
+for spec in PRIOR_SPECS:
+    name = spec['name']
+    if name == 'Smooth_seismicity' or name not in loaded:
+        continue
+    _, df = loaded[name]
+    sub = (df[df['n_trigs'] == _trigger_number_comp]
+             [['event_id', 'posterior_lat', 'posterior_lon',
+               'exp_lat', 'exp_lon', 'map_err_km', 'exp_err_km']]
+             .dropna())
+    if len(sub) == 0:
+        continue
+    _comp_data[name] = (spec, sub)
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 13: Error histograms — MAP vs expectation (one panel per prior)
+# ---------------------------------------------------------------------------
+_bins13 = np.logspace(-1, 3, 20)
+
+fig13, _axes13 = plt.subplots(2, 3, figsize=(14, 8), dpi=150)
+_axes13_flat = _axes13.flatten()
+
+for ax_idx, (name, (spec, sub)) in enumerate(_comp_data.items()):
+    ax = _axes13_flat[ax_idx]
+    ax.hist(sub['map_err_km'].dropna(), bins=_bins13, rwidth=0.9,
+            color='crimson', alpha=0.6, label='MAP')
+    ax.hist(sub['exp_err_km'].dropna(), bins=_bins13, rwidth=0.9,
+            color='steelblue', alpha=0.6, label='Expectation')
+    ax.set_xscale('log')
+    ax.set_title(name, fontsize=10)
+    ax.grid(True, alpha=0.3)
+    if ax_idx == 0:
+        ax.legend(fontsize=9)
+    if ax_idx % 3 != 0:
+        ax.set_yticklabels([])
+    if ax_idx < 3:
+        ax.set_xticklabels([])
+    else:
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+
+for ax in _axes13_flat[len(_comp_data):]:
+    ax.set_visible(False)
+
+_y_max13 = max(ax.get_ylim()[1] for ax in _axes13_flat[:len(_comp_data)])
+for ax in _axes13_flat[:len(_comp_data)]:
+    ax.set_ylim(0, _y_max13)
+
+fig13.suptitle(
+    f'MAP vs expectation location error — {PLOT_TITLE_SUFFIX}  ({_trigger_number_comp} triggers)',
+    fontsize=13)
+plt.tight_layout()
+
+_save13 = os.path.join(FIGURES_DIR, f'map_vs_exp_hist_{_trigger_number_comp}trigs.png')
+fig13.savefig(_save13, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save13}')
+plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 14: Spatial map — lines connecting MAP to expectation per event
+# ---------------------------------------------------------------------------
+if _comp_data:
+    _all_lats = np.concatenate([
+        np.concatenate([sub['posterior_lat'].values, sub['exp_lat'].values])
+        for _, sub in _comp_data.values()
+    ])
+    _all_lons = np.concatenate([
+        np.concatenate([sub['posterior_lon'].values, sub['exp_lon'].values])
+        for _, sub in _comp_data.values()
+    ])
+    _buf14 = 1.5
+    _extent14 = [_all_lons.min() - _buf14, _all_lons.max() + _buf14,
+                 _all_lats.min() - _buf14, _all_lats.max() + _buf14]
+
+    _proj14 = ccrs.PlateCarree()
+    fig14, _axes14 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                   subplot_kw={'projection': _proj14})
+    _axes14_flat = _axes14.flatten()
+
+    for ax_idx, (name, (_, sub)) in enumerate(_comp_data.items()):
+        ax = _axes14_flat[ax_idx]
+        ax.set_extent(_extent14, crs=_proj14)
+        ax.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
+        ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
+        ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+
+        n = len(sub)
+        seg_lons = np.empty(n * 3)
+        seg_lats = np.empty(n * 3)
+        seg_lons[0::3] = sub['posterior_lon'].values
+        seg_lons[1::3] = sub['exp_lon'].values
+        seg_lons[2::3] = np.nan
+        seg_lats[0::3] = sub['posterior_lat'].values
+        seg_lats[1::3] = sub['exp_lat'].values
+        seg_lats[2::3] = np.nan
+        ax.plot(seg_lons, seg_lats, color='gray', linewidth=0.6,
+                alpha=0.5, transform=_proj14, zorder=3)
+
+        ax.scatter(sub['posterior_lon'], sub['posterior_lat'],
+                   c='crimson', s=14, alpha=0.7, transform=_proj14,
+                   zorder=4, linewidths=0, label='MAP')
+        ax.scatter(sub['exp_lon'], sub['exp_lat'],
+                   c='steelblue', s=14, alpha=0.7, transform=_proj14,
+                   zorder=4, linewidths=0, label='Expectation')
+
+        ax.set_title(name, fontsize=11)
+
+    _axes14_flat[0].legend(loc='upper right', fontsize=8, markerscale=1.5)
+
+    for ax in _axes14_flat[len(_comp_data):]:
+        ax.set_visible(False)
+
+    fig14.suptitle(
+        f'MAP vs expectation locations at {_trigger_number_comp} triggers — {PLOT_TITLE_SUFFIX}',
+        fontsize=13)
+    plt.tight_layout()
+
+    _save14 = os.path.join(FIGURES_DIR, f'map_vs_exp_spatial_{_trigger_number_comp}trigs.png')
+    fig14.savefig(_save14, dpi=150, bbox_inches='tight')
+    print(f'Saved: {_save14}')
+    plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 15: Single-event posterior — MAP vs expectation across 6 priors
+# ---------------------------------------------------------------------------
+# 2×3 map grid (one panel per prior) showing the full posterior distribution
+# for a randomly chosen catalog event.  Each panel shows:
+#   • Prior density as a viridis pcolormesh background (log₁₀ scale)
+#   • bEPIC posterior as filled + outlined contours (Reds)
+#   • ★ red   = MAP (argmax of posterior)
+#   • ★ blue  = expectation (mean of posterior)
+#   • ★ gold  = USGS reference location
+# A gray line connects MAP to expectation to highlight the shift.
+#
+# Priors: all time-independent except Smooth_seismicity, plus ETAS (dynamic).
+# Set EVENT_ID_OVERRIDE to a string event_id to replot a specific event;
+# leave as None for a fresh random draw each run.
+# ---------------------------------------------------------------------------
+
+EVENT_ID_OVERRIDE  = "ci37221428"#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
+N_TRIGGERS_OVERRIDE = 8  # e.g. 5 — plot the version that first reaches this many triggers
+
+_panel_specs15 = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
+# Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)
+
+# ── Event selection ──────────────────────────────────────────────────────────
+_all_eids15 = sorted({str(eid) for _, (_, df) in loaded.items() for eid in df['event_id']})
+_chosen_eid15 = (str(EVENT_ID_OVERRIDE) if EVENT_ID_OVERRIDE is not None
+                 else str(np.random.choice(_all_eids15)))
+print(f'[Figure 15] event_id = {_chosen_eid15}')
+
+# ── Run file ─────────────────────────────────────────────────────────────────
+_run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+              if ACTIVE_CASE_STUDY
+              else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+_run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
+
+if not os.path.exists(_run_path15):
+    print(f'[Figure 15] .run file not found: {_run_path15} — skipping.')
+else:
+    # Event time from first trigger row
+    _df_run15 = pd.read_csv(_run_path15)
+    _df_run15.columns = [c.replace(' ', '_') for c in _df_run15.columns]
+    _event_ts15 = pd.Timestamp(float(_df_run15['trigger_time'].iloc[0]), unit='s')
+
+    # Resolve focus_version from N_TRIGGERS_OVERRIDE
+    if N_TRIGGERS_OVERRIDE is not None:
+        _target_n15 = int(N_TRIGGERS_OVERRIDE)
+        _focus_v15 = None
+        for _v in sorted(_df_run15['version'].unique()):
+            if len(_df_run15[_df_run15['version'] == _v]) >= _target_n15:
+                _focus_v15 = _v
+                break
+        if _focus_v15 is None:
+            print(f'[Figure 15] Event has fewer than {_target_n15} triggers — using last version.')
+        else:
+            print(f'[Figure 15] N_TRIGGERS_OVERRIDE={_target_n15} → version {_focus_v15}')
+    else:
+        _focus_v15 = None
+
+    # USGS reference location
+    _ref_lat15 = _ref_lon15 = None
+    if ref_catalog is not None:
+        _rrow15 = ref_catalog[ref_catalog['event_id'].astype(str) == _chosen_eid15]
+        if not _rrow15.empty:
+            _ref_lat15 = float(_rrow15['usgs_lat'].values[0])
+            _ref_lon15 = float(_rrow15['usgs_lon'].values[0])
+
+    _grid_width15 = 2 * config.BENCHMARK_PARAMS['grid_size'] + 1
+
+    # Ensure these are defined even if Figure 9's else-block was skipped
+    _context15    = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
+    _kde_ov15     = {'KDE_Seismicity': f'kde_seismicity_{_context15}.tt3'}
+    try:
+        _prior_g15 = prior_grids
+    except NameError:
+        _prior_g15 = {}
+
+    # ── Build posterior grid for each prior ──────────────────────────────────
+    from benchmark.runner import run_single_event_get_grid
+    _panel_data15 = {}  # pname → (t, odf, actual_v, sp, use_prior)
+
+    for _ps15 in _panel_specs15:
+        _pname15 = _ps15['name']
+
+        if _pname15 == 'ETAS (dynamic)':
+            _etas_id15  = 'benchmark' if ACTIVE_CASE_STUDY is None else ACTIVE_CASE_STUDY
+            _etas_json15 = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+                                        f'parameters_{_etas_id15}.json')
+            if not os.path.exists(_etas_json15):
+                print(f'  [ETAS] inversion JSON not found: {_etas_json15} — skipping.')
+                continue
+            from priors import EtasPriorUpdater
+            _upd15 = EtasPriorUpdater.from_inversion_json(
+                _etas_json15, **config.ETAS_UPDATER_CONFIG)
+            # Feed catalog events before this event as ETAS context so the
+            # prior reflects realistic aftershock-enhanced rates in the search area.
+            if ACTIVE_CASE_STUDY is None:
+                _ctx_raw15 = load_reference_catalog(
+                    os.path.join(PROJECT_ROOT, 'data', 'reference',
+                                 'bEPIC_testing_catalog.txt'))
+                _ctx15 = (_ctx_raw15[_ctx_raw15['usgs_time'] < _event_ts15]
+                          .rename(columns={'usgs_time': 'time', 'usgs_lat': 'latitude',
+                                           'usgs_lon': 'longitude', 'usgs_mag': 'magnitude'})
+                          [['time', 'latitude', 'longitude', 'magnitude']])
+            else:
+                import glob as _glob15
+                _cs_pq15 = _glob15.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+                                                      ACTIVE_CASE_STUDY, '*.parquet'))
+                if _cs_pq15:
+                    _pq15 = pd.read_parquet(_cs_pq15[0])
+                    _pq15['time'] = _pq15['time'].dt.tz_localize(None)
+                    _ctx15 = (_pq15[_pq15['time'] < _event_ts15]
+                              .rename(columns={'mag': 'magnitude'})
+                              [['time', 'latitude', 'longitude', 'magnitude']])
+                else:
+                    _ctx15 = pd.DataFrame(columns=['time', 'latitude', 'longitude', 'magnitude'])
+            if not _ctx15.empty:
+                print(f'  [ETAS] feeding {len(_ctx15)} context events before {_event_ts15}')
+                _upd15.append_events(_ctx15)
+            _sp15  = _upd15.update(_event_ts15) # ETAS output (PRIOR)
+            _use15 = True
+        else:
+            _fn15 = _kde_ov15.get(_pname15) or config.PRIOR_FILENAMES.get(_pname15)
+            if _fn15 is None:
+                # Uniform — borrow any loaded SeismicPrior for grid geometry; use_prior=False
+                _sp15  = next(iter(_prior_g15.values()), None)
+                _use15 = False
+                if _sp15 is None:
+                    continue
+            else:
+                _path15 = os.path.join(SeismicPrior.data_dir, _fn15)
+                if not os.path.exists(_path15):
+                    print(f'  [{_pname15}] .tt3 not found — skipping.')
+                    continue
+                _sp15  = _prior_g15.get(_pname15) or SeismicPrior.from_tt3(_path15) # PRIOR
+                _use15 = True
+        print(_pname15)
+        _t15, _odf15, _v15 = run_single_event_get_grid(
+            _run_path15, _sp15, _use15, config.BENCHMARK_PARAMS, focus_version=_focus_v15)
+        _panel_data15[_pname15] = (_t15, _odf15, _v15, _sp15, _use15)
+
+    # ── Draw figure ──────────────────────────────────────────────────────────
+    _first_odf15 = next((v[1] for v in _panel_data15.values() if v[1] is not None), None)
+    if not _panel_data15 or _first_odf15 is None:
+        print('[Figure 15] No valid posterior grid — skipping.')
+    else:
+        _buffer = -0.4
+        _ext15 = [float(_first_odf15['lon'].min()) - _buffer,
+                  float(_first_odf15['lon'].max()) + _buffer,
+                  float(_first_odf15['lat'].min()) - _buffer,
+                  float(_first_odf15['lat'].max()) + _buffer]
+
+        _proj15 = ccrs.PlateCarree()
+        fig15, _axes15 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                      subplot_kw={'projection': _proj15}, squeeze=False)
+        _flat15 = _axes15.flatten()
+
+        for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
+                enumerate(_panel_data15.items()):
+            _ax15 = _flat15[_idx15]
+            _row15, _col15 = divmod(_idx15, 3)
+            _ax15.set_extent(_ext15, crs=_proj15)
+            _ax15.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
+            _ax15.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8',   zorder=0)
+            _ax15.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+            _ax15.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+            _gl15 = _ax15.gridlines(draw_labels=True, linewidth=0.3, color='gray',
+                                    alpha=0.5, linestyle='--')
+            _gl15.top_labels    = False
+            _gl15.right_labels  = False
+            _gl15.left_labels   = (_col15 == 0)
+            _gl15.bottom_labels = (_row15 == 1)
+
+            # Prior density background (log₁₀, viridis)
+            if _use15 and _sp15 is not None:
+                _log15 = np.log10(_sp15.grid + 1e-12)
+                _ax15.pcolormesh(_sp15.lons, _sp15.lats, _log15,
+                                 transform=_proj15, cmap='viridis', alpha=0.5,
+                                 shading='auto', zorder=1,
+                                 vmin=np.nanmean(_log15), vmax=np.nanmax(_log15))
+
+            # Posterior contours
+            if _odf15 is not None:
+                _post2d = _odf15['post'].values.reshape(_grid_width15, _grid_width15)
+                _lats2d = _odf15['lat'].values.reshape(_grid_width15, _grid_width15)
+                _lons2d = _odf15['lon'].values.reshape(_grid_width15, _grid_width15)
+                _pmax15 = _post2d.max()
+                if _pmax15 > 0:
+                    _lvls15 = np.linspace(0.1, 1.0, 10)
+                    _ax15.contourf(_lons2d, _lats2d, _post2d / _pmax15,
+                                   levels=_lvls15, cmap='Reds', alpha=0.55,
+                                   transform=_proj15, zorder=3)
+                    _ax15.contour(_lons2d, _lats2d, _post2d / _pmax15,
+                                  levels=_lvls15, colors='darkred', linewidths=0.5,
+                                  transform=_proj15, zorder=4)
+
+            # MAP and expectation markers + connecting line
+            if _t15 is not None:
+                _ax15.plot([_t15.posterior_lon, _t15.exp_lon],
+                           [_t15.posterior_lat, _t15.exp_lat],
+                           color='gray', linewidth=1.4, transform=_proj15, zorder=5)
+                _ax15.scatter(_t15.exp_lon, _t15.exp_lat,
+                              s=200, color='royalblue', marker='*', edgecolors='navy',
+                              linewidths=0.6, transform=_proj15, zorder=6,
+                              label='Expectation')
+                _ax15.scatter(_t15.posterior_lon, _t15.posterior_lat,
+                              s=200, color='red', marker='*', edgecolors='darkred',
+                              linewidths=0.6, transform=_proj15, zorder=7,
+                              label='MAP')
+
+            # USGS reference location
+            if _ref_lat15 is not None:
+                _ax15.scatter(_ref_lon15, _ref_lat15,
+                              s=240, color='gold', marker='*', edgecolors='black',
+                              linewidths=0.8, transform=_proj15, zorder=8,
+                              label='USGS')
+
+            # Seismometers used for this trigger version
+            if _v15 is not None:
+                _sta15 = _df_run15[_df_run15['version'] == _v15]
+                _ax15.scatter(_sta15['longitude'].values, _sta15['latitude'].values,
+                              s=30, color='orange', marker='v', edgecolors='darkorange',
+                              linewidths=0.4, transform=_proj15, zorder=9,
+                              label='Stations')
+
+            _vlbl15 = f'v{_v15}' if _t15 is not None else 'no data'
+            _ax15.set_title(f'{_pname15}  ({_vlbl15})', fontsize=10)
+            if _idx15 == 0:
+                _ax15.legend(loc='upper right', fontsize=7)
+
+        for _ax15 in _flat15[len(_panel_data15):]:
+            _ax15.set_visible(False)
+
+        fig15.suptitle(
+            f'Posterior MAP (red ★) vs Expectation (blue ★) — '
+            f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX}',
+            fontsize=13)
+        plt.tight_layout()
+
+        _save15 = os.path.join(FIGURES_DIR, f'posterior_map_vs_exp_{_chosen_eid15}_{N_TRIGGERS_OVERRIDE}.png')
+        fig15.savefig(_save15, dpi=150, bbox_inches='tight')
+        print(f'Saved: {_save15}')
+        plt.show()
 # %%
