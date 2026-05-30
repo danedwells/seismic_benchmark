@@ -19,7 +19,8 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params)
+                              run_single_event_get_grid, make_epic_params,
+                              load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -27,8 +28,9 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-RUN_DIR            = os.path.join(PROJECT_ROOT, 'data', 'run_files')
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
                                    f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
@@ -50,6 +52,11 @@ MTJ_VERSION  = None    # None = last available trigger version
 # Run bEPIC on this catalog, updating ETAS and prior as it goes.
 catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
 catalog_df = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
+
+station_availability = (
+    load_station_availability_cache(STATION_AVAIL_CACHE)
+    if os.path.exists(STATION_AVAIL_CACHE) else None
+)
 
 # Lookup: event_id (int) → USGS time, lat, lon, magnitude
 _usgs_ref_lookup = (
@@ -180,7 +187,8 @@ if RUN_DYNAMIC_PRIORS:
     params = make_epic_params(initial_prior, True, config.BENCHMARK_PARAMS)
 
     dyn_runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=RUN_DIR,
-                                 catalog_df=catalog_df)
+                                 catalog_df=catalog_df,
+                                 station_availability=station_availability)
 
     dyn_runner.run_all(
         event_ids         = event_ids,
@@ -455,9 +463,10 @@ else:
         _params = make_epic_params(_standalone_prior, True, config.BENCHMARK_PARAMS)
 
         _single_runner = BenchmarkRunner(
-            prior   = _standalone_prior,
-            params  = _params,
-            run_dir = RUN_DIR,
+            prior                = _standalone_prior,
+            params               = _params,
+            run_dir              = RUN_DIR,
+            station_availability = station_availability,
         )
         _single_runner.run_event(str(MTJ_EVENT_ID))
         print(f'[standalone] bEPIC location complete.')

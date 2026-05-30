@@ -46,7 +46,8 @@ from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params)
+                              run_single_event_get_grid, make_epic_params,
+                              load_station_availability_cache)
 
 from bEPIC import EPIC_locate_prelim
 
@@ -68,7 +69,7 @@ print(PROJECT_ROOT)
 CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'Ferndale'
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
@@ -77,6 +78,8 @@ HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input
                                   f'catalog_{ACTIVE_CASE_STUDY}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+
 
 # How often to re-evaluate the ETAS prior (in seconds of event time).
 # 0  → update before every event  (most accurate, slowest)
@@ -116,6 +119,10 @@ DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
 PRIOR_ALPHA = 0.1 # UNCHANGED behavior if this == 1
+
+_avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
+if _avail:
+    print("Station availability cache loaded")
 
 #%%
 # ---------------------------------------------------------------------------
@@ -251,7 +258,7 @@ if RUN_DYNAMIC_PRIORS:
         'longitude': 'usgs_lon',
     })[['event_id', 'usgs_lat', 'usgs_lon']]
     runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=CS_RUN_DIR,
-                             catalog_df=cs_ref_df)
+                             catalog_df=cs_ref_df,station_availability=_avail)
 
     # Collect event IDs from available .run files, sorted by first trigger time
     # (chronological order is critical so ETAS updates are causal).

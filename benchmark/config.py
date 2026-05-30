@@ -2,58 +2,41 @@ import os
 
 # Parameters passed to SeismicPrior factory constructors when building .tt3 files.
 # 'bounds' is (lon_min, lon_max, lat_min, lat_max).
-# from_smooth_seismicity is excluded here — it is pre-built and just needs fill/expand.
 
 PRIOR_CONSTRUCTION_PARAMS = {
     'bounds': (-129, -112, 30, 51), # Include Washingotn and Oregon
     'out_of_bounds_fill': {
-        'Gear1':             'mean',   # global model; offshore cells have low but real rates
-        'NSHM':              5000000.,   # land-only source; offshore needs a background value
-        'Helmstetter':       0.00001,   # CSEP testing region; offshore needs a background value
-        'Smooth_seismicity': 0.0001,   # US/Canada file; may not extend to all offshore areas
-        'KDE_Seismicity':    0.0001,   # KDE tails may not fully cover offshore areas
+        'Gear1':          'mean',   # global model; offshore cells have low but real rates
+        'NSHM':           5000000., # land-only source; offshore needs a background value
+        'Helmstetter':    0.00001,  # CSEP testing region; offshore needs a background value
+        'KDE_Seismicity': 0.0001,  # KDE tails may not fully cover offshore areas
     },
     # Optional resampling to a common resolution before caching.
     # Set to None to keep each prior's native resolution.
-    #
-    # Experiment A — downsample smooth seismicity to match others (~0.1°):
-    #   'Smooth_seismicity': 0.1,  all others: None
-    #
-    # Smooth_seismicity source is ~0.02°; GEAR1/NSHM/Helmstetter/ETAS are ~0.1°.
-    # 'target_resolution_deg': {
-    #     'Gear1':             None,
-    #     'NSHM':              None,
-    #     'Helmstetter':       None,
-    #     'Smooth_seismicity': 0.1,
-    # },
-
-    #Experiment B — all at ~0.02° (coarse priors upsampled):
+    # All priors upsampled to ~0.02°:
     'target_resolution_deg': {
-        'Gear1':             0.02,
-        'NSHM':              0.02,
-        'Helmstetter':       0.02,
-        'Smooth_seismicity': None,
-        'KDE_Seismicity':    None,  # resolution set by grid_size at build time
+        'Gear1':          0.02,
+        'NSHM':           0.02,
+        'Helmstetter':    0.02,
+        'KDE_Seismicity': None,  # resolution set by grid_size at build time
     },
     # Paths to source data files, relative to SeismicPrior.data_dir.
     # Helmstetter is omitted — its source data comes from pycsep at runtime.
     'source_paths': {
-        'Gear1':             os.path.join('GEAR1_data', 'GL_HAZTBLT_M5_B2_2013.TMP'),
-        'NSHM':              os.path.join('USGS_NSHM_data', 'gridded_moment_rates.xyz'),
-        'NSHM_fault':        os.path.join('USGS_NSHM_data', 'fault_moment_rates.xyz'),
-        'Smooth_seismicity': os.path.join('smooth_seismicity_data', 'prior_seis_grid_US_Canada.tt3'),
+        'Gear1':     os.path.join('GEAR1_data', 'GL_HAZTBLT_M5_B2_2013.TMP'),
+        'NSHM':      os.path.join('USGS_NSHM_data', 'gridded_moment_rates.xyz'),
+        'NSHM_fault': os.path.join('USGS_NSHM_data', 'fault_moment_rates.xyz'),
     },
 }
 
 # Cached .tt3 filenames written into SeismicPrior.data_dir.
-# Smooth_seismicity is a filled/expanded copy of the source file.
+# KDE_Seismicity filename varies per context; set explicitly in each script.
 PRIOR_FILENAMES = {
-    'Gear1':             'GEAR1_prior.tt3',
-    'NSHM':              'USGS_NSHM_prior.tt3',
-    'Helmstetter':       'helmstetter_prior.tt3',
-    'Smooth_seismicity': 'prior_seis_grid_US_Canada_filled.tt3',
-    'KDE_Seismicity':    None,   # filename varies per context; set explicitly in each script after build_priors.py
-    'Uniform':           None,
+    'Gear1':          'GEAR1_prior.tt3',
+    'NSHM':           'USGS_NSHM_prior.tt3',
+    'Helmstetter':    'helmstetter_prior.tt3',
+    'KDE_Seismicity': None,   # set per-script: kde_seismicity_{context}.tt3
+    'Uniform':        None,
 }
 
 # ---------------------------------------------------------------------------
@@ -164,12 +147,12 @@ ETAS_UPDATER_CONFIG = {
 
 # Parameters for the main benchmark run.
 BENCHMARK_PARAMS = {
-    'prior':                     'Smooth_seismicity',
+    'prior':                     'KDE_Seismicity',
     'max_trigs':                 15,
     'grid_size':                 100,
     'grid_km':                   200,
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
-    'migrate_grid_min_triggers': 6,     # suppress migration until this many triggers have reported
+    'migrate_grid_min_triggers': 8,     # suppress migration until this many triggers have reported
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km

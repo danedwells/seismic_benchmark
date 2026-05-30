@@ -113,7 +113,8 @@ def runner_results_to_df(runner):
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
-def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_version=None):
+def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
+                               focus_version=None, station_inventory=None):
     """
     Run bEPIC for one event up through *focus_version* and return
     (SearchOut, output_df, actual_version).
@@ -130,11 +131,14 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw, focus_versi
         Keys: grid_size, grid_km, max_trigs.
     focus_version : int or None
         Version to stop at (inclusive). None = last.
+    station_inventory : pandas.DataFrame or None
+        Passed to make_epic_params; enables the activity mask when provided.
     """
     df_run = pd.read_csv(run_path)
     df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
 
-    params = make_epic_params(prior, use_prior, params_kw)
+    params = make_epic_params(prior, use_prior, params_kw,
+                              station_inventory=station_inventory)
 
     first = df_run.sort_values('order').iloc[0]
     event = EPIC_locate_prelim.Event(
@@ -209,6 +213,11 @@ class BenchmarkRunner:
         self.results = {}   # {(event_id, version): SearchOut}
         self.metrics = {}   # {(event_id, version): {map_err_km, coverage, posterior_confidence_level}}
         self.n_trigs = {}   # {(event_id, version): int trigger count fed to bEPIC}
+
+        # Debug hook: set _debug_event_id to an event_id string/int before
+        # calling run_event() to capture out_df for every version of that event.
+        self._debug_event_id = None
+        self.debug_out_df    = {}   # {(event_id, version): out_df}
 
         self._rng = np.random.default_rng(rng)
         if resample_distant_events is None:
@@ -326,7 +335,7 @@ class BenchmarkRunner:
         self.params.prior = self.prior
         if self._station_availability is not None:
             self.params.station_inventory = self._station_availability.get(str(event_id))
-
+            #print("Self.params.station_inventory: ",self.params.station_inventory)
         # Reset per-event state so previous event's posterior doesn't leak in
         self.params.prev_posterior_lat = None
         self.params.prev_posterior_lon = None
@@ -379,6 +388,8 @@ class BenchmarkRunner:
             self.n_trigs[(event_id, version)] = len(df_v)
             if self._ref_lookup:
                 self._compute_event_metrics(event_id, version, t, out_df)
+            if self._debug_event_id is not None and str(event_id) == str(self._debug_event_id):
+                self.debug_out_df[(event_id, version)] = out_df
 
             # If every triggered station is farther than the threshold, the
             # initial estimate is unreliable.  Resample the trigger set:

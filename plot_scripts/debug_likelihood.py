@@ -29,11 +29,9 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from benchmark import config
-from benchmark.metrics import COVERAGE_RADII_KM, load_per_version_stats, load_final_values
-from benchmark.plots import plot_median_vs_triggers, plot_mean_vs_triggers
-from benchmark.plots import plot_mean_posterior_coverage, plot_median_posterior_coverage
-from benchmark.plots import plot_score_scatter
 
+
+#%%
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
@@ -192,7 +190,7 @@ for spec in map_specs:
 # ---------------------------------------------------------------------------
 
 EVENT_ID_OVERRIDE  = "ci37221428"#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
-N_TRIGGERS_OVERRIDE = 8  # e.g. 5 — plot the version that first reaches this many triggers
+N_TRIGGERS_OVERRIDE = 15  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] == 'Uniform']
 # Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)
@@ -209,213 +207,200 @@ _run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STU
               else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
 _run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
 
-if not os.path.exists(_run_path15):
-    print(f'[Figure 15] .run file not found: {_run_path15} — skipping.')
-else:
-    # Event time from first trigger row
-    _df_run15 = pd.read_csv(_run_path15)
-    _df_run15.columns = [c.replace(' ', '_') for c in _df_run15.columns]
-    _event_ts15 = pd.Timestamp(float(_df_run15['trigger_time'].iloc[0]), unit='s')
 
-    # Resolve focus_version from N_TRIGGERS_OVERRIDE
-    if N_TRIGGERS_OVERRIDE is not None:
-        _target_n15 = int(N_TRIGGERS_OVERRIDE)
-        _focus_v15 = None
-        for _v in sorted(_df_run15['version'].unique()):
-            if len(_df_run15[_df_run15['version'] == _v]) >= _target_n15:
-                _focus_v15 = _v
-                break
-        if _focus_v15 is None:
-            print(f'[Figure 15] Event has fewer than {_target_n15} triggers — using last version.')
-        else:
-            print(f'[Figure 15] N_TRIGGERS_OVERRIDE={_target_n15} → version {_focus_v15}')
+# Event time from first trigger row
+_df_run15 = pd.read_csv(_run_path15)
+_df_run15.columns = [c.replace(' ', '_') for c in _df_run15.columns]
+
+# Resolve focus_version from N_TRIGGERS_OVERRIDE
+if N_TRIGGERS_OVERRIDE is not None:
+    _target_n15 = int(N_TRIGGERS_OVERRIDE)
+    _focus_v15 = None
+    for _v in sorted(_df_run15['version'].unique()):
+        if len(_df_run15[_df_run15['version'] == _v]) >= _target_n15:
+            _focus_v15 = _v
+            break
+    if _focus_v15 is None:
+        print(f'[Figure 15] Event has fewer than {_target_n15} triggers — using last version.')
     else:
-        _focus_v15 = None
+        print(f'[Figure 15] N_TRIGGERS_OVERRIDE={_target_n15} → version {_focus_v15}')
+else:
+    _focus_v15 = None
+
+# USGS reference location
+_ref_lat15 = _ref_lon15 = None
+if ref_catalog is not None:
+    _rrow15 = ref_catalog[ref_catalog['event_id'].astype(str) == _chosen_eid15]
+    if not _rrow15.empty:
+        _ref_lat15 = float(_rrow15['usgs_lat'].values[0])
+        _ref_lon15 = float(_rrow15['usgs_lon'].values[0])
+
+_grid_width15 = 2 * config.BENCHMARK_PARAMS['grid_size'] + 1
+
+# Ensure these are defined even if Figure 9's else-block was skipped
+_context15    = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
+_kde_ov15     = {'KDE_Seismicity': f'kde_seismicity_{_context15}.tt3'}
+try:
+    _prior_g15 = prior_grids
+except NameError:
+    _prior_g15 = {}
+
+# ── Station inventory for activity masking ───────────────────────────────
+_avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+                               'station_availability_cache.parquet')
+                 if ACTIVE_CASE_STUDY
+                 else os.path.join(PROJECT_ROOT, 'data', 'reference',
+                                   'station_availability_cache.parquet'))
+_avail_df15 = pd.read_parquet(_avail_path15) if os.path.exists(_avail_path15) else None
+_sta_inv15 = (
+    _avail_df15[_avail_df15['event_id'].astype(str) == _chosen_eid15]
+    [['station', 'network', 'longitude', 'latitude']]
+    .reset_index(drop=True)
+    if _avail_df15 is not None else None
+)
+if _sta_inv15 is not None:
+    print(f'[Figure 15] station_inventory: {len(_sta_inv15)} stations for {_chosen_eid15}')
+else:
+    print(f'[Figure 15] no station inventory found — mask disabled')
+
+# ── Build posterior grid for each prior ──────────────────────────────────
+from benchmark.runner import run_single_event_get_grid
+_panel_data15 = {}  # pname → (t, odf, actual_v, sp, use_prior)
+
+for _ps15 in _panel_specs15:
+    _pname15 = _ps15['name']
+
+
+
+    _fn15 = _kde_ov15.get(_pname15) or config.PRIOR_FILENAMES.get(_pname15)
+    if _fn15 is None:
+        # Uniform — borrow any loaded SeismicPrior for grid geometry; use_prior=False
+        _sp15  = next(iter(_prior_g15.values()), None)
+        _use15 = False
+        if _sp15 is None:
+            continue
+    else:
+        _path15 = os.path.join(SeismicPrior.data_dir, _fn15)
+        if not os.path.exists(_path15):
+            print(f'  [{_pname15}] .tt3 not found — skipping.')
+            continue
+        _sp15  = _prior_g15.get(_pname15) or SeismicPrior.from_tt3(_path15) # PRIOR
+        _use15 = True
+
+    _t15, _odf15, _v15 = run_single_event_get_grid(
+        _run_path15, _sp15, _use15, config.BENCHMARK_PARAMS,
+        focus_version=_focus_v15, station_inventory=_sta_inv15)
+    _panel_data15[_pname15] = (_t15, _odf15, _v15, _sp15, _use15)
+
+# ── Draw figure ──────────────────────────────────────────────────────────
+_first_odf15 = next((v[1] for v in _panel_data15.values() if v[1] is not None), None)
+
+_buffer = -0.5
+_ext15 = [float(_first_odf15['lon'].min()) - _buffer,
+            float(_first_odf15['lon'].max()) + _buffer,
+            float(_first_odf15['lat'].min()) - _buffer,
+            float(_first_odf15['lat'].max()) + _buffer]
+
+_proj15 = ccrs.PlateCarree()
+fig15, _axes15 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                subplot_kw={'projection': _proj15}, squeeze=False)
+_flat15 = _axes15.flatten()
+
+for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
+        enumerate(_panel_data15.items()):
+    _ax15 = _flat15[_idx15]
+    _row15, _col15 = divmod(_idx15, 3)
+    _ax15.set_extent(_ext15, crs=_proj15)
+    _ax15.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
+    _ax15.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8',   zorder=0)
+    _ax15.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+    _ax15.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+    _gl15 = _ax15.gridlines(draw_labels=True, linewidth=0.3, color='gray',
+                            alpha=0.5, linestyle='--')
+    _gl15.top_labels    = False
+    _gl15.right_labels  = False
+    _gl15.left_labels   = (_col15 == 0)
+    _gl15.bottom_labels = (_row15 == 1)
+
+    # Prior density background (log₁₀, viridis)
+    if _use15 and _sp15 is not None:
+        _log15 = np.log10(_sp15.grid + 1e-12)
+        _ax15.pcolormesh(_sp15.lons, _sp15.lats, _log15,
+                            transform=_proj15, cmap='viridis', alpha=0.5,
+                            shading='auto', zorder=1,
+                            vmin=np.nanmean(_log15), vmax=np.nanmax(_log15))
+
+    # Posterior contours
+    if _odf15 is not None:
+        _post2d = _odf15['post'].values.reshape(_grid_width15, _grid_width15)
+        _lats2d = _odf15['lat'].values.reshape(_grid_width15, _grid_width15)
+        _lons2d = _odf15['lon'].values.reshape(_grid_width15, _grid_width15)
+        _pmax15 = _post2d.max()
+        if _pmax15 > 0:
+            _lvls15 = np.linspace(0.1, 1.0, 10)
+            _ax15.contourf(_lons2d, _lats2d, _post2d / _pmax15,
+                            levels=_lvls15, cmap='Reds', alpha=0.55,
+                            transform=_proj15, zorder=3)
+            _ax15.contour(_lons2d, _lats2d, _post2d / _pmax15,
+                            levels=_lvls15, colors='darkred', linewidths=0.5,
+                            transform=_proj15, zorder=4)
+
+    # MAP and expectation markers + connecting line
+    if _t15 is not None:
+        _ax15.plot([_t15.posterior_lon, _t15.exp_lon],
+                    [_t15.posterior_lat, _t15.exp_lat],
+                    color='gray', linewidth=1.4, transform=_proj15, zorder=5)
+        _ax15.scatter(_t15.exp_lon, _t15.exp_lat,
+                        s=200, color='royalblue', marker='*', edgecolors='navy',
+                        linewidths=0.6, transform=_proj15, zorder=6,
+                        label='Expectation')
+        _ax15.scatter(_t15.posterior_lon, _t15.posterior_lat,
+                        s=200, color='red', marker='*', edgecolors='darkred',
+                        linewidths=0.6, transform=_proj15, zorder=7,
+                        label='MAP')
 
     # USGS reference location
-    _ref_lat15 = _ref_lon15 = None
-    if ref_catalog is not None:
-        _rrow15 = ref_catalog[ref_catalog['event_id'].astype(str) == _chosen_eid15]
-        if not _rrow15.empty:
-            _ref_lat15 = float(_rrow15['usgs_lat'].values[0])
-            _ref_lon15 = float(_rrow15['usgs_lon'].values[0])
+    if _ref_lat15 is not None:
+        _ax15.scatter(_ref_lon15, _ref_lat15,
+                        s=240, color='gold', marker='*', edgecolors='black',
+                        linewidths=0.8, transform=_proj15, zorder=8,
+                        label='USGS')
 
-    _grid_width15 = 2 * config.BENCHMARK_PARAMS['grid_size'] + 1
+    # Seismometers: triggered (orange) and untriggered-but-active (gray)
+    if _v15 is not None:
+        _sta15 = _df_run15[_df_run15['version'] == _v15]
+        _trig_keys15 = set(zip(_sta15['station'], _sta15['network']))
+        if _sta_inv15 is not None and not _sta_inv15.empty:
+            _untrig15 = _sta_inv15[
+                ~_sta_inv15.apply(lambda r: (r['station'], r['network']) in _trig_keys15, axis=1)
+            ]
+            _ax15.scatter(_untrig15['longitude'].values, _untrig15['latitude'].values,
+                            s=18, color='lightgray', marker='v', edgecolors='gray',
+                            linewidths=0.4, transform=_proj15, zorder=8,
+                            label='Active (untriggered)')
+        _ax15.scatter(_sta15['longitude'].values, _sta15['latitude'].values,
+                        s=30, color='orange', marker='v', edgecolors='darkorange',
+                        linewidths=0.4, transform=_proj15, zorder=9,
+                        label='Triggered')
 
-    # Ensure these are defined even if Figure 9's else-block was skipped
-    _context15    = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
-    _kde_ov15     = {'KDE_Seismicity': f'kde_seismicity_{_context15}.tt3'}
-    try:
-        _prior_g15 = prior_grids
-    except NameError:
-        _prior_g15 = {}
+    _vlbl15 = f'v{_v15}' if _t15 is not None else 'no data'
+    _ax15.set_title(f'{_pname15}  ({_vlbl15})', fontsize=10)
+    if _idx15 == 0:
+        _ax15.legend(loc='upper right', fontsize=7)
 
-    # ── Build posterior grid for each prior ──────────────────────────────────
-    from benchmark.runner import run_single_event_get_grid
-    _panel_data15 = {}  # pname → (t, odf, actual_v, sp, use_prior)
+for _ax15 in _flat15[len(_panel_data15):]:
+    _ax15.set_visible(False)
 
-    for _ps15 in _panel_specs15:
-        _pname15 = _ps15['name']
+fig15.suptitle(
+    f'Posterior MAP (red ★) vs Expectation (blue ★) — '
+    f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX}',
+    fontsize=13)
+plt.tight_layout()
 
-        if _pname15 == 'ETAS (dynamic)':
-            _etas_id15  = 'benchmark' if ACTIVE_CASE_STUDY is None else ACTIVE_CASE_STUDY
-            _etas_json15 = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
-                                        f'parameters_{_etas_id15}.json')
-            if not os.path.exists(_etas_json15):
-                print(f'  [ETAS] inversion JSON not found: {_etas_json15} — skipping.')
-                continue
-            from priors import EtasPriorUpdater
-            _upd15 = EtasPriorUpdater.from_inversion_json(
-                _etas_json15, **config.ETAS_UPDATER_CONFIG)
-            # Feed catalog events before this event as ETAS context so the
-            # prior reflects realistic aftershock-enhanced rates in the search area.
-            if ACTIVE_CASE_STUDY is None:
-                _ctx_raw15 = load_reference_catalog(
-                    os.path.join(PROJECT_ROOT, 'data', 'reference',
-                                 'bEPIC_testing_catalog.txt'))
-                _ctx15 = (_ctx_raw15[_ctx_raw15['usgs_time'] < _event_ts15]
-                          .rename(columns={'usgs_time': 'time', 'usgs_lat': 'latitude',
-                                           'usgs_lon': 'longitude', 'usgs_mag': 'magnitude'})
-                          [['time', 'latitude', 'longitude', 'magnitude']])
-            else:
-                import glob as _glob15
-                _cs_pq15 = _glob15.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
-                                                      ACTIVE_CASE_STUDY, '*.parquet'))
-                if _cs_pq15:
-                    _pq15 = pd.read_parquet(_cs_pq15[0])
-                    _pq15['time'] = _pq15['time'].dt.tz_localize(None)
-                    _ctx15 = (_pq15[_pq15['time'] < _event_ts15]
-                              .rename(columns={'mag': 'magnitude'})
-                              [['time', 'latitude', 'longitude', 'magnitude']])
-                else:
-                    _ctx15 = pd.DataFrame(columns=['time', 'latitude', 'longitude', 'magnitude'])
-            if not _ctx15.empty:
-                print(f'  [ETAS] feeding {len(_ctx15)} context events before {_event_ts15}')
-                _upd15.append_events(_ctx15)
-            _sp15  = _upd15.update(_event_ts15) # ETAS output (PRIOR)
-            _use15 = True
-        else:
-            _fn15 = _kde_ov15.get(_pname15) or config.PRIOR_FILENAMES.get(_pname15)
-            if _fn15 is None:
-                # Uniform — borrow any loaded SeismicPrior for grid geometry; use_prior=False
-                _sp15  = next(iter(_prior_g15.values()), None)
-                _use15 = False
-                if _sp15 is None:
-                    continue
-            else:
-                _path15 = os.path.join(SeismicPrior.data_dir, _fn15)
-                if not os.path.exists(_path15):
-                    print(f'  [{_pname15}] .tt3 not found — skipping.')
-                    continue
-                _sp15  = _prior_g15.get(_pname15) or SeismicPrior.from_tt3(_path15) # PRIOR
-                _use15 = True
-        print(_pname15)
-        _t15, _odf15, _v15 = run_single_event_get_grid(
-            _run_path15, _sp15, _use15, config.BENCHMARK_PARAMS, focus_version=_focus_v15)
-        _panel_data15[_pname15] = (_t15, _odf15, _v15, _sp15, _use15)
-
-    # ── Draw figure ──────────────────────────────────────────────────────────
-    _first_odf15 = next((v[1] for v in _panel_data15.values() if v[1] is not None), None)
-    if not _panel_data15 or _first_odf15 is None:
-        print('[Figure 15] No valid posterior grid — skipping.')
-    else:
-        _buffer = -0.5
-        _ext15 = [float(_first_odf15['lon'].min()) - _buffer,
-                  float(_first_odf15['lon'].max()) + _buffer,
-                  float(_first_odf15['lat'].min()) - _buffer,
-                  float(_first_odf15['lat'].max()) + _buffer]
-
-        _proj15 = ccrs.PlateCarree()
-        fig15, _axes15 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
-                                      subplot_kw={'projection': _proj15}, squeeze=False)
-        _flat15 = _axes15.flatten()
-
-        for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
-                enumerate(_panel_data15.items()):
-            _ax15 = _flat15[_idx15]
-            _row15, _col15 = divmod(_idx15, 3)
-            _ax15.set_extent(_ext15, crs=_proj15)
-            _ax15.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
-            _ax15.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8',   zorder=0)
-            _ax15.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
-            _ax15.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
-            _gl15 = _ax15.gridlines(draw_labels=True, linewidth=0.3, color='gray',
-                                    alpha=0.5, linestyle='--')
-            _gl15.top_labels    = False
-            _gl15.right_labels  = False
-            _gl15.left_labels   = (_col15 == 0)
-            _gl15.bottom_labels = (_row15 == 1)
-
-            # Prior density background (log₁₀, viridis)
-            if _use15 and _sp15 is not None:
-                _log15 = np.log10(_sp15.grid + 1e-12)
-                _ax15.pcolormesh(_sp15.lons, _sp15.lats, _log15,
-                                 transform=_proj15, cmap='viridis', alpha=0.5,
-                                 shading='auto', zorder=1,
-                                 vmin=np.nanmean(_log15), vmax=np.nanmax(_log15))
-
-            # Posterior contours
-            if _odf15 is not None:
-                _post2d = _odf15['post'].values.reshape(_grid_width15, _grid_width15)
-                _lats2d = _odf15['lat'].values.reshape(_grid_width15, _grid_width15)
-                _lons2d = _odf15['lon'].values.reshape(_grid_width15, _grid_width15)
-                _pmax15 = _post2d.max()
-                if _pmax15 > 0:
-                    _lvls15 = np.linspace(0.1, 1.0, 10)
-                    _ax15.contourf(_lons2d, _lats2d, _post2d / _pmax15,
-                                   levels=_lvls15, cmap='Reds', alpha=0.55,
-                                   transform=_proj15, zorder=3)
-                    _ax15.contour(_lons2d, _lats2d, _post2d / _pmax15,
-                                  levels=_lvls15, colors='darkred', linewidths=0.5,
-                                  transform=_proj15, zorder=4)
-
-            # MAP and expectation markers + connecting line
-            if _t15 is not None:
-                _ax15.plot([_t15.posterior_lon, _t15.exp_lon],
-                           [_t15.posterior_lat, _t15.exp_lat],
-                           color='gray', linewidth=1.4, transform=_proj15, zorder=5)
-                _ax15.scatter(_t15.exp_lon, _t15.exp_lat,
-                              s=200, color='royalblue', marker='*', edgecolors='navy',
-                              linewidths=0.6, transform=_proj15, zorder=6,
-                              label='Expectation')
-                _ax15.scatter(_t15.posterior_lon, _t15.posterior_lat,
-                              s=200, color='red', marker='*', edgecolors='darkred',
-                              linewidths=0.6, transform=_proj15, zorder=7,
-                              label='MAP')
-
-            # USGS reference location
-            if _ref_lat15 is not None:
-                _ax15.scatter(_ref_lon15, _ref_lat15,
-                              s=240, color='gold', marker='*', edgecolors='black',
-                              linewidths=0.8, transform=_proj15, zorder=8,
-                              label='USGS')
-
-            # Seismometers used for this trigger version
-            if _v15 is not None:
-                _sta15 = _df_run15[_df_run15['version'] == _v15]
-                _ax15.scatter(_sta15['longitude'].values, _sta15['latitude'].values,
-                              s=30, color='orange', marker='v', edgecolors='darkorange',
-                              linewidths=0.4, transform=_proj15, zorder=9,
-                              label='Stations')
-
-            _vlbl15 = f'v{_v15}' if _t15 is not None else 'no data'
-            _ax15.set_title(f'{_pname15}  ({_vlbl15})', fontsize=10)
-            if _idx15 == 0:
-                _ax15.legend(loc='upper right', fontsize=7)
-
-        for _ax15 in _flat15[len(_panel_data15):]:
-            _ax15.set_visible(False)
-
-        fig15.suptitle(
-            f'Posterior MAP (red ★) vs Expectation (blue ★) — '
-            f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX}',
-            fontsize=13)
-        plt.tight_layout()
-
-        _save15 = os.path.join(FIGURES_DIR, f'posterior_map_vs_exp_{_chosen_eid15}_{N_TRIGGERS_OVERRIDE}.png')
-        fig15.savefig(_save15, dpi=150, bbox_inches='tight')
-        print(f'Saved: {_save15}')
-        plt.show()
+_save15 = os.path.join(FIGURES_DIR, f'posterior_map_vs_exp_{_chosen_eid15}_{N_TRIGGERS_OVERRIDE}.png')
+fig15.savefig(_save15, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save15}')
+plt.show()
 # %%
 
 import numpy as np
@@ -448,10 +433,10 @@ vapp = ddist / dtt
 axes[1].plot(dist[1:], vapp, 'b-', lw=1)
 axes[1].set_xlabel('Distance (km)')
 axes[1].set_ylabel('Apparent velocity (km/s)')
-axes[1].set_title('d(dist)/d(tt) — check for discontinuities')
-axes[0].set_xlim([0,100])
-axes[1].set_xlim([0,100])
-axes[0].set_ylim([0,20])
+axes[1].set_title('d(dist)/d(tt)')
+axes[0].set_xlim([0,280])
+axes[1].set_xlim([0,280])
+axes[0].set_ylim([0,50])
 #axes[1].set_ylim()
 
 plt.tight_layout()
@@ -465,3 +450,85 @@ print(f"Mean dist spacing: {np.diff(tt_mod[:,0]).mean():.2f} km")
 print(f"Max dist spacing: {np.diff(tt_mod[:,0]).max():.2f} km")
 
 #%%
+import pandas as pd
+HERE         = Path(__file__).parent.parent   # seismic_benchmark/
+
+# Main benchmark
+#RUN_DIR      = HERE / 'data' / 'run_files'
+#CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
+#OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
+
+CASE_STUDY = 'Ridgecrest'
+
+OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
+
+df = pd.read_parquet(f"{OUTPUT_PATH}")
+# should be 397 for ridgecrest
+print("Unique events: ",len(df['event_id'].unique()))
+
+#%%
+
+from benchmark import runner as benchmark_runner, config
+from priors import SeismicPrior
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
+                              run_single_event_get_grid, make_epic_params,
+                              load_station_availability_cache)
+
+# Pick one event and one prior to interrogate
+DEBUG_EID  = 'ci38457519'   # any event_id from CS_RUN_DIR
+PRIOR_NAME = 'Helmstetter'
+
+data_dir    = SeismicPrior.data_dir            # priors/data/
+cache_paths = {
+    name: os.path.join(data_dir, fname) if fname is not None else None
+    for name, fname in config.PRIOR_FILENAMES.items()
+}
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+print(PROJECT_ROOT)
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+#AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+
+# ---------------------------------------------------------------------------
+# Case study definitions — loaded from benchmark/config.py
+# ---------------------------------------------------------------------------
+CASE_STUDIES = config.CASE_STUDIES
+
+# --- Select active case study ---
+ACTIVE_CASE_STUDY = 'Ridgecrest'
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
+
+# Per-case-study directories
+MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
+CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
+CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+
+for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
+    os.makedirs(_d, exist_ok=True)
+
+cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_CASE_STUDY}.tt3')
+_avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
+if _avail:
+    print("Station availability cache loaded")
+
+p      = SeismicPrior.from_tt3(cache_paths[PRIOR_NAME])
+params = benchmark_runner.make_epic_params(p, True, config.BENCHMARK_PARAMS,
+                                            station_inventory=None)  # filled per-event below
+r = benchmark_runner.BenchmarkRunner(
+        prior=p, params=params,
+        run_dir=CS_RUN_DIR,
+        station_availability=_avail)   # same _avail as case_studies.py uses
+
+r._debug_event_id = DEBUG_EID
+r.run_event(str(DEBUG_EID))           # runs in main process — debug_out_df is populated
+
+
+for (eid, ver), out_df in sorted(r.debug_out_df.items(), key=lambda x: x[0][1]):
+    t = r.results[(eid, ver)]
+    print(f"v{ver}  n_trigs={r.n_trigs[(eid,ver)]}  "
+        f"like_MAP=({t.like_lat:.3f},{t.like_lon:.3f})  "
+        f"posterior_MAP=({t.posterior_lat:.3f},{t.posterior_lon:.3f})  "
+        f"zeros_in_like={( out_df['like']==0 ).sum()}/{len(out_df)}")

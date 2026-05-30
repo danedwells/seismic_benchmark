@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = None #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -313,7 +313,7 @@ plt.show()
 # Figure 8: Histogram of event locations
 # ---------------------------------------------------------------------------
 # Assign consistent colors: mixed and their TI counterparts share a color.
-trigger_number = 15
+trigger_number = 5
 colors = plt.cm.tab10.colors
 # Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
 mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
@@ -332,16 +332,13 @@ bins = np.logspace(-1,3,20)
 
 
 axes = [ax1, ax2, ax3, ax4, ax5, ax6]
-spec_ref = PRIOR_SPECS[5] # Uniform as reference
+spec_ref = PRIOR_SPECS[4] # Uniform as reference
 ref_stats = load_final_values(spec_ref['csv'], column_err, n_trigs = trigger_number)
 
 for i,ax in enumerate(axes):
     spec = PRIOR_SPECS[i]
 
-    # Skip uniform as a dedicated plot - go to dynamic etas
-    if spec['name'] == 'Uniform':
-        i = i+1
-        spec = PRIOR_SPECS[i]
+
     
     # Get stats
     stats = load_final_values(spec['csv'], column_err, n_trigs=trigger_number)
@@ -399,7 +396,7 @@ from benchmark.runner import load_reference_catalog
 if ACTIVE_CASE_STUDY is not None:
     import glob as _glob
     _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
-                                           ACTIVE_CASE_STUDY, '*.parquet'))
+                                           ACTIVE_CASE_STUDY, '*catalog.parquet'))
     if _cs_parquets:
         _cs_df = pd.read_parquet(_cs_parquets[0])
         ref_catalog = (_cs_df.rename(columns={'id': 'event_id',
@@ -462,6 +459,49 @@ else:
             continue
         prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
 
+    # Pre-aggregate triggered and active station positions across all events shown.
+    # Triggered = first version per event that reached exactly trigger_number stations.
+    # Active (untriggered) = availability-cache stations not in the triggered set.
+    _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+                 if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+    _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+                                  'station_availability_cache.parquet')
+                    if ACTIVE_CASE_STUDY else
+                    os.path.join(PROJECT_ROOT, 'data', 'reference',
+                                 'station_availability_cache.parquet'))
+    _avail_df9 = pd.read_parquet(_avail_path9) if os.path.exists(_avail_path9) else None
+
+    _all_eids9 = set().union(*[set(sub9['event_id'].astype(str)) for _, sub9 in map_data.values()])
+
+    _trig_frames9 = []
+    for _eid9 in sorted(_all_eids9):
+        _rp9 = os.path.join(_run_dir9, f'{_eid9}.run')
+        if not os.path.exists(_rp9):
+            continue
+        _rdf9 = pd.read_csv(_rp9)
+        _rdf9.columns = [c.replace(' ', '_') for c in _rdf9.columns]
+        _vcounts9 = _rdf9.groupby('version').size()
+        _tgt9 = _vcounts9[_vcounts9 == trigger_number].index
+        if len(_tgt9) == 0:
+            continue
+        _trig_frames9.append(
+            _rdf9[_rdf9['version'] == _tgt9[0]][['station', 'network', 'longitude', 'latitude']]
+        )
+    _trig_stas9 = (pd.concat(_trig_frames9).drop_duplicates(subset=['station', 'network'])
+                   if _trig_frames9 else
+                   pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude']))
+
+    if _avail_df9 is not None:
+        _av9 = (_avail_df9[_avail_df9['event_id'].astype(str).isin(_all_eids9)]
+                [['station', 'network', 'longitude', 'latitude']]
+                .drop_duplicates(subset=['station', 'network']))
+        _untrig_stas9 = _av9.merge(
+            _trig_stas9[['station', 'network']], on=['station', 'network'],
+            how='left', indicator=True
+        ).query('_merge == "left_only"').drop(columns='_merge')
+    else:
+        _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
+
     proj = ccrs.PlateCarree()
     fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
                                      subplot_kw={'projection': proj})
@@ -512,6 +552,17 @@ else:
                         alpha=0.35, transform=proj, zorder=4)
                 ax.scatter(matched['usgs_lon'],matched['usgs_lat'], c='gray',s=10,alpha=0.2)
 
+        # Seismometers: triggered (orange ▼) and untriggered-but-active (gray ▼),
+        # aggregated as unique station positions across all events in the map.
+        if not _untrig_stas9.empty:
+            ax.scatter(_untrig_stas9['longitude'].values, _untrig_stas9['latitude'].values,
+                       s=10, color='lightgray', marker='v', edgecolors='gray',
+                       linewidths=0.3, transform=proj, zorder=3)
+        if not _trig_stas9.empty:
+            ax.scatter(_trig_stas9['longitude'].values, _trig_stas9['latitude'].values,
+                       s=15, color='orange', marker='v', edgecolors='darkorange',
+                       linewidths=0.3, transform=proj, zorder=3)
+            
         for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
             mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
             pts  = sub[mask]
@@ -531,8 +582,13 @@ else:
         plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
                     label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
         for i in range(len(BIN_LABELS))
+    ] + [
+        plt.scatter([], [], c='orange',    s=15, marker='v', label='Triggered',
+                    edgecolors='darkorange', linewidths=0.3),
+        plt.scatter([], [], c='lightgray', s=10, marker='v', label='Active (untriggered)',
+                    edgecolors='gray', linewidths=0.3),
     ]
-    fig_map.legend(handles=legend_handles, loc='lower center', ncol=5,
+    fig_map.legend(handles=legend_handles, loc='lower center', ncol=7,
                    fontsize=9, bbox_to_anchor=(0.5, 0.01))
     fig_map.suptitle(
         f'Posterior location errors at {trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
@@ -925,9 +981,12 @@ if _comp_data:
 # Set EVENT_ID_OVERRIDE to a string event_id to replot a specific event;
 # leave as None for a fresh random draw each run.
 # ---------------------------------------------------------------------------
-
-EVENT_ID_OVERRIDE  = "ci37221428"#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
-N_TRIGGERS_OVERRIDE = 8  # e.g. 5 — plot the version that first reaches this many triggers
+# ridgecrest = "ci37221428"
+# ferndale = 'nc73821036'
+# El Mayor = '
+# benchmark = '243863'
+EVENT_ID_OVERRIDE  = None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
+N_TRIGGERS_OVERRIDE = 10  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
 # Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)
@@ -985,6 +1044,24 @@ else:
     except NameError:
         _prior_g15 = {}
 
+        # ── Station inventory for activity masking ───────────────────────────────
+    _avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+                                'station_availability_cache.parquet')
+                    if ACTIVE_CASE_STUDY
+                    else os.path.join(PROJECT_ROOT, 'data', 'reference',
+                                    'station_availability_cache.parquet'))
+    _avail_df15 = pd.read_parquet(_avail_path15) if os.path.exists(_avail_path15) else None
+    _sta_inv15 = (
+        _avail_df15[_avail_df15['event_id'].astype(str) == _chosen_eid15]
+        [['station', 'network', 'longitude', 'latitude']]
+        .reset_index(drop=True)
+        if _avail_df15 is not None else None
+    )
+    if _sta_inv15 is not None:
+        print(f'[Figure 15] station_inventory: {len(_sta_inv15)} stations for {_chosen_eid15}')
+    else:
+        print(f'[Figure 15] no station inventory found — mask disabled')
+
     # ── Build posterior grid for each prior ──────────────────────────────────
     from benchmark.runner import run_single_event_get_grid
     _panel_data15 = {}  # pname → (t, odf, actual_v, sp, use_prior)
@@ -1015,7 +1092,7 @@ else:
             else:
                 import glob as _glob15
                 _cs_pq15 = _glob15.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
-                                                      ACTIVE_CASE_STUDY, '*.parquet'))
+                                                      ACTIVE_CASE_STUDY, '*catalog.parquet'))
                 if _cs_pq15:
                     _pq15 = pd.read_parquet(_cs_pq15[0])
                     _pq15['time'] = _pq15['time'].dt.tz_localize(None)
@@ -1046,7 +1123,8 @@ else:
                 _use15 = True
         print(_pname15)
         _t15, _odf15, _v15 = run_single_event_get_grid(
-            _run_path15, _sp15, _use15, config.BENCHMARK_PARAMS, focus_version=_focus_v15)
+            _run_path15, _sp15, _use15, config.BENCHMARK_PARAMS, focus_version=_focus_v15,
+            station_inventory=_sta_inv15)
         _panel_data15[_pname15] = (_t15, _odf15, _v15, _sp15, _use15)
 
     # ── Draw figure ──────────────────────────────────────────────────────────
@@ -1143,7 +1221,7 @@ else:
 
         fig15.suptitle(
             f'Posterior MAP (red ★) vs Expectation (blue ★) — '
-            f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX}',
+            f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX} - Trigs: {N_TRIGGERS_OVERRIDE}',
             fontsize=13)
         plt.tight_layout()
 

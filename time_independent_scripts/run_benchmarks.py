@@ -22,7 +22,8 @@ from benchmark.metrics import posterior_confidence_level, posterior_coverage
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params)
+                              run_single_event_get_grid, make_epic_params,
+                              load_station_availability_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -36,8 +37,9 @@ cache_paths = {
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEIS_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-RUN_DIR     = os.path.join(PROJECT_ROOT, 'data', 'run_files')
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
@@ -63,6 +65,11 @@ _usgs_ref_lookup = (
 )
 
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark.tt3')
+
+station_availability = (
+    load_station_availability_cache(STATION_AVAIL_CACHE)
+    if os.path.exists(STATION_AVAIL_CACHE) else None
+)
 
 #%%
 # ---------------------------------------------------------------------------
@@ -93,7 +100,7 @@ job_args = [
         'max_trigs':                 config.BENCHMARK_PARAMS['max_trigs'],
         'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-        'station_inventory': None,
+        'station_availability':      station_availability,
     }
     for name, path in cache_paths.items()
 ]
@@ -116,7 +123,7 @@ bg = load_background_seismicity(
 # Figures
 # ---------------------------------------------------------------------------
 
-PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'KDE_Seismicity', 'Uniform']
+PRIOR_ORDER = ['Gear1', 'NSHM', 'Helmstetter', 'KDE_Seismicity', 'Uniform']
 
 MTJ_EXTENT = [-128.5, -122.5, 38.5, 42.5]
 mtj_lon_min, mtj_lon_max, mtj_lat_min, mtj_lat_max = MTJ_EXTENT

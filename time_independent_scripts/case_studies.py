@@ -56,7 +56,7 @@ SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seism
 CASE_STUDIES = config.CASE_STUDIES
 
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'Ferndale'
 AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -105,7 +105,9 @@ _cs_ref_df = catalog_df.rename(columns={
 })[['event_id', 'usgs_lat', 'usgs_lon']]
 
 _avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
-
+if _avail:
+    print("Station availability cache loaded")
+#_avail = None
 job_args = [
     {
         'prior_name': name,
@@ -124,6 +126,23 @@ job_args = [
     for name, path in cache_paths.items()
 ]
 
+# run_stems = {f.stem for f in Path(CS_RUN_DIR).glob('*.run')}
+# if _avail:
+#     covered = sum(1 for s in run_stems if str(s) in _avail)
+#     print(f"Inventory coverage: {covered}/{len(run_stems)} events")
+#     sample = next(iter(_avail.values()))
+#     print(f"Sample inventory size: {len(sample)} stations")
+
+# for eid in list(run_stems)[:5]:
+#     inv = _avail.get(str(eid))
+#     run_df = pd.read_csv(Path(CS_RUN_DIR) / f'{eid}.run')
+#     run_df.columns = [c.replace(' ', '_') for c in run_df.columns]
+#     n_trig = run_df['version'].eq(run_df['version'].max()).sum()
+#     print(f"{eid}: inventory={len(inv)}, max_triggered={n_trig}, "
+#         f"extra_stations={len(inv) - n_trig}")
+#   If coverage is low, the cache was built from a different event set. If the sample size equals trigger_number, the
+#   inventory only contains the triggered stations (see #3 below).
+#%%
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
 

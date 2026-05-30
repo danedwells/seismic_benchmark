@@ -47,20 +47,23 @@ from obspy.clients.fdsn import Client
 HERE         = Path(__file__).parent.parent   # seismic_benchmark/
 
 # Main benchmark
-#RUN_DIR      = HERE / 'data' / 'run_files'
-#CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
-#OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
+RUN_DIR      = HERE / 'data' / 'run_files'
+CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
+OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
 
-CASE_STUDY = 'Ridgecrest'
-RUN_DIR      = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'run_files'
-CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2019_catalog.parquet'
-OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
+# CASE_STUDY = 'ElMayor'
+
+# RUN_DIR      = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'run_files'
+# #CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2019_catalog.parquet'
+# CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'El_Mayor-Cucapah_2010_catalog.parquet'
+# #CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2022_catalog.parquet'
+# OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
 
 # ShakeAlert contributing networks (western US)
 # TODO - from benchmark catalog - replace with full list
 SHAKEALERT_NETWORKS = 'AZ,BC,BK,CC,CE,CI,CN,IU,NC,NN,NP,SB,SN,UO,US,UW'
 
-FDSN_CLIENT         = 'IRIS'
+FDSN_CLIENT         = 'EARTHSCOPE'
 SEARCH_RADIUS_KM    = 300.0  # generous upper bound on R_MAX; runtime filtering
                               # by actual R_MAX happens inside EPIC_locate_prelim
 PROBE_DURATION_S    = 1.0    # waveform window length (seconds)
@@ -218,8 +221,8 @@ def main():
         done_ids = set()
 
     # Get catalogs of events - need station availability per event
-    #catalog   = load_reference_catalog(CATALOG_PATH)
-    catalog = load_case_study_catalog(CATALOG_PATH)
+    catalog   = load_reference_catalog(CATALOG_PATH)
+    #catalog = load_case_study_catalog(CATALOG_PATH)
     run_files = sorted(RUN_DIR.glob('*.run'))
     pending   = [f.stem for f in run_files if f.stem not in done_ids]
     print(f"{len(pending)} events to process ({len(run_files)} total).\n")

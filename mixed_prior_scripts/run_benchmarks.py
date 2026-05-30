@@ -30,7 +30,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              make_epic_params)
+                              make_epic_params, load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
 # Control flags
@@ -68,8 +68,9 @@ cache_paths = {
     for name, fname in config.PRIOR_FILENAMES.items()
 }
 
-SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-RUN_DIR            = os.path.join(PROJECT_ROOT, 'data', 'run_files')
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
                                    f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
@@ -87,6 +88,11 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 
 catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
 catalog_df   = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
+
+station_availability = (
+    load_station_availability_cache(STATION_AVAIL_CACHE)
+    if os.path.exists(STATION_AVAIL_CACHE) else None
+)
 
 _usgs_ref_lookup = (
     catalog_df[['event_id', 'usgs_time', 'usgs_lat', 'usgs_lon', 'usgs_mag']]
@@ -237,7 +243,6 @@ event_ids = sorted([f.stem for f in run_files], key=_run_trigger_time)
 #   3. Run bEPIC for each blended prior.
 #   4. Append the USGS reference location to the ETAS catalog (once).
 
-station_inventory = None
 if RUN_MIXED and not SKIP_RUN:
 
     # Initialise runners with blended priors at t0
@@ -249,13 +254,13 @@ if RUN_MIXED and not SKIP_RUN:
     runners = {}
     for name, ti_prior in ti_priors.items():
         initial_mixed   = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-        params          = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS,
-                                           station_inventory=station_inventory)
+        params          = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
         runners[name]   = BenchmarkRunner(
-            prior      = initial_mixed,
-            params     = params,
-            run_dir    = RUN_DIR,
-            catalog_df = catalog_df,
+            prior                = initial_mixed,
+            params               = params,
+            run_dir              = RUN_DIR,
+            catalog_df           = catalog_df,
+            station_availability = station_availability,
         )
 
     _last_etas_update_unix = _t0_unix
