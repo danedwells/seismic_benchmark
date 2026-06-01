@@ -31,9 +31,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params,
-                              load_station_availability_cache)
+from benchmark.runner import load_station_availability_cache
 
 
 # ---------------------------------------------------------------------------
@@ -44,19 +42,12 @@ cache_paths = {
     name: os.path.join(data_dir, fname) if fname is not None else None
     for name, fname in config.PRIOR_FILENAMES.items()
 }
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-print(PROJECT_ROOT)
-SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-#AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
-
-# ---------------------------------------------------------------------------
-# Case study definitions — loaded from benchmark/config.py
-# ---------------------------------------------------------------------------
 CASE_STUDIES = config.CASE_STUDIES
-
 # --- Select active case study ---
 ACTIVE_CASE_STUDY = 'Ferndale'
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+
 AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -76,17 +67,9 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_
 # ---------------------------------------------------------------------------
 # Main workflow
 # ---------------------------------------------------------------------------
-
-# --- Control flags ---
 RUN_ALL_PRIORS = True   # run all static priors in parallel
 
-# ---------------------------------------------------------------------------
-# Load catalog from cache (preparation_scripts/case_study_preparation.py must
-# have been run first)
-# ---------------------------------------------------------------------------
-
 catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
-
 print(f"{len(catalog_df)} events in {cs['name']} catalog.")
 print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
@@ -96,7 +79,6 @@ print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 # ------------------------------------------------------------------------------
 
 # Build reference catalog before job_args so it can be passed to each worker.
-
 _cs_ref_df = catalog_df.rename(columns={
     'id':        'event_id',
     'latitude':  'usgs_lat',
@@ -126,26 +108,8 @@ job_args = [
     for name, path in cache_paths.items()
 ]
 
-# run_stems = {f.stem for f in Path(CS_RUN_DIR).glob('*.run')}
-# if _avail:
-#     covered = sum(1 for s in run_stems if str(s) in _avail)
-#     print(f"Inventory coverage: {covered}/{len(run_stems)} events")
-#     sample = next(iter(_avail.values()))
-#     print(f"Sample inventory size: {len(sample)} stations")
-
-# for eid in list(run_stems)[:5]:
-#     inv = _avail.get(str(eid))
-#     run_df = pd.read_csv(Path(CS_RUN_DIR) / f'{eid}.run')
-#     run_df.columns = [c.replace(' ', '_') for c in run_df.columns]
-#     n_trig = run_df['version'].eq(run_df['version'].max()).sum()
-#     print(f"{eid}: inventory={len(inv)}, max_triggered={n_trig}, "
-#         f"extra_stations={len(inv) - n_trig}")
-#   If coverage is low, the cache was built from a different event set. If the sample size equals trigger_number, the
-#   inventory only contains the triggered stations (see #3 below).
-#%%
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
-
 
 #%%
 # ---------------------------------------------------------------------------
@@ -189,7 +153,7 @@ fig = plot_location_grid(
     output_dir  = CS_OUTPUT_DIR,
     prior_order = PRIOR_ORDER,
     extent      = cs_extent,
-    ref_catalog = ref_df,
+    ref_catalog = _cs_ref_df,
     events_df   = catalog_df[['longitude', 'latitude']],
     bg          = bg_region,
     cache_paths = cache_paths,
@@ -297,7 +261,7 @@ if not os.path.exists(focus_run_path):
     print(f"[single-event figure] .run file not found: {focus_run_path}")
     print("  → set FOCUS_EVENT_ID to a built event, or run BUILD_RUN_FILES first.")
 else:
-    _focus_ref = ref_df[ref_df['event_id'] == FOCUS_EVENT_ID]
+    _focus_ref = _cs_ref_df[_cs_ref_df['event_id'] == FOCUS_EVENT_ID]
     _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
     _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Custom repository imports
 from priors import SeismicPrior
-from benchmark.background import load_background_seismicity, add_background_seismicity
+from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_overview_map,
                              plot_location_grid, plot_posterior_grid,
@@ -21,9 +21,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark.metrics import posterior_confidence_level, posterior_coverage
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params,
-                              load_station_availability_cache)
+from benchmark.runner import  load_station_availability_cache, get_unique_stations
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +53,6 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
 catalog_df = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
 
-# Lookup: event_id (int) → USGS time, lat, lon, magnitude
-_usgs_ref_lookup = (
-    catalog_df[['event_id', 'usgs_time', 'usgs_lat', 'usgs_lon', 'usgs_mag']]
-    .rename(columns={'usgs_time': 'time', 'usgs_lat': 'latitude',
-                     'usgs_lon': 'longitude', 'usgs_mag': 'magnitude'})
-    .set_index('event_id')
-    if catalog_df is not None else pd.DataFrame()
-)
-
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark.tt3')
 
 station_availability = (
@@ -80,7 +69,6 @@ RUN_ALL_PRIORS  = True  # run all six priors in parallel
 
 # ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
-
 
 job_args = [
     {
