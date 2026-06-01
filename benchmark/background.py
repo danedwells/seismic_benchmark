@@ -20,9 +20,6 @@ USGS ComCat limits each request to 20,000 events.  The downloader
 automatically splits the time range into chunks small enough to stay
 under this limit, using a recursive bisection strategy.
 
-Plotting helper
----------------
-    add_background_seismicity(ax, df, transform, ...)
 """
 
 import time
@@ -203,32 +200,3 @@ def load_background_seismicity(cache_path, bounds, start_year, end_year,
         bounds, start_year, end_year, min_mag, cache_path=cache_path
     )
 
-
-# ---------------------------------------------------------------------------
-# Plotting helper
-# ---------------------------------------------------------------------------
-
-def add_background_seismicity(ax, df, transform,
-                               color="0.3", alpha=0.15, size=2,
-                               mag_scale=False, zorder=1):
-    """
-    Plot background seismicity as low-alpha scatter dots on a cartopy axes.
-
-    Parameters
-    ----------
-    ax        : cartopy GeoAxes
-    df        : DataFrame from load_background_seismicity
-    transform : cartopy CRS (typically ccrs.PlateCarree())
-    color     : marker color (ignored if mag_scale=True)
-    alpha     : marker transparency
-    size      : base marker size in points²
-    mag_scale : bool  If True, scale dot area by magnitude (2^mag).
-    zorder    : drawing order (keep low so it sits behind other layers)
-    """
-    s = 2.0 ** df["mag"].clip(lower=0) if mag_scale else size
-    ax.scatter(
-        df["longitude"], df["latitude"],
-        s=s, c=color, alpha=alpha,
-        transform=transform, zorder=zorder,
-        linewidths=0,
-    )

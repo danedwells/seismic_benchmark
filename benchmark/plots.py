@@ -12,7 +12,6 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import obspy
 
-from .metrics import hdr_levels, posterior_confidence_level, posterior_coverage, COVERAGE_RADII_KM  # re-exported for scripts
 from .metrics import load_per_version_stats
 from .metrics import COVERAGE_RADII_KM
 # Plots

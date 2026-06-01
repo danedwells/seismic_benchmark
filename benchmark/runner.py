@@ -107,6 +107,7 @@ def runner_results_to_df(runner):
         rows.append(row)
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
               'exp_lat', 'exp_lon', 'like_lon', 'like_lat','like_exp_lon','like_exp_lat',
+              'like_err_km','like_exp_err_km',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
               'map_err_km', 'exp_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
              + ['posterior_confidence_level', 'prior_confidence_level'])
@@ -333,9 +334,11 @@ class BenchmarkRunner:
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
         df_run   = self._normalize_columns(pd.read_csv(run_path))
         self.params.prior = self.prior
+
+        # Station availability inventory is passed to BenchmarkRunner at __init__
         if self._station_availability is not None:
             self.params.station_inventory = self._station_availability.get(str(event_id))
-            #print("Self.params.station_inventory: ",self.params.station_inventory)
+
         # Reset per-event state so previous event's posterior doesn't leak in
         self.params.prev_posterior_lat = None
         self.params.prev_posterior_lon = None
@@ -534,71 +537,6 @@ def compute_location_error(results_df, catalog_df=None):
     return merged.drop(columns=['usgs_lat', 'usgs_lon'])
 
 
-def create_reference_locations(run_dir, output_dir, cache_paths, ref_params):
-    """
-    Run the reference location benchmark and write results to a CSV.
-
-    Uses its own prior and grid parameters (from ref_params), independent of
-    whatever the main benchmarking workflow is configured with.
-
-    Parameters
-    ----------
-    run_dir : str
-        Directory containing <event_id>.run files.
-    output_dir : str
-        Directory where the reference CSV will be written.
-    cache_paths : dict
-        Mapping of prior name -> .tt3 file path (or None for Uniform).
-        Must contain the key named by ref_params['prior'].
-    ref_params : dict
-        Reference run configuration with keys:
-            prior     — prior name, must be a key in cache_paths
-            max_trigs — maximum station triggers per version
-            grid_size — number of grid points along one axis
-            grid_km   — half-width of the search grid in km
-
-    Returns
-    -------
-    str : path to the written CSV file.
-    """
-    from priors import SeismicPrior
-
-    prior_name = ref_params['prior']
-    cache_key  = next(k for k in cache_paths if k.lower() == prior_name.lower())
-    tt3_path   = cache_paths[cache_key]
-
-    if tt3_path is None:
-        fallback = next(v for v in cache_paths.values() if v is not None)
-        prior = SeismicPrior.from_tt3(fallback)
-        use_prior = False
-    else:
-        prior = SeismicPrior.from_tt3(tt3_path)
-        use_prior = True
-
-    params = make_epic_params(prior, use_prior, ref_params)
-
-    event_ids = sorted(int(f.stem) for f in Path(run_dir).glob('*.run'))
-    runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir)
-    runner.run_all(event_ids)
-
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, f"REFERENCE_{ref_params['max_trigs']}.csv")
-    _cols = ['event_id', 'version', 'posterior_lat', 'posterior_lon',
-             'exp_lat', 'exp_lon',
-             'best_misfit', 'best_like', 'best_prior', 'frac_misfit']
-    pd.DataFrame(
-        [{'event_id': eid, 'version': ver, 'posterior_lat': t.posterior_lat,
-          'posterior_lon': t.posterior_lon, 'exp_lat': t.exp_lat,
-          'exp_lon': t.exp_lon, 'best_misfit': t.best_misfit,
-          'best_like': t.best_like, 'best_prior': t.best_prior,
-          'frac_misfit': t.frac_misfit}
-         for (eid, ver), t in runner.results.items()],
-        columns=_cols,
-    ).sort_values(['event_id', 'version']).to_csv(out_path, index=False)
-
-    return out_path
-
-
 def run_prior(args):
     """
     Module-level worker for ProcessPoolExecutor.
@@ -643,9 +581,12 @@ def run_prior(args):
         if catalog_path and os.path.exists(catalog_path):
             catalog_df = load_reference_catalog(catalog_path)
 
+    # Initiate the runner
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
                              catalog_df=catalog_df,
                              station_availability=args.get('station_availability'))
+    
+
     stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
     try:
         event_ids = sorted(int(s) for s in stems)

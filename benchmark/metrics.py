@@ -280,27 +280,3 @@ def energy_score(out_df, ref_lat, ref_lon, n_samples=1000, rng=None):
     return term1 - term2
 
 
-def ks_calibration(credible_levels):
-    """
-    KS statistic testing whether a vector of credible levels is Uniform[0, 1].
-
-    For a perfectly calibrated posterior, posterior_confidence_level values are
-    i.i.d. Uniform[0, 1] across events. This function quantifies the departure
-    from that ideal using the two-sided Kolmogorov-Smirnov test.
-
-    Parameters
-    ----------
-    credible_levels : array-like
-        Per-event posterior_confidence_level values, each in [0, 1].
-
-    Returns
-    -------
-    statistic : float
-        KS distance from the empirical CDF to Uniform[0, 1]. Lower = better
-        calibration; 0 is perfect.
-    p_value : float
-        Two-sided p-value. Small values indicate significant miscalibration.
-    """
-    vals = np.asarray(credible_levels, dtype=float)
-    stat, pval = kstest(vals, 'uniform')
-    return float(stat), float(pval)

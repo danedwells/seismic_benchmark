@@ -76,15 +76,10 @@ station_availability = (
 # Main workflow
 # ---------------------------------------------------------------------------
 
-# --- Control flags ---
-REFERENCE       = False   # run high-resolution reference locations
 RUN_ALL_PRIORS  = True  # run all six priors in parallel
 
 # ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
-
-if REFERENCE:
-    benchmark_runner.create_reference_locations(RUN_DIR, ref_dir, cache_paths, config.REFERENCE_PARAMS)
 
 
 job_args = [

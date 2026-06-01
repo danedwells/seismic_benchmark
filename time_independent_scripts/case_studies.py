@@ -96,14 +96,14 @@ print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 # ------------------------------------------------------------------------------
 
 # Build reference catalog before job_args so it can be passed to each worker.
-# Workers run in separate processes (ProcessPoolExecutor) — the DataFrame is
-# pickled with the args dict, which is fine for a small case-study catalog.
+
 _cs_ref_df = catalog_df.rename(columns={
     'id':        'event_id',
     'latitude':  'usgs_lat',
     'longitude': 'usgs_lon',
 })[['event_id', 'usgs_lat', 'usgs_lon']]
 
+# Get the station availability inventory from (preparation_scripts/build_station_availability.py)
 _avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
 if _avail:
     print("Station availability cache loaded")
