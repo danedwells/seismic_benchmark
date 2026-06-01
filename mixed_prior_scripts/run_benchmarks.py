@@ -431,13 +431,12 @@ plt.show()
 fig = plot_prior_histograms(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,
-    column      = 'location_error_km',
+    column      = 'map_err_km',
     bins        = bins_km,
     title       = f'bEPIC MTJ location error — mixed priors (alpha={ALPHA})',
     xlabel      = 'location error (km)',
     save_path   = os.path.join(FIGURES_DIR, 'MTJ_location_error_histograms.png'),
     filter_fn   = in_extent,
-    catalog_df  = catalog_df,
 )
 plt.show()
 
@@ -445,12 +444,11 @@ plt.show()
 fig = plot_prior_histograms(
     prior_names = PRIOR_ORDER,
     output_dir  = OUTPUT_DIR,
-    column      = 'location_error_km',
+    column      = 'map_err_km',
     bins        = bins_km,
     title       = f'bEPIC location error — mixed priors (alpha={ALPHA})',
     xlabel      = 'location error (km)',
     save_path   = os.path.join(FIGURES_DIR, 'Grid_location_error_histograms.png'),
-    catalog_df  = catalog_df,
 )
 plt.show()
 
@@ -501,7 +499,6 @@ fig = plot_qq_prior_comparison(
     column      = 'map_err_km',
     title       = f'Q-Q prior comparison — map location error (km) — mixed (alpha={ALPHA})',
     save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
-    catalog_df  = catalog_df,
 )
 plt.show()
 

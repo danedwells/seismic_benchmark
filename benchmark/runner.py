@@ -220,6 +220,7 @@ class BenchmarkRunner:
         self._debug_event_id = None
         self.debug_out_df    = {}   # {(event_id, version): out_df}
 
+        # NOTE - for random resampling
         self._rng = np.random.default_rng(rng)
         if resample_distant_events is None:
             self.resample_distant_events = getattr(params, 'resample_distant_events', True)
@@ -239,61 +240,64 @@ class BenchmarkRunner:
         else:
             self._ref_lookup = {}
 
-    def _build_resample_sequence(self, df_run):
-        """
-        Build a synthetic trigger sequence for a distant event.
+    # def _build_resample_sequence(self, df_run):
+    #     """
+    #     NOTE - not currently used
+    #     Build a synthetic trigger sequence for a distant event.
 
-        Takes the full trigger set from the final run-file version, randomly
-        picks _DISTANT_EVENT_SEED_TRIGS as the starting subset, then appends
-        the remaining triggers in their original arrival order (by 'order' column).
+    #     Takes the full trigger set from the final run-file version, randomly
+    #     picks _DISTANT_EVENT_SEED_TRIGS as the starting subset, then appends
+    #     the remaining triggers in their original arrival order (by 'order' column).
 
-        Returns a list of DataFrames, one per synthetic version, each containing
-        the cumulative trigger set for that version.
-        """
-        all_trigs = (df_run[df_run['version'] == df_run['version'].max()]
-                     .sort_values('order')
-                     .head(self.params.MAX_EVENT_TRIGS)
-                     .reset_index(drop=True))
-        n = len(all_trigs)
-        k = min(_DISTANT_EVENT_SEED_TRIGS, n)
+    #     Returns a list of DataFrames, one per synthetic version, each containing
+    #     the cumulative trigger set for that version.
+    #     """
+    #     all_trigs = (df_run[df_run['version'] == df_run['version'].max()]
+    #                  .sort_values('order')
+    #                  .head(self.params.MAX_EVENT_TRIGS)
+    #                  .reset_index(drop=True))
+    #     n = len(all_trigs)
+    #     k = min(_DISTANT_EVENT_SEED_TRIGS, n)
 
-        seed_idx = sorted(self._rng.choice(n, size=k, replace=False).tolist())
-        rest_idx = [i for i in range(n) if i not in set(seed_idx)]
-        # Seed triggers first (in arrival order), then remaining in arrival order.
-        ordered = seed_idx + rest_idx
+    #     seed_idx = sorted(self._rng.choice(n, size=k, replace=False).tolist())
+    #     rest_idx = [i for i in range(n) if i not in set(seed_idx)]
+    #     # Seed triggers first (in arrival order), then remaining in arrival order.
+    #     ordered = seed_idx + rest_idx
 
-        return [all_trigs.iloc[ordered[:end]] for end in range(k, n + 1)]
+    #     return [all_trigs.iloc[ordered[:end]] for end in range(k, n + 1)]
 
-    def _run_resample_event(self, event_id, event, df_run):
-        """
-        Run the synthetic trigger sequence for a distant event.
+    # def _run_resample_event(self, event_id, event, df_run):
+    #     """
+    #     NOTE - not currently used
+    #     Run the synthetic trigger sequence for a distant event.
 
-        Iterates the versions produced by _build_resample_sequence and stores
-        results under version keys offset by 10000 to avoid collision with any
-        normal-mode versions already stored for this event.
-        """
-        for syn_idx, syn_df_v in enumerate(self._build_resample_sequence(df_run)):
-            syn_version   = 10000 + syn_idx
-            event.trigs   = []
-            event.version = syn_version
-            for row in syn_df_v.itertuples(index=False):
-                event.trigs.append(EPIC_locate_prelim.TriggerManager(
-                    lon          = row.longitude,
-                    lat          = row.latitude,
-                    trigger_time = row.trigger_time,
-                    sta          = row.station,
-                    net          = row.network,
-                    chan         = row.channel,
-                ))
-            t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
-            self.results[(event_id, syn_version)] = t
-            self.n_trigs[(event_id, syn_version)] = len(syn_df_v)
-            if self._ref_lookup:
-                self._compute_event_metrics(event_id, syn_version, t, out_df)
-            if len(syn_df_v) >= self.params.MAX_EVENT_TRIGS:
-                break
+    #     Iterates the versions produced by _build_resample_sequence and stores
+    #     results under version keys offset by 10000 to avoid collision with any
+    #     normal-mode versions already stored for this event.
+    #     """
+    #     for syn_idx, syn_df_v in enumerate(self._build_resample_sequence(df_run)):
+    #         syn_version   = 10000 + syn_idx
+    #         event.trigs   = []
+    #         event.version = syn_version
+    #         for row in syn_df_v.itertuples(index=False):
+    #             event.trigs.append(EPIC_locate_prelim.TriggerManager(
+    #                 lon          = row.longitude,
+    #                 lat          = row.latitude,
+    #                 trigger_time = row.trigger_time,
+    #                 sta          = row.station,
+    #                 net          = row.network,
+    #                 chan         = row.channel,
+    #             ))
+    #         t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
+    #         self.results[(event_id, syn_version)] = t
+    #         self.n_trigs[(event_id, syn_version)] = len(syn_df_v)
+    #         if self._ref_lookup:
+    #             self._compute_event_metrics(event_id, syn_version, t, out_df)
+    #         if len(syn_df_v) >= self.params.MAX_EVENT_TRIGS:
+    #             break
 
     def _normalize_columns(self, df):
+        # Gets rid of spaces in column names
         df.columns = [c.replace(' ', '_') for c in df.columns]
         return df
 
@@ -303,22 +307,25 @@ class BenchmarkRunner:
         if ref is None or t is None or out_df is None:
             return
         usgs_lat, usgs_lon = ref
-        err_km     = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
-        exp_err_km = location_error_km(t.exp_lat,       t.exp_lon,       usgs_lat, usgs_lon)
-        like_err_km =  location_error_km(t.like_lat,       t.like_lon,   usgs_lat, usgs_lon)
-        like_exp_err_km =  location_error_km(t.like_exp_lat,t.like_exp_lon, usgs_lat, usgs_lon)
-        cov        = posterior_coverage(out_df, usgs_lat, usgs_lon)
-        cred       = posterior_confidence_level(out_df, usgs_lat, usgs_lon)
-        prior_cred = prior_confidence_level(out_df, usgs_lat, usgs_lon)
-        ls         = log_score(out_df, usgs_lat, usgs_lon)
-        bs         = brier_score(out_df, usgs_lat, usgs_lon)
-        es         = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
-        m = {'map_err_km': err_km, 'exp_err_km': exp_err_km, 
+        map_err_km          = location_error_km(t.posterior_lat, t.posterior_lon, usgs_lat, usgs_lon)
+        exp_err_km      = location_error_km(t.exp_lat,       t.exp_lon,       usgs_lat, usgs_lon)
+        like_err_km     = location_error_km(t.like_lat,       t.like_lon,   usgs_lat, usgs_lon)
+        like_exp_err_km = location_error_km(t.like_exp_lat,t.like_exp_lon, usgs_lat, usgs_lon)
+        cov             = posterior_coverage(out_df, usgs_lat, usgs_lon)
+        cred            = posterior_confidence_level(out_df, usgs_lat, usgs_lon)
+        prior_cred      = prior_confidence_level(out_df, usgs_lat, usgs_lon)
+        ls              = log_score(out_df, usgs_lat, usgs_lon)
+        bs              = brier_score(out_df, usgs_lat, usgs_lon)
+        es              = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
+        m = {'map_err_km': map_err_km, 
+             'exp_err_km': exp_err_km, 
              'like_err_km': like_err_km,
              'like_exp_err_km': like_exp_err_km,
              'posterior_confidence_level': cred,
              'prior_confidence_level': prior_cred,
-             'log_score': ls, 'brier_score': bs, 'energy_score': es}
+             'log_score': ls, 
+             'brier_score': bs, 
+             'energy_score': es}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]
         self.metrics[(event_id, version)] = m
@@ -332,14 +339,17 @@ class BenchmarkRunner:
         event_id : int
         """
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
+        
+        # Get rid of spaces in column names
         df_run   = self._normalize_columns(pd.read_csv(run_path))
         self.params.prior = self.prior
 
-        # Station availability inventory is passed to BenchmarkRunner at __init__
+        # Station availability inventory is passed to BenchmarkRunner at __init__()
         if self._station_availability is not None:
             self.params.station_inventory = self._station_availability.get(str(event_id))
 
         # Reset per-event state so previous event's posterior doesn't leak in
+        # NOTE - not currently used
         self.params.prev_posterior_lat = None
         self.params.prev_posterior_lon = None
 
@@ -371,6 +381,7 @@ class BenchmarkRunner:
                 continue
             prev_n_trigs = len(df_v)
 
+            # Append this version's triggers to the event object
             event.trigs = []
             event.version = int(version)
             for row in df_v.itertuples(index=False):
@@ -383,12 +394,17 @@ class BenchmarkRunner:
                     chan         = row.channel,
                 )
                 event.trigs.append(trig)
-
+            
+            # Do the location
             t, out_df = EPIC_locate_prelim.E2Location_locate(self.params, event)
+
+            # Update the posterior location (NOTE - not currently used)
             self.params.prev_posterior_lat = t.posterior_lat
             self.params.prev_posterior_lon = t.posterior_lon
+
             self.results[(event_id, version)] = t
             self.n_trigs[(event_id, version)] = len(df_v)
+
             if self._ref_lookup:
                 self._compute_event_metrics(event_id, version, t, out_df)
             if self._debug_event_id is not None and str(event_id) == str(self._debug_event_id):
@@ -406,9 +422,10 @@ class BenchmarkRunner:
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break
+    
 
     def _get_event_time(self, event_id):
-        """Return the first trigger time in the run file as a proxy for event time."""
+        """FOR ETAS: Return the first trigger time in the run file as a proxy for event time."""
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
         df = pd.read_csv(run_path, nrows=1)
         return float(df['trigger time'].iloc[0])
@@ -439,6 +456,7 @@ class BenchmarkRunner:
         last_update_time = None
 
         for event_id in event_ids:
+            # For ETAS only:
             if etas_update_fn is not None:
                 event_time = self._get_event_time(event_id)
                 if (last_update_time is None or
@@ -485,7 +503,6 @@ def load_reference_catalog(catalog_path):
         usgs_depth — ANSS catalog depth (km)
         usgs_mag   — ANSS catalog magnitude
 
-    Suitable for passing directly to compute_location_error().
     """
     raw = pd.read_csv(catalog_path, sep='\t')
     return pd.DataFrame({
@@ -498,43 +515,6 @@ def load_reference_catalog(catalog_path):
         'usgs_depth': raw['ANSS depth'],
         'usgs_mag':   raw['ANSS mag'],
     })
-
-
-def compute_location_error(results_df, catalog_df=None):
-    """
-    Adds a location_error_km column to results_df by comparing posterior
-    estimates against USGS catalog locations.
-
-    Parameters
-    ----------
-    results_df : DataFrame
-        Output from run_all / run_prior; must have columns
-        event_id, posterior_lat, posterior_lon.
-    catalog_df : DataFrame or None
-        Must have columns: event_id, usgs_lat, usgs_lon.
-        If None, results_df is returned unchanged.
-
-    Returns
-    -------
-    DataFrame with location_error_km column appended (NaN for events
-    not present in catalog_df).
-    """
-    if catalog_df is None:
-        return results_df
-
-    merged = results_df.merge(
-        catalog_df[['event_id', 'usgs_lat', 'usgs_lon']],
-        on='event_id', how='left'
-    )
-
-    def _dist_km(row):
-        if pd.isna(row['usgs_lat']) or pd.isna(row['usgs_lon']):
-            return np.nan
-        return location_error_km(row['posterior_lat'], row['posterior_lon'],
-                                 row['usgs_lat'], row['usgs_lon'])
-
-    merged['location_error_km'] = merged.apply(_dist_km, axis=1)
-    return merged.drop(columns=['usgs_lat', 'usgs_lon'])
 
 
 def run_prior(args):
@@ -566,6 +546,7 @@ def run_prior(args):
     cache_path = args['cache_path']
 
     if cache_path is None:
+        # filler prior - won't use.
         p = SeismicPrior.from_tt3(args['nshm_path'])
         use_prior = False
     else:
@@ -588,10 +569,14 @@ def run_prior(args):
     
 
     stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
+    # Some event ids are int()
     try:
         event_ids = sorted(int(s) for s in stems)
+    # Some are str()
     except ValueError:
         event_ids = sorted(stems)
+    
+    # Run the event
     runner.run_all(event_ids)
 
     os.makedirs(args['output_dir'], exist_ok=True)

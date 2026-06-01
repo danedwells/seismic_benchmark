@@ -19,7 +19,6 @@ from benchmark.metrics import (
     COVERAGE_RADII_KM,
     log_score,
     brier_score,
-    ks_calibration,
 )
 
 
@@ -323,32 +322,3 @@ def test_brier_score_uniform_two_cells():
     assert brier_score(df, 37.0, -120.0) == pytest.approx(0.5, abs=1e-9)
 
 
-# ---------------------------------------------------------------------------
-# ks_calibration
-# ---------------------------------------------------------------------------
-
-def test_ks_calibration_uniform_gives_low_statistic():
-    """True U[0,1] samples should produce a small KS statistic."""
-    rng = np.random.default_rng(0)
-    samples = rng.uniform(0, 1, 500)
-    stat, _ = ks_calibration(samples)
-    assert stat < 0.1
-
-
-def test_ks_calibration_all_zeros_gives_high_statistic():
-    """Credible levels all at 0 (perfectly overconfident) → KS ≈ 1."""
-    stat, pval = ks_calibration(np.zeros(100))
-    assert stat > 0.9
-
-
-def test_ks_calibration_returns_floats():
-    stat, pval = ks_calibration([0.1, 0.3, 0.5, 0.7, 0.9])
-    assert isinstance(stat, float)
-    assert isinstance(pval, float)
-
-
-def test_ks_calibration_statistic_in_unit_interval():
-    rng = np.random.default_rng(1)
-    stat, pval = ks_calibration(rng.uniform(0, 1, 200))
-    assert 0.0 <= stat <= 1.0
-    assert 0.0 <= pval <= 1.0

@@ -345,7 +345,6 @@ def plot_prior_histograms(
     xlabel,
     save_path,
     filter_fn=None,
-    catalog_df=None,
     color='crimson',
     n_cols=3,
 ):
@@ -360,9 +359,7 @@ def plot_prior_histograms(
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv``.
     column : str
-        Column to histogram.  If ``'location_error_km'`` and that column is
-        absent from the CSV, it is computed on the fly from ``catalog_df``
-        via ``compute_location_error()``.
+        Column to histogram (e.g. ``'map_err_km'``).
     bins : array-like
         Bin edges passed directly to ``ax.hist``.
     title : str
@@ -374,9 +371,6 @@ def plot_prior_histograms(
     filter_fn : callable(df) -> df, optional
         Applied to the per-event final-trigger DataFrame before extracting
         the column.  Useful for spatial subsets (e.g. ``in_extent``).
-    catalog_df : DataFrame, optional
-        Reference catalog with ``event_id``, ``usgs_lat``, ``usgs_lon``
-        columns.  Required when ``column='location_error_km'``.
     color : str
         Bar fill color (default ``'crimson'``).
     n_cols : int
@@ -388,8 +382,6 @@ def plot_prior_histograms(
         The figure handle for further customisation before display or
         additional saving.
     """
-    from .runner import compute_location_error  # local import avoids top-level circularity
-
     n_priors = len(prior_names)
     n_rows   = math.ceil(n_priors / n_cols)
 
@@ -415,16 +407,7 @@ def plot_prior_histograms(
         if filter_fn is not None:
             final = filter_fn(final)
 
-        if column == 'location_error_km' and column not in final.columns:
-            if catalog_df is None:
-                ax.text(0.5, 0.5, 'no catalog', transform=ax.transAxes,
-                        ha='center', va='center', fontsize=10, color='gray')
-                ax.set_title(prior_name, fontsize=11)
-                ax.set_xlabel(xlabel, fontsize=9)
-                continue
-            final = compute_location_error(final, catalog_df)
-
-        values = final[column].dropna()
+        values = final[column].dropna() if column in final.columns else pd.Series(dtype=float)
         if values.empty:
             ax.text(0.5, 0.5, 'no data\nafter filter', transform=ax.transAxes,
                     ha='center', va='center', fontsize=10, color='gray')
@@ -1146,8 +1129,7 @@ def plot_score_scatter(
             df    = pd.read_csv(spec['csv'])
             final = df.groupby('event_id').last().reset_index()
 
-            err_col = next((c for c in ('map_err_km', 'location_error_km')
-                            if c in final.columns and not final[c].isna().all()), None)
+            err_col = 'map_err_km' if ('map_err_km' in final.columns and not final['map_err_km'].isna().all()) else None
             if err_col is None:
                 print(f"  [{spec['name']}] no location error column — skipping")
                 continue
@@ -1427,7 +1409,6 @@ def plot_qq_prior_comparison(
     column='map_err_km',
     title='Q-Q prior comparison — map_err_km',
     save_path=None,
-    catalog_df=None,
 ):
     """
     5×5 Q-Q comparison of location errors across all prior pairs.
@@ -1445,22 +1426,15 @@ def plot_qq_prior_comparison(
         Directory containing ``{prior_name.lower()}_benchmark_results.csv``.
     column : str
         Column to compare across priors.  Defaults to ``'map_err_km'``.
-        If the column is absent or all-NaN, falls back to computing
-        ``location_error_km`` from ``catalog_df`` when provided.
     title : str
         Figure suptitle.
     save_path : str or None
         Full path for the saved PNG (written at 150 dpi).
-    catalog_df : DataFrame or None
-        Reference catalog with ``event_id``, ``usgs_lat``, ``usgs_lon``
-        columns.  Used as a fallback if ``column`` is unavailable in the CSV.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
     """
-    from .runner import compute_location_error
-
     n = len(prior_names)
     if n < 2:
         print(f'[plot_qq_prior_comparison] skipped — need ≥2 priors, got {n}.')
@@ -1479,17 +1453,11 @@ def plot_qq_prior_comparison(
 
         df = pd.read_csv(csv_path)
 
-        if column in df.columns and not df[column].isna().all():
-            vals = df[column].dropna().values
-        elif catalog_df is not None:
-            final = df.groupby('event_id').last().reset_index()
-            final = compute_location_error(final, catalog_df)
-            vals  = final['location_error_km'].dropna().values
-        else:
+        if column not in df.columns or df[column].isna().all():
             data[prior_name] = None
             continue
 
-        data[prior_name] = np.sort(vals)
+        data[prior_name] = np.sort(df[column].dropna().values)
 
     # Shared axis limit clipped at the 99th percentile across all priors
     all_vals = [v for v in data.values() if v is not None]

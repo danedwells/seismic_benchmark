@@ -349,19 +349,6 @@ if RUN_MIXED:
 
 #%%
 # ---------------------------------------------------------------------------
-# Reference catalog (for figures)
-# ---------------------------------------------------------------------------
-
-ref_df = catalog_df.rename(columns={
-    'id':        'event_id',
-    'latitude':  'usgs_lat',
-    'longitude': 'usgs_lon',
-    'depth':     'usgs_depth',
-    'mag':       'usgs_mag',
-})
-
-#%%
-# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 
@@ -416,12 +403,11 @@ plt.show()
 fig = plot_prior_histograms(
     prior_names = PRIOR_ORDER,
     output_dir  = CS_OUTPUT_DIR,
-    column      = 'location_error_km',
+    column      = 'map_err_km',
     bins        = np.linspace(0, 100, 51),
     title       = f'bEPIC location errors — {cs["name"]} — mixed priors (alpha={ALPHA})',
     xlabel      = 'location error (km)',
     save_path   = os.path.join(CS_FIGURES_DIR, 'location_error_histograms.png'),
-    catalog_df  = ref_df,
 )
 plt.show()
 
@@ -484,7 +470,6 @@ fig = plot_qq_prior_comparison(
     column      = 'map_err_km',
     title       = f'Q-Q prior comparison — {cs["name"]} — mixed priors (alpha={ALPHA})',
     save_path   = os.path.join(CS_FIGURES_DIR, 'qq_prior_comparison.png'),
-    catalog_df  = ref_df,
 )
 plt.show()
 
