@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = None #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "Ferndale" #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -312,13 +312,7 @@ plt.show()
 # ---------------------------------------------------------------------------
 # Figure 8: Histogram of event locations
 # ---------------------------------------------------------------------------
-# Assign consistent colors: mixed and their TI counterparts share a color.
-trigger_number = 5
-colors = plt.cm.tab10.colors
-# Build color index: mixed priors get indices 0..4; TI baselines reuse same indices.
-mixed_specs  = [s for s in PRIOR_SPECS if s['group'] == 'mixed']
-color_lookup = {s['name']: colors[i % len(colors)]
-                for i, s in enumerate(mixed_specs)}
+trigger_number = 10
 
 fig = plt.figure(figsize=(14,8),dpi=300)
 ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])  
@@ -373,11 +367,11 @@ for ax in [ax4, ax5, ax6]:
 fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
 
 plt.show()
-fig.savefig(os.path.join(FIGURES_DIR,"hist_location_error_{trigger_number}_{location_type}.png"))
+fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}.png"))
 
 
 
-# %%
+3# %%
 # ---------------------------------------------------------------------------
 # Figure 9: spatial map of location errors — 6 panels, one per prior
 #           (all priors except Smooth_seismicity)
@@ -631,7 +625,7 @@ if ACTIVE_CASE_STUDY == None:
 
     #
     # ---------------------------------------------------------------------------
-    # Figure 10: Events exceeding error threshold — MTJ region (mirror of Figure 8)
+    # Figure 10: Events exceeding error threshold 
     # ---------------------------------------------------------------------------
     fig11, _axes11 = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
     _axes11 = _axes11.flatten()
@@ -694,13 +688,11 @@ if ACTIVE_CASE_STUDY == None:
     _axes10 = [_ax1, _ax2, _ax3, _ax4, _ax5, _ax6]
 
     _bins10 = np.logspace(-1, 3, 20)
-    _ref_stats10 = _mtj_hist_vals(PRIOR_SPECS[5]['name'], _trigger_number)
+    _ref_stats10 = _mtj_hist_vals(PRIOR_SPECS[4]['name'], _trigger_number)
 
     for i, ax in enumerate(_axes10):
         spec = PRIOR_SPECS[i]
-        if spec['name'] == 'Uniform':
-            i += 1
-            spec = PRIOR_SPECS[i]
+
         _stats10 = _mtj_hist_vals(spec['name'], _trigger_number)
         if _ref_stats10 is not None:
             ax.hist(_ref_stats10, bins=_bins10, rwidth=0.9, color='b',
@@ -982,11 +974,11 @@ if _comp_data:
 # leave as None for a fresh random draw each run.
 # ---------------------------------------------------------------------------
 # ridgecrest = "ci37221428"
-# ferndale = 'nc73821036'
+# ferndale = 'nc73821036' 'nc73822146'
 # El Mayor = '
 # benchmark = '243863'
-EVENT_ID_OVERRIDE  = None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
-N_TRIGGERS_OVERRIDE = 10  # e.g. 5 — plot the version that first reaches this many triggers
+EVENT_ID_OVERRIDE  = 'nc73822146' #None   # e.g. '128041' — override to replot a specific event
+N_TRIGGERS_OVERRIDE = 5  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
 # Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)
@@ -1132,7 +1124,7 @@ else:
     if not _panel_data15 or _first_odf15 is None:
         print('[Figure 15] No valid posterior grid — skipping.')
     else:
-        _buffer = -0.4
+        _buffer = -0.1
         _ext15 = [float(_first_odf15['lon'].min()) - _buffer,
                   float(_first_odf15['lon'].max()) + _buffer,
                   float(_first_odf15['lat'].min()) - _buffer,

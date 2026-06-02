@@ -229,6 +229,7 @@ def main():
 
     chunks = []
 
+
     for i, eid in enumerate(pending):
         if eid not in catalog:
             print(f"  [{i+1}/{len(pending)}] {eid}: not in reference catalog — skipping")

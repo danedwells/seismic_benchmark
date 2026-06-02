@@ -31,11 +31,11 @@ if PROJECT_ROOT not in sys.path:
 from benchmark import config
 
 
-#%%
+
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "Ferndale" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -128,7 +128,7 @@ for spec in PRIOR_SPECS:
 if ACTIVE_CASE_STUDY is not None:
     import glob as _glob
     _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
-                                           ACTIVE_CASE_STUDY, '*.parquet'))
+                                           ACTIVE_CASE_STUDY, '*_catalog.parquet'))
     if _cs_parquets:
         _cs_df = pd.read_parquet(_cs_parquets[0])
         ref_catalog = (_cs_df.rename(columns={'id': 'event_id',
@@ -171,7 +171,7 @@ for spec in map_specs:
         continue
     prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
 
-# %%
+#
 # ---------------------------------------------------------------------------
 # Figure 15: Single-event posterior — MAP vs expectation across 6 priors
 # ---------------------------------------------------------------------------
@@ -180,6 +180,7 @@ for spec in map_specs:
 #   • Prior density as a viridis pcolormesh background (log₁₀ scale)
 #   • bEPIC posterior as filled + outlined contours (Reds)
 #   • ★ red   = MAP (argmax of posterior)
+
 #   • ★ blue  = expectation (mean of posterior)
 #   • ★ gold  = USGS reference location
 # A gray line connects MAP to expectation to highlight the shift.
@@ -188,9 +189,11 @@ for spec in map_specs:
 # Set EVENT_ID_OVERRIDE to a string event_id to replot a specific event;
 # leave as None for a fresh random draw each run.
 # ---------------------------------------------------------------------------
+# Ridgecrest =  "ci37221428"
+# Ferndale = 'nc73829351'
 
-EVENT_ID_OVERRIDE  = "ci37221428"#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
-N_TRIGGERS_OVERRIDE = 15  # e.g. 5 — plot the version that first reaches this many triggers
+EVENT_ID_OVERRIDE  = 'nc73829351'#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
+N_TRIGGERS_OVERRIDE = 25  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] == 'Uniform']
 # Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)
@@ -295,21 +298,17 @@ for _ps15 in _panel_specs15:
 # ── Draw figure ──────────────────────────────────────────────────────────
 _first_odf15 = next((v[1] for v in _panel_data15.values() if v[1] is not None), None)
 
-_buffer = -0.5
+_buffer = 0.1
 _ext15 = [float(_first_odf15['lon'].min()) - _buffer,
             float(_first_odf15['lon'].max()) + _buffer,
             float(_first_odf15['lat'].min()) - _buffer,
             float(_first_odf15['lat'].max()) + _buffer]
 
 _proj15 = ccrs.PlateCarree()
-fig15, _axes15 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
-                                subplot_kw={'projection': _proj15}, squeeze=False)
-_flat15 = _axes15.flatten()
+fig15, _ax15 = plt.subplots(1, 1, figsize=(7, 6), dpi=150,
+                             subplot_kw={'projection': _proj15})
 
-for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
-        enumerate(_panel_data15.items()):
-    _ax15 = _flat15[_idx15]
-    _row15, _col15 = divmod(_idx15, 3)
+for _pname15, (_t15, _odf15, _v15, _sp15, _use15) in _panel_data15.items():
     _ax15.set_extent(_ext15, crs=_proj15)
     _ax15.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
     _ax15.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8',   zorder=0)
@@ -319,8 +318,8 @@ for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
                             alpha=0.5, linestyle='--')
     _gl15.top_labels    = False
     _gl15.right_labels  = False
-    _gl15.left_labels   = (_col15 == 0)
-    _gl15.bottom_labels = (_row15 == 1)
+    _gl15.left_labels   = True
+    _gl15.bottom_labels = True
 
     # Prior density background (log₁₀, viridis)
     if _use15 and _sp15 is not None:
@@ -373,6 +372,7 @@ for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
         if _sta_inv15 is not None and not _sta_inv15.empty:
             _untrig15 = _sta_inv15[
                 ~_sta_inv15.apply(lambda r: (r['station'], r['network']) in _trig_keys15, axis=1)
+
             ]
             _ax15.scatter(_untrig15['longitude'].values, _untrig15['latitude'].values,
                             s=18, color='lightgray', marker='v', edgecolors='gray',
@@ -385,11 +385,7 @@ for _idx15, (_pname15, (_t15, _odf15, _v15, _sp15, _use15)) in \
 
     _vlbl15 = f'v{_v15}' if _t15 is not None else 'no data'
     _ax15.set_title(f'{_pname15}  ({_vlbl15})', fontsize=10)
-    if _idx15 == 0:
-        _ax15.legend(loc='upper right', fontsize=7)
-
-for _ax15 in _flat15[len(_panel_data15):]:
-    _ax15.set_visible(False)
+    _ax15.legend(loc='upper right', fontsize=7)
 
 fig15.suptitle(
     f'Posterior MAP (red ★) vs Expectation (blue ★) — '

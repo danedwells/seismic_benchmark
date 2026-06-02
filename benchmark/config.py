@@ -148,7 +148,7 @@ ETAS_UPDATER_CONFIG = {
 # Parameters for the main benchmark run.
 BENCHMARK_PARAMS = {
     'prior':                     'KDE_Seismicity',
-    'max_trigs':                 15,
+    'max_trigs':                 20,
     'grid_size':                 100,
     'grid_km':                   200,
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions

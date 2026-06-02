@@ -220,12 +220,12 @@ class BenchmarkRunner:
         self._debug_event_id = None
         self.debug_out_df    = {}   # {(event_id, version): out_df}
 
-        # NOTE - for random resampling
+        # # NOTE - for random resampling
         self._rng = np.random.default_rng(rng)
-        if resample_distant_events is None:
-            self.resample_distant_events = getattr(params, 'resample_distant_events', True)
-        else:
-            self.resample_distant_events = resample_distant_events
+        # if resample_distant_events is None:
+        #     self.resample_distant_events = getattr(params, 'resample_distant_events', True)
+        # else:
+        #     self.resample_distant_events = resample_distant_events
 
         # Optional per-event station inventory from build_station_availability.py.
         # If provided, params.station_inventory is set per event before locating.
@@ -414,11 +414,11 @@ class BenchmarkRunner:
             # initial estimate is unreliable.  Resample the trigger set:
             # randomly pick _DISTANT_EVENT_SEED_TRIGS as the new starting
             # subset, then add the rest one by one in original arrival order.
-            if self.resample_distant_events:
-                min_dist_km = min(trig.dist for trig in event.trigs)
-                if min_dist_km > _DISTANT_EVENT_THRESHOLD_KM:
-                    self._run_resample_event(event_id, event, df_run)
-                    return
+            # if self.resample_distant_events:
+            #     min_dist_km = min(trig.dist for trig in event.trigs)
+            #     if min_dist_km > _DISTANT_EVENT_THRESHOLD_KM:
+            #         self._run_resample_event(event_id, event, df_run)
+            #         return
 
             if len(df_v) >= self.params.MAX_EVENT_TRIGS:
                 break
