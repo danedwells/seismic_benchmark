@@ -148,7 +148,7 @@ ETAS_UPDATER_CONFIG = {
 # Parameters for the main benchmark run.
 BENCHMARK_PARAMS = {
     'prior':                     'KDE_Seismicity',
-    'max_trigs':                 20,
+    'max_trigs':                 10,
     'grid_size':                 100,
     'grid_km':                   200,
     'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
@@ -156,6 +156,9 @@ BENCHMARK_PARAMS = {
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
+    'sigma_s':                   1.,     # estimated travel time uncertainty per pick
+    'edt_sigma_s':               1E-0,   # estimated travel time uncertainty per pick for dff. travle time
+    'dtt_weight':                1.0,   # How much to weight the differential travel time (0 = none, 1 = all)
 }
 
 # ---------------------------------------------------------------------------

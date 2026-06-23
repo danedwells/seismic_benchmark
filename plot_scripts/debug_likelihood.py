@@ -193,7 +193,7 @@ for spec in map_specs:
 # Ferndale = 'nc73829351'
 
 EVENT_ID_OVERRIDE  = 'nc73829351'#None #"ci38457519" #None   # e.g. '128041' — override to replot a specific event
-N_TRIGGERS_OVERRIDE = 25  # e.g. 5 — plot the version that first reaches this many triggers
+N_TRIGGERS_OVERRIDE = 13  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] == 'Uniform']
 # Expected order: Gear1, NSHM, Helmstetter, KDE_Seismicity, Uniform, ETAS (dynamic)

@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ferndale" #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -43,23 +43,26 @@ CASE_STUDIES = {
 # ---------------------------------------------------------------------------
 # Resolve output paths based on mode
 # ---------------------------------------------------------------------------
-MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
+MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
+#EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
+EDT_SIGMA_S = 0.2
+EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                       'time_independent', f'max_trigs_{MAX_TRIGS}')
+                                       'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
                                        'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison')
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison', EDT_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
-    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
                                       f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison', EDT_TAG)
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -371,7 +374,7 @@ fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{loc
 
 
 
-3# %%
+# %%
 # ---------------------------------------------------------------------------
 # Figure 9: spatial map of location errors — 6 panels, one per prior
 #           (all priors except Smooth_seismicity)
@@ -452,6 +455,7 @@ else:
         if not os.path.exists(path):
             continue
         prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
+
 
     # Pre-aggregate triggered and active station positions across all events shown.
     # Triggered = first version per event that reached exactly trigger_number stations.
@@ -977,7 +981,7 @@ if _comp_data:
 # ferndale = 'nc73821036' 'nc73822146'
 # El Mayor = '
 # benchmark = '243863'
-EVENT_ID_OVERRIDE  = 'nc73822146' #None   # e.g. '128041' — override to replot a specific event
+EVENT_ID_OVERRIDE  = "ci37221428"  #None   # e.g. '128041' — override to replot a specific event
 N_TRIGGERS_OVERRIDE = 5  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']

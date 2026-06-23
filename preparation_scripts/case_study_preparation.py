@@ -24,8 +24,8 @@ CASE_STUDIES = config.CASE_STUDIES  # defined in benchmark/config.py
 # ---------------------------------------------------------------------------
 # Control flags
 # ---------------------------------------------------------------------------
-REDOWNLOAD        = False  # re-download catalogs even if a cache already exists
-REBUILD_RUN_FILES = False  # rebuild .run files even if they already exist
+REDOWNLOAD        = True # re-download catalogs even if a cache already exists
+REBUILD_RUN_FILES = True  # rebuild .run files even if they already exist
 
 # ---------------------------------------------------------------------------
 # Prepare all case studies

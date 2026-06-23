@@ -15,6 +15,8 @@
 #   control flags, then run cells in order (or execute the whole script).
 # =============================================================================
 import os
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS']  = '1'
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -31,7 +33,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import load_station_availability_cache
+from benchmark.runner import load_station_availability_cache, make_epic_params
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +46,7 @@ cache_paths = {
 }
 CASE_STUDIES = config.CASE_STUDIES
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
@@ -53,10 +55,14 @@ cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Per-case-study directories
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
+EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
+SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
+EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
-CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -104,6 +110,9 @@ job_args = [
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
         'catalog_df': _cs_ref_df,
         'station_availability': _avail,
+        'dtt_weight': DTT_WEIGHT,
+        'edt_sigma_s': EDT_SIGMA_S,
+        'sigma_s': SIGMA_S,
     }
     for name, path in cache_paths.items()
 ]
@@ -275,6 +284,11 @@ else:
             'max_trigs': config.BENCHMARK_PARAMS['max_trigs'],
             'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
             'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+            'catalog_df': _cs_ref_df,
+            'station_availability': _avail,
+            'dtt_weight': DTT_WEIGHT,
+            'edt_sigma_s': EDT_SIGMA_S,
+            'sigma_s': SIGMA_S,
         },
         ref_lat        = _ref_lat,
         ref_lon        = _ref_lon,

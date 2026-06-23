@@ -69,7 +69,7 @@ print(PROJECT_ROOT)
 CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'Ridgecrest'
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
@@ -95,12 +95,16 @@ FOCUS_VERSION  = None
 
 # Per-case-study directories
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
+EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
+SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
+EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'output', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
+                               'output', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
 CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+                               'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -242,15 +246,7 @@ if RUN_DYNAMIC_PRIORS:
     t0 = pd.Timestamp(cs['starttime'])
     initial_prior = updater.update(t0)
 
-    params = EPIC_locate_prelim.EPIC_PARAMS()
-    params.prior                     = initial_prior
-    params.use_prior                 = True
-    params.GridSize                  = config.BENCHMARK_PARAMS['grid_size']
-    params.GridKm                    = config.BENCHMARK_PARAMS['grid_km']
-    params.method                    = 'EPIC C'
-    params.MAX_EVENT_TRIGS           = MAX_TRIGS
-    params.migrate_grid              = config.BENCHMARK_PARAMS['migrate_grid']
-    params.migrate_grid_min_triggers = config.BENCHMARK_PARAMS['migrate_grid_min_triggers']
+    params = make_epic_params(initial_prior, True, config.BENCHMARK_PARAMS)
 
     cs_ref_df = catalog_df.rename(columns={
         'id':        'event_id',
@@ -435,6 +431,11 @@ _params_kw = {
     'max_trigs':                 MAX_TRIGS,
     'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
     'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+    'station_availability': _avail,
+    'dtt_weight': DTT_WEIGHT,
+    'edt_sigma_s': EDT_SIGMA_S,
+    'sigma_s': SIGMA_S,
+
 }
 
 if not os.path.exists(focus_run_path):
@@ -443,7 +444,7 @@ if not os.path.exists(focus_run_path):
 elif not os.path.exists(INVERSION_JSON):
     print(f'[single-event] inversion JSON not found: {INVERSION_JSON}')
 else:
-    _focus_ref = ref_df[ref_df['event_id'] == FOCUS_EVENT_ID]
+    _focus_ref = cs_ref_df[cs_ref_df['event_id'] == FOCUS_EVENT_ID]
     _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
     _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
 

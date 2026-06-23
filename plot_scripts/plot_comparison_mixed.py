@@ -54,29 +54,31 @@ CASE_STUDIES = {
 # Resolve output paths
 # ---------------------------------------------------------------------------
 
-MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
+MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
+EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
+EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_MIXED   = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                      'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+                                      'mixed', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
                                       'time_dependent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                      'time_independent', f'max_trigs_{MAX_TRIGS}')
+                                      'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures',
-                                      'comparison_mixed', ALPHA_TAG)
+                                      'comparison_mixed', EDT_TAG, ALPHA_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_MIXED   = os.path.join(_cs_base, 'output', 'mixed',
-                                      f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+                                      EDT_TAG, f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output', 'time_dependent',
                                       f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output', 'time_independent',
-                                      f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison_mixed', ALPHA_TAG)
+                                      EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison_mixed', EDT_TAG, ALPHA_TAG)
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)

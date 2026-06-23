@@ -4,6 +4,8 @@
 # Prerequisite: run scripts/build_priors.py first to build the .tt3 cache files.
 # =============================================================================
 import os
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS']  = '1'
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -38,7 +40,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
 RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
-
+EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
+SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
+EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
 FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
@@ -84,6 +89,9 @@ job_args = [
         'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
         'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
         'station_availability':      station_availability,
+        'dtt_weight': DTT_WEIGHT,
+        'edt_sigma_s': EDT_SIGMA_S,
+        'sigma_s': SIGMA_S,
     }
     for name, path in cache_paths.items()
 ]
@@ -98,7 +106,7 @@ bg = load_background_seismicity(
     bounds      = (-129, -112, 30, 45),
     start_year  = 2000,
     end_year    = 2025,
-    min_mag     = 3.0,
+    min_mag     = 2.0,
 )
 
 #%%
@@ -300,6 +308,12 @@ if catalog_df is not None:
             'max_trigs':                 MAX_TRIGS,
             'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
             'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+            'catalog_path':              catalog_path,
+            'station_availability':      station_availability,
+            'dtt_weight': DTT_WEIGHT,
+            'edt_sigma_s': EDT_SIGMA_S,
+            'sigma_s': SIGMA_S,
+        
         }
 
         # Run bEPIC once per prior and cache — reused by plot_posterior_grid

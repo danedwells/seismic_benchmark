@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Custom repository imports
 from priors import SeismicPrior, EtasPriorUpdater
-from benchmark.background import load_background_seismicity, add_background_seismicity
+from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_location_grid, plot_posterior_grid,
                              plot_overview_map, plot_location_trajectory,
@@ -37,6 +37,10 @@ HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input
                                    f'catalog_{config.ETAS_INVERSION_CONFIG["id"]}.csv')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
+EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
+SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
+EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
 FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
@@ -499,6 +503,10 @@ else:
             'max_trigs':                 MAX_TRIGS,
             'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
             'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+            'station_availability': station_availability,
+            'dtt_weight': DTT_WEIGHT,
+            'edt_sigma_s': EDT_SIGMA_S,
+            'sigma_s': SIGMA_S,
         }
 
         # Get the posterior (_t_cov), out_df (_odf_cov), and version (# triggers) (_actual_v)

@@ -67,6 +67,9 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     params.station_inventory         = station_inventory
     params.activity_threshold        = benchmark_params.get('activity_threshold', 0.40)
     params.resample_distant_events   = benchmark_params.get('resample_distant_events', True)
+    params.edt_sigma_s               = benchmark_params.get('edt_sigma_s', 0.2)
+    params.sigma_s                   = benchmark_params.get('sigma_s', 1.0)
+    params.dtt_weight                = benchmark_params.get('dtt_weight', 0.5)
     return params
 
 
