@@ -41,8 +41,8 @@ EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent',  f'max_trigs_{MAX_TRIGS}')
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

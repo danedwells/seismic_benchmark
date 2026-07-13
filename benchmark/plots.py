@@ -1517,3 +1517,98 @@ def plot_qq_prior_comparison(
     if save_path is not None:
         plt.savefig(save_path, dpi=150)
     return fig
+
+
+def plot_qq_calibration_by_param(
+    prior_names,
+    output_dirs,
+    param_label='sigma_s',
+    title='bEPIC posterior calibration vs {param_label}',
+    save_path=None,
+    ncols=3,
+):
+    """
+    Grid of Q-Q calibration plots: one panel per prior, one line per output
+    directory (e.g. a sweep over sigma_s or edt_sigma_s).
+
+    Mirrors plot_qq_calibration, but instead of one panel with one line per
+    prior (all sharing a single output_dir), this produces one panel per
+    prior with one line per entry in `output_dirs` — letting calibration be
+    compared across a swept parameter, per prior.
+
+    Parameters
+    ----------
+    prior_names : list[str]
+        Ordered list of prior display names; one panel per entry.
+    output_dirs : dict[str or float, str]
+        Maps a parameter value (used as the line label and for colour
+        ordering) to a directory containing
+        ``{prior_name.lower()}_benchmark_results.csv``. Iterated in the
+        order given — sort the dict before calling if a specific line-colour
+        order is wanted.
+    param_label : str
+        Name of the swept parameter, used in the title and legend.
+    title : str
+        Figure suptitle; ``{param_label}`` is substituted if present.
+    save_path : str or None
+        Full path for the saved PNG (written at 150 dpi).
+    ncols : int
+        Number of panel columns.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    n = len(prior_names)
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4.2, nrows * 4.0),
+                              squeeze=False)
+    axes_flat = axes.flatten()
+
+    param_values = list(output_dirs.keys())
+    colors = plt.cm.viridis(np.linspace(0, 1, len(param_values)))
+
+    for ax, prior_name in zip(axes_flat, prior_names):
+        for color, param_value in zip(colors, param_values):
+            csv_path = os.path.join(output_dirs[param_value],
+                                    f'{prior_name.lower()}_benchmark_results.csv')
+            if not os.path.exists(csv_path):
+                continue
+
+            df = pd.read_csv(csv_path)
+            if 'posterior_confidence_level' not in df.columns:
+                continue
+            # posterior_confidence_level is only set for the final trigger
+            # version per event
+            final = df.dropna(subset=['posterior_confidence_level'])
+
+            vals = np.sort(final['posterior_confidence_level'].values)
+            n_vals = len(vals)
+            if n_vals == 0:
+                continue
+
+            theoretical = (np.arange(1, n_vals + 1) - 0.5) / n_vals
+            ax.plot(theoretical, vals, color=color, linewidth=1.5,
+                    label=f'{param_label}={param_value}')
+
+        ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_title(prior_name, fontsize=11)
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.2)
+
+    for ax in axes_flat[n:]:
+        ax.set_visible(False)
+
+    for ax in axes_flat[:n]:
+        ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=9)
+    for i, ax in enumerate(axes_flat[:n]):
+        if i % ncols == 0:
+            ax.set_ylabel('Empirical posterior_confidence_level', fontsize=9)
+
+    fig.suptitle(title.format(param_label=param_label), fontsize=13)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig

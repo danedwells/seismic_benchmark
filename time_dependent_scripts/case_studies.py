@@ -99,12 +99,25 @@ EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
+S_TAG          = f'sig_{SIGMA_S}'
+
+_VARY_EDT      = False
+_VARY_SIG      = True
+
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
-CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'output', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+
+if _VARY_EDT == True & _VARY_SIG == True:
+    raise Exception("Cannot vary both EDT and Sigma at the same time")
+elif _VARY_EDT == True:
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+elif _VARY_SIG == True:
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+else:
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
