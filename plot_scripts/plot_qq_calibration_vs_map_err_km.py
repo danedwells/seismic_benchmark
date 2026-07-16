@@ -1,13 +1,17 @@
 """
-plot_scripts/plot_qq_calibration_sigma_s.py — Q-Q calibration vs sigma_s.
+plot_scripts/plot_qq_calibration_vs_map_err_km.py — Q-Q calibration vs
+map_err_km, swept over sigma_s.
 
-For a case study run with the sigma_s sweep (`_VARY_SIG = True` in
-time_independent_scripts/case_studies.py), plots posterior_confidence_level
-Q-Q calibration curves in a grid with one panel per prior (including
-Uniform) and one line per sigma_s value tested.
+Functionally identical to plot_qq_calibration_sigma_s.py, except the x-axis
+is not the theoretical Uniform(0,1) quantile — it's the empirical quantile
+function of map_err_km. This compares the *shape* of the
+posterior_confidence_level distribution against the shape of the location
+error distribution (marginally, not paired event-by-event) for each prior
+and sigma_s value.
 
 Requires results/case_studies/{case_study}/output/time_independent/sig_*/
-max_trigs_{N}/ directories, produced by that sweep.
+max_trigs_{N}/ directories, produced by the sigma_s sweep, and (optionally)
+the equivalent time_dependent/sig_*/ directories for the dynamic ETAS panel.
 """
 #%%
 import os
@@ -66,8 +70,9 @@ print(f'Found sigma_s values (dynamic ETAS): {list(etas_output_dirs.keys())}')
 
 #%%
 # ---------------------------------------------------------------------------
-# Figure: Q-Q calibration grid — one panel per prior, one line per sigma_s,
-# plus a 6th panel for the dynamic ETAS prior.
+# Figure: posterior_confidence_level quantiles (y) vs map_err_km quantiles
+# (x) — one panel per prior, one line per sigma_s, plus a 6th panel for the
+# dynamic ETAS prior.
 # ---------------------------------------------------------------------------
 extra_panel = None
 if etas_output_dirs:
@@ -81,9 +86,12 @@ fig = plot_qq_calibration_by_param(
     prior_names = PRIOR_ORDER,
     output_dirs = output_dirs,
     param_label = 'sigma_s',
-    title       = f'Posterior calibration vs sigma_s — {ACTIVE_CASE_STUDY}  ({MAX_TRIGS} triggers)',
-    save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_vs_sigma_s_{MAX_TRIGS}trigs.png'),
+    title       = f'Posterior calibration vs map_err_km — {ACTIVE_CASE_STUDY}  ({MAX_TRIGS} triggers)',
+    save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_vs_map_err_km_{MAX_TRIGS}trigs.png'),
     extra_panel = extra_panel,
+    x_column    = 'map_err_km',
+    x_label     = 'map_err_km quantile',
+    log_x       = True,
 )
 plt.show()
 

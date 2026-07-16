@@ -1526,6 +1526,10 @@ def plot_qq_calibration_by_param(
     title='bEPIC posterior calibration vs {param_label}',
     save_path=None,
     ncols=3,
+    extra_panel=None,
+    x_column=None,
+    x_label=None,
+    log_x=False,
 ):
     """
     Grid of Q-Q calibration plots: one panel per prior, one line per output
@@ -1545,7 +1549,7 @@ def plot_qq_calibration_by_param(
         ordering) to a directory containing
         ``{prior_name.lower()}_benchmark_results.csv``. Iterated in the
         order given — sort the dict before calling if a specific line-colour
-        order is wanted.
+        order is wanted. Also sets the colour scale shared with `extra_panel`.
     param_label : str
         Name of the swept parameter, used in the title and legend.
     title : str
@@ -1554,24 +1558,62 @@ def plot_qq_calibration_by_param(
         Full path for the saved PNG (written at 150 dpi).
     ncols : int
         Number of panel columns.
+    extra_panel : dict, optional
+        Adds one more panel for a series that lives in its own directory
+        tree with a fixed CSV filename (e.g. the dynamic ETAS prior, whose
+        results aren't named ``{prior}_benchmark_results.csv``). Keys:
+          'name'         — panel title / legend label prefix
+          'output_dirs'  — dict[param_value, dir], analogous to `output_dirs`
+          'csv_filename' — filename read from each directory in 'output_dirs'
+        Param values shared with `output_dirs` reuse the same colour so
+        sigma_s is comparable across all panels; values unique to
+        `extra_panel` fall back to a separate colour cycle.
+    x_column : str or None
+        If None (default), the x-axis is the theoretical Uniform(0,1)
+        quantile — the standard calibration Q-Q plot. If set to another
+        column name (e.g. ``'map_err_km'``), the x-axis instead becomes
+        that column's own empirical quantile function, evaluated at the
+        same quantile levels as the posterior_confidence_level values on
+        the y-axis — a two-distribution Q-Q plot comparing the shape of
+        posterior_confidence_level against the shape of `x_column`, rather
+        than against a uniform reference. The two columns are not paired
+        event-by-event; each is ranked independently, since only their
+        marginal distributions are being compared. The diagonal reference
+        line and fixed [0,1] x-limits are skipped in this mode.
+    x_label : str or None
+        X-axis label when `x_column` is set. Defaults to `x_column`.
+    log_x : bool
+        Log-scale the x-axis. Only meaningful when `x_column` is set.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
     """
-    n = len(prior_names)
+    panel_specs = [
+        {'name': name, 'output_dirs': output_dirs,
+         'csv_filename': f'{name.lower()}_benchmark_results.csv'}
+        for name in prior_names
+    ]
+    if extra_panel is not None:
+        panel_specs.append(extra_panel)
+
+    n = len(panel_specs)
     nrows = math.ceil(n / ncols)
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4.2, nrows * 4.0),
                               squeeze=False)
     axes_flat = axes.flatten()
 
+    # Shared colour scale, keyed by param_value, so the same sigma_s draws
+    # the same colour in every panel including the extra one.
     param_values = list(output_dirs.keys())
-    colors = plt.cm.viridis(np.linspace(0, 1, len(param_values)))
+    color_map = dict(zip(param_values, plt.cm.viridis(np.linspace(0, 1, len(param_values)))))
+    fallback_colors = plt.cm.plasma(np.linspace(0, 1, max(len(param_values), 1)))
 
-    for ax, prior_name in zip(axes_flat, prior_names):
-        for color, param_value in zip(colors, param_values):
-            csv_path = os.path.join(output_dirs[param_value],
-                                    f'{prior_name.lower()}_benchmark_results.csv')
+    for ax, spec in zip(axes_flat, panel_specs):
+        panel_param_values = list(spec['output_dirs'].keys())
+        for i, param_value in enumerate(panel_param_values):
+            color = color_map.get(param_value, fallback_colors[i % len(fallback_colors)])
+            csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
             if not os.path.exists(csv_path):
                 continue
 
@@ -1582,27 +1624,45 @@ def plot_qq_calibration_by_param(
             # version per event
             final = df.dropna(subset=['posterior_confidence_level'])
 
-            vals = np.sort(final['posterior_confidence_level'].values)
-            n_vals = len(vals)
+            y_vals = np.sort(final['posterior_confidence_level'].values)
+            n_vals = len(y_vals)
             if n_vals == 0:
                 continue
+            q_levels = (np.arange(1, n_vals + 1) - 0.5) / n_vals
 
-            theoretical = (np.arange(1, n_vals + 1) - 0.5) / n_vals
-            ax.plot(theoretical, vals, color=color, linewidth=1.5,
+            if x_column is None:
+                x_vals = q_levels
+            else:
+                if x_column not in df.columns:
+                    continue
+                x_src = df[x_column].dropna().values
+                if len(x_src) == 0:
+                    continue
+                # Independent quantile function of x_column at the same
+                # quantile levels — a marginal-distribution comparison, not
+                # an event-by-event pairing.
+                x_vals = np.quantile(x_src, q_levels)
+
+            ax.plot(x_vals, y_vals, color=color, linewidth=1.5,
                     label=f'{param_label}={param_value}')
 
-        ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
-        ax.set_xlim(0, 1)
+        if x_column is None:
+            ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal')
+            ax.set_xlim(0, 1)
+        if log_x:
+            ax.set_xscale('log')
         ax.set_ylim(0, 1)
-        ax.set_title(prior_name, fontsize=11)
+        ax.set_title(spec['name'], fontsize=11)
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.2)
 
     for ax in axes_flat[n:]:
         ax.set_visible(False)
 
+    x_axis_label = ('Theoretical quantile  U(0,1)' if x_column is None
+                     else (x_label or x_column))
     for ax in axes_flat[:n]:
-        ax.set_xlabel('Theoretical quantile  U(0,1)', fontsize=9)
+        ax.set_xlabel(x_axis_label, fontsize=9)
     for i, ax in enumerate(axes_flat[:n]):
         if i % ncols == 0:
             ax.set_ylabel('Empirical posterior_confidence_level', fontsize=9)
