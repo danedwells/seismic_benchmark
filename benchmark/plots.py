@@ -13,6 +13,7 @@ import cartopy.feature as cfeature
 import obspy
 
 from .metrics import load_per_version_stats
+from .metrics import load_final_values
 from .metrics import COVERAGE_RADII_KM
 # Plots
 
@@ -1530,6 +1531,7 @@ def plot_qq_calibration_by_param(
     x_column=None,
     x_label=None,
     log_x=False,
+    n_trigs=None,
 ):
     """
     Grid of Q-Q calibration plots: one panel per prior, one line per output
@@ -1584,6 +1586,12 @@ def plot_qq_calibration_by_param(
         X-axis label when `x_column` is set. Defaults to `x_column`.
     log_x : bool
         Log-scale the x-axis. Only meaningful when `x_column` is set.
+    n_trigs : int or None
+        Which trigger-count version to use per event. Defaults to None,
+        which takes each event's last (most-triggered) row — matches
+        `load_final_values`'s default. Pass an int to instead use each
+        event's row at that specific trigger count (events that never
+        reached it are excluded).
 
     Returns
     -------
@@ -1614,29 +1622,24 @@ def plot_qq_calibration_by_param(
         for i, param_value in enumerate(panel_param_values):
             color = color_map.get(param_value, fallback_colors[i % len(fallback_colors)])
             csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
-            if not os.path.exists(csv_path):
+
+            try:
+                y_src = load_final_values(csv_path, 'posterior_confidence_level', n_trigs=n_trigs)
+            except ValueError as e:
+                print(f"  [{spec['name']}, {param_label}={param_value}] {e}")
+                continue
+            if y_src is None or len(y_src) == 0:
                 continue
 
-            df = pd.read_csv(csv_path)
-            if 'posterior_confidence_level' not in df.columns:
-                continue
-            # posterior_confidence_level is only set for the final trigger
-            # version per event
-            final = df.dropna(subset=['posterior_confidence_level'])
-
-            y_vals = np.sort(final['posterior_confidence_level'].values)
+            y_vals = np.sort(y_src)
             n_vals = len(y_vals)
-            if n_vals == 0:
-                continue
             q_levels = (np.arange(1, n_vals + 1) - 0.5) / n_vals
 
             if x_column is None:
                 x_vals = q_levels
             else:
-                if x_column not in df.columns:
-                    continue
-                x_src = df[x_column].dropna().values
-                if len(x_src) == 0:
+                x_src = load_final_values(csv_path, x_column, n_trigs=n_trigs)
+                if x_src is None or len(x_src) == 0:
                     continue
                 # Independent quantile function of x_column at the same
                 # quantile levels — a marginal-distribution comparison, not
@@ -1668,6 +1671,191 @@ def plot_qq_calibration_by_param(
             ax.set_ylabel('Empirical posterior_confidence_level', fontsize=9)
 
     fig.suptitle(title.format(param_label=param_label), fontsize=13)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig
+
+
+def _load_paired_values(csv_path, columns, n_trigs=None):
+    """
+    Load several metric columns from a benchmark CSV, paired per event.
+
+    Unlike load_final_values (one column, NaNs dropped independently), this
+    keeps `columns` aligned row-by-row: a row is dropped only if any of the
+    requested columns is NaN for that event. Returns a DataFrame indexed by
+    event_id, or None if the file/columns are missing or nothing survives.
+    """
+    if not os.path.exists(csv_path):
+        return None
+    df = pd.read_csv(csv_path)
+    if any(c not in df.columns for c in columns):
+        return None
+
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                            .rank(method='dense').astype(int))
+
+    if n_trigs is None:
+        sub = df.groupby('event_id').last()
+    else:
+        sub = df[df['n_trigs'] == n_trigs].set_index('event_id')
+
+    sub = sub[list(columns)].dropna()
+    return sub if len(sub) > 0 else None
+
+
+def _to_quantile(values):
+    """Map each value to its own empirical quantile (plotting-position rank)."""
+    ranks = np.argsort(np.argsort(values))
+    return (ranks + 0.5) / len(values)
+
+
+def plot_scatter_calibration_by_param(
+    prior_names,
+    output_dirs,
+    param_label='sigma_s',
+    y_column='posterior_confidence_level',
+    x_column='map_err_km',
+    y_quantile=True,
+    x_quantile=False,
+    title='{y_axis} vs {x_axis}, by {param_label}',
+    save_path=None,
+    ncols=3,
+    extra_panel=None,
+    x_label=None,
+    y_label=None,
+    log_x=False,
+    log_y=False,
+    n_trigs=None,
+    alpha=0.5,
+    point_size=14,
+):
+    """
+    Grid of scatter plots: one panel per prior, one colour per swept
+    parameter value (e.g. sigma_s), one point per event.
+
+    Unlike plot_qq_calibration_by_param — which compares `x_column` and
+    `y_column` as independent marginal distributions — this pairs the two
+    columns event-by-event, so the scatter shows the actual per-event
+    relationship between them (e.g. does a higher posterior confidence level
+    correlate with a smaller location error?).
+
+    Parameters
+    ----------
+    prior_names : list[str]
+        Ordered list of prior display names; one panel per entry.
+    output_dirs : dict[str or float, str]
+        Maps a swept parameter value (used as the point colour/label) to a
+        directory containing ``{prior_name.lower()}_benchmark_results.csv``.
+        Also sets the colour scale shared with `extra_panel`.
+    param_label : str
+        Name of the swept parameter, used in the legend.
+    y_column, x_column : str
+        Benchmark CSV columns to plot on the y- and x-axes. Any column in
+        the results CSV works (e.g. 'map_err_km', 'best_misfit',
+        'usgs_credible_level', 'coverage_100km').
+    y_quantile, x_quantile : bool
+        If True, that column's per-event values are replaced by their own
+        empirical quantile (plotting-position rank in [0, 1]) before
+        plotting, rather than the raw value. Defaults match the standard
+        use case: quantile-transformed posterior_confidence_level (y) against
+        raw map_err_km in km (x).
+    title : str
+        Figure suptitle; ``{param_label}``, ``{x_axis}``, ``{y_axis}`` are
+        substituted if present.
+    save_path : str or None
+        Full path for the saved PNG (written at 150 dpi).
+    ncols : int
+        Number of panel columns.
+    extra_panel : dict, optional
+        Adds one more panel for a series that lives in its own directory
+        tree with a fixed CSV filename (e.g. the dynamic ETAS prior). Keys:
+          'name'         — panel title / legend label prefix
+          'output_dirs'  — dict[param_value, dir], analogous to `output_dirs`
+          'csv_filename' — filename read from each directory in 'output_dirs'
+    x_label, y_label : str or None
+        Axis labels; default to the column name (with a "quantile" suffix
+        when that axis is quantile-transformed).
+    log_x, log_y : bool
+        Log-scale the respective axis.
+    n_trigs : int or None
+        Which trigger-count version to use per event. Defaults to None,
+        which takes each event's last (most-triggered) row. Pass an int to
+        instead use each event's row at that specific trigger count (events
+        that never reached it are excluded).
+    alpha : float
+        Marker transparency, useful when many events overlap.
+    point_size : float
+        Marker size passed to ax.scatter.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    panel_specs = [
+        {'name': name, 'output_dirs': output_dirs,
+         'csv_filename': f'{name.lower()}_benchmark_results.csv'}
+        for name in prior_names
+    ]
+    if extra_panel is not None:
+        panel_specs.append(extra_panel)
+
+    n = len(panel_specs)
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4.2, nrows * 4.0),
+                              squeeze=False)
+    axes_flat = axes.flatten()
+
+    # Shared colour scale, keyed by param_value, so the same sigma_s draws
+    # the same colour in every panel including the extra one.
+    param_values = list(output_dirs.keys())
+    color_map = dict(zip(param_values, plt.cm.viridis(np.linspace(0, 1, len(param_values)))))
+    fallback_colors = plt.cm.plasma(np.linspace(0, 1, max(len(param_values), 1)))
+
+    for ax, spec in zip(axes_flat, panel_specs):
+        panel_param_values = list(spec['output_dirs'].keys())
+        for i, param_value in enumerate(panel_param_values):
+            color = color_map.get(param_value, fallback_colors[i % len(fallback_colors)])
+            csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
+
+            paired = _load_paired_values(csv_path, [y_column, x_column], n_trigs=n_trigs)
+            if paired is None:
+                print(f"  [{spec['name']}, {param_label}={param_value}] no paired data for "
+                      f"{y_column}/{x_column}")
+                continue
+
+            y_vals = _to_quantile(paired[y_column].values) if y_quantile else paired[y_column].values
+            x_vals = _to_quantile(paired[x_column].values) if x_quantile else paired[x_column].values
+
+            ax.scatter(x_vals, y_vals, color=color, s=point_size, alpha=alpha,
+                       edgecolors='none', label=f'{param_label}={param_value}')
+
+        if log_x:
+            ax.set_xscale('log')
+        if log_y:
+            ax.set_yscale('log')
+        if y_quantile:
+            ax.set_ylim(0, 1)
+        if x_quantile:
+            ax.set_xlim(0, 1)
+        ax.set_title(spec['name'], fontsize=11)
+        ax.legend(fontsize=7, markerscale=2)
+        ax.grid(True, alpha=0.2)
+
+    for ax in axes_flat[n:]:
+        ax.set_visible(False)
+
+    x_axis_label = x_label or (f'{x_column} quantile' if x_quantile else x_column)
+    y_axis_label = y_label or (f'{y_column} quantile' if y_quantile else y_column)
+    for ax in axes_flat[:n]:
+        ax.set_xlabel(x_axis_label, fontsize=9)
+    for i, ax in enumerate(axes_flat[:n]):
+        if i % ncols == 0:
+            ax.set_ylabel(y_axis_label, fontsize=9)
+
+    fig.suptitle(title.format(param_label=param_label, x_axis=x_axis_label, y_axis=y_axis_label),
+                 fontsize=13)
     plt.tight_layout()
     if save_path is not None:
         plt.savefig(save_path, dpi=150)

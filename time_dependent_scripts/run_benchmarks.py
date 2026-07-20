@@ -36,13 +36,28 @@ INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
                                    f'catalog_{config.ETAS_INVERSION_CONFIG["id"]}.csv')
 
-MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
+MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent',  EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+S_TAG          = f'sig_{SIGMA_S}'
+
+_VARY_EDT      = False
+_VARY_SIG      = True
+
+if _VARY_EDT == True & _VARY_SIG == True:
+    raise Exception("Cannot vary both EDT and Sigma at the same time")
+elif _VARY_EDT == True:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+elif _VARY_SIG == True:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+else:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

@@ -24,6 +24,10 @@ class _MockSearchOut:
         self.posterior_lon = lon
         self.exp_lat       = lat
         self.exp_lon       = lon
+        self.like_lat      = lat
+        self.like_lon      = lon
+        self.like_exp_lat  = lat
+        self.like_exp_lon  = lon
         self.best_misfit   = 0.5
         self.best_like     = 1.2
         self.best_prior    = 0.001

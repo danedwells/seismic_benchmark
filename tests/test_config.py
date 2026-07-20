@@ -16,7 +16,7 @@ from benchmark import config
 # ---------------------------------------------------------------------------
 
 def test_prior_filenames_has_all_expected_keys():
-    expected = {'Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity', 'KDE_Seismicity', 'Uniform'}
+    expected = {'Gear1', 'NSHM', 'Helmstetter', 'KDE_Seismicity', 'Uniform'}
     assert expected.issubset(set(config.PRIOR_FILENAMES.keys()))
 
 
@@ -60,7 +60,7 @@ def test_construction_params_source_paths_has_gear1_and_nshm():
 
 def test_construction_params_out_of_bounds_fill_keys():
     oob = config.PRIOR_CONSTRUCTION_PARAMS.get('out_of_bounds_fill', {})
-    expected = {'Gear1', 'NSHM', 'Helmstetter', 'Smooth_seismicity'}
+    expected = {'Gear1', 'NSHM', 'Helmstetter', 'KDE_Seismicity'}
     assert expected.issubset(set(oob.keys()))
 
 

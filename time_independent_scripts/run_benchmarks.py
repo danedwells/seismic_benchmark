@@ -44,9 +44,24 @@ EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+S_TAG          = f'sig_{SIGMA_S}'
+MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
+
+_VARY_EDT      = False
+_VARY_SIG      = True
+
+if _VARY_EDT == True & _VARY_SIG == True:
+    raise Exception("Cannot vary both EDT and Sigma at the same time")
+elif _VARY_EDT == True:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+elif _VARY_SIG == True:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+else:
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

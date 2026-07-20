@@ -46,7 +46,7 @@ cache_paths = {
 }
 CASE_STUDIES = config.CASE_STUDIES
 # --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ridgecrest'
+ACTIVE_CASE_STUDY = 'Ferndale'
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 

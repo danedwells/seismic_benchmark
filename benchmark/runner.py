@@ -6,8 +6,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
 from .metrics import (posterior_confidence_level, prior_confidence_level,
+                      like_confidence_level,
                       posterior_coverage, location_error_km, COVERAGE_RADII_KM,
-                      log_score, brier_score, energy_score)
+                      log_score, brier_score, energy_score,
+                      likelihood_value_at_location)
 
 # When the nearest triggered station is farther than this after the first
 # location, the trigger set is resampled to simulate real-system uncertainty.
@@ -104,6 +106,8 @@ def runner_results_to_df(runner):
             'energy_score':                  m.get('energy_score'),
             'posterior_confidence_level':    m.get('posterior_confidence_level'),
             'prior_confidence_level':     m.get('prior_confidence_level'),
+            'like_confidence_level':      m.get('like_confidence_level'),
+            'like_val_at_usgs':              m.get('like_val_at_usgs'),
         }
         for col in cov_cols:
             row[col] = m.get(col)
@@ -113,7 +117,8 @@ def runner_results_to_df(runner):
               'like_err_km','like_exp_err_km',
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
               'map_err_km', 'exp_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
-             + ['posterior_confidence_level', 'prior_confidence_level'])
+             + ['posterior_confidence_level', 'prior_confidence_level', 'like_confidence_level',
+                'like_val_at_usgs'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
@@ -317,17 +322,21 @@ class BenchmarkRunner:
         cov             = posterior_coverage(out_df, usgs_lat, usgs_lon)
         cred            = posterior_confidence_level(out_df, usgs_lat, usgs_lon)
         prior_cred      = prior_confidence_level(out_df, usgs_lat, usgs_lon)
+        like_cred       = like_confidence_level(out_df, usgs_lat, usgs_lon)
+        like_val        = likelihood_value_at_location(out_df, usgs_lat, usgs_lon)
         ls              = log_score(out_df, usgs_lat, usgs_lon)
         bs              = brier_score(out_df, usgs_lat, usgs_lon)
         es              = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
-        m = {'map_err_km': map_err_km, 
-             'exp_err_km': exp_err_km, 
+        m = {'map_err_km': map_err_km,
+             'exp_err_km': exp_err_km,
              'like_err_km': like_err_km,
              'like_exp_err_km': like_exp_err_km,
              'posterior_confidence_level': cred,
              'prior_confidence_level': prior_cred,
-             'log_score': ls, 
-             'brier_score': bs, 
+             'like_confidence_level': like_cred,
+             'like_val_at_usgs': like_val,
+             'log_score': ls,
+             'brier_score': bs,
              'energy_score': es}
         for r in COVERAGE_RADII_KM:
             m[f'coverage_{r}km'] = cov[r]

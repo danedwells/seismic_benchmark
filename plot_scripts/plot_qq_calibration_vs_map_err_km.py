@@ -34,6 +34,7 @@ from benchmark.plots import plot_qq_calibration_by_param
 ACTIVE_CASE_STUDY = 'Ridgecrest'   # 'Ridgecrest', 'Ferndale', 'ElMayor'
 MAX_TRIGS         = config.BENCHMARK_PARAMS['max_trigs']
 PRIOR_ORDER       = list(config.PRIOR_FILENAMES.keys())  # includes 'Uniform'
+N_TRIGS           = 5   # per-event trigger count to plot; None = each event's last (most-triggered) row
 
 CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                             ACTIVE_CASE_STUDY, 'output', 'time_independent')
@@ -82,16 +83,20 @@ if etas_output_dirs:
         'csv_filename': 'etas_dynamic_benchmark_results.csv',
     }
 
+_trigs_label = f'{N_TRIGS} triggers' if N_TRIGS is not None else 'final version'
+_trigs_tag   = f'{N_TRIGS}trigs' if N_TRIGS is not None else 'final'
+
 fig = plot_qq_calibration_by_param(
     prior_names = PRIOR_ORDER,
     output_dirs = output_dirs,
     param_label = 'sigma_s',
-    title       = f'Posterior calibration vs map_err_km — {ACTIVE_CASE_STUDY}  ({MAX_TRIGS} triggers)',
-    save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_vs_map_err_km_{MAX_TRIGS}trigs.png'),
+    title       = f'Posterior calibration vs map_err_km — {ACTIVE_CASE_STUDY}  ({_trigs_label})',
+    save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_vs_map_err_km_{_trigs_tag}.png'),
     extra_panel = extra_panel,
     x_column    = 'map_err_km',
     x_label     = 'map_err_km quantile',
     log_x       = True,
+    n_trigs     = N_TRIGS,
 )
 plt.show()
 

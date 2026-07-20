@@ -130,6 +130,28 @@ def prior_confidence_level(out_df, usgs_lat, usgs_lon):
     return float(p_norm[p_norm >= p_usgs].sum())
 
 
+def like_confidence_level(out_df, usgs_lat, usgs_lon):
+    """
+    Credible level of the smallest HDR of the *likelihood surface* that
+    contains the USGS location. Returns a value in [0, 1]: lower is better
+    (USGS is in a high-density region of the likelihood alone).
+
+    Analogous to posterior_confidence_level/prior_confidence_level but uses
+    the 'like' column instead of 'post'/'prior' — shows how well the
+    travel-time misfit alone (before any prior is applied) constrains the
+    true location.
+    """
+    p = out_df['like'].values
+    p_norm = p / p.sum()
+
+    dlat = out_df['lat'].values - usgs_lat
+    # Correct for longitude compression at non-equatorial latitudes.
+    dlon = (out_df['lon'].values - usgs_lon) * np.cos(np.radians(usgs_lat))
+    p_usgs = p_norm[np.argmin(np.hypot(dlat, dlon))]
+
+    return float(p_norm[p_norm >= p_usgs].sum())
+
+
 def _haversine_km(ref_lat, ref_lon, lats, lons):
     """Vectorized haversine distance (km) from one point to an array of points.
 
@@ -225,6 +247,29 @@ def brier_score(out_df, ref_lat, ref_lon):
     idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
     p_true = float(p_norm[idx])
     return float(np.sum(p_norm ** 2) - 2.0 * p_true + 1.0)
+
+
+def likelihood_value_at_location(out_df, ref_lat, ref_lon):
+    """
+    Normalized likelihood-surface mass at the grid cell nearest ref_lat/ref_lon.
+
+    Unlike posterior_confidence_level/prior_confidence_level (the smallest HDR
+    credible level containing ref), this is the raw value of the likelihood
+    surface itself at that cell — how much weight the travel-time misfit
+    alone assigns to the true location, independent of any prior. Same
+    quantity as the p_true term computed internally by log_score/brier_score,
+    but evaluated on the 'like' column instead of 'post'.
+
+    Higher is better: a value near the grid's max means the likelihood alone
+    (before any prior is applied) already favors the true location.
+
+    Note: like log_score/brier_score, this is grid-resolution dependent —
+    only compare across events or priors evaluated on the same grid.
+    """
+    p = out_df['like'].values
+    p_norm = p / p.sum()
+    idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
+    return float(p_norm[idx])
 
 
 def energy_score(out_df, ref_lat, ref_lon, n_samples=1000, rng=None):
