@@ -9,7 +9,8 @@ from .metrics import (posterior_confidence_level, prior_confidence_level,
                       like_confidence_level,
                       posterior_coverage, location_error_km, COVERAGE_RADII_KM,
                       log_score, brier_score, energy_score,
-                      likelihood_value_at_location)
+                      likelihood_value_at_location, posterior_value_at_location,
+                      likelihood_value_at_location_unnormalized)  # TEMP: sigma_s sweep diagnostic
 
 # When the nearest triggered station is farther than this after the first
 # location, the trigger set is resampled to simulate real-system uncertainty.
@@ -108,6 +109,8 @@ def runner_results_to_df(runner):
             'prior_confidence_level':     m.get('prior_confidence_level'),
             'like_confidence_level':      m.get('like_confidence_level'),
             'like_val_at_usgs':              m.get('like_val_at_usgs'),
+            'like_val_raw_at_usgs':          m.get('like_val_raw_at_usgs'),  # TEMP: sigma_s sweep diagnostic
+            'post_val_at_usgs':              m.get('post_val_at_usgs'),
         }
         for col in cov_cols:
             row[col] = m.get(col)
@@ -118,7 +121,7 @@ def runner_results_to_df(runner):
               'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
               'map_err_km', 'exp_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
              + ['posterior_confidence_level', 'prior_confidence_level', 'like_confidence_level',
-                'like_val_at_usgs'])
+                'like_val_at_usgs', 'like_val_raw_at_usgs', 'post_val_at_usgs'])
     return pd.DataFrame(rows, columns=_cols).sort_values(['event_id', 'version'])
 
 
@@ -324,6 +327,8 @@ class BenchmarkRunner:
         prior_cred      = prior_confidence_level(out_df, usgs_lat, usgs_lon)
         like_cred       = like_confidence_level(out_df, usgs_lat, usgs_lon)
         like_val        = likelihood_value_at_location(out_df, usgs_lat, usgs_lon)
+        like_val_raw    = likelihood_value_at_location_unnormalized(out_df, usgs_lat, usgs_lon)  # TEMP: sigma_s sweep diagnostic
+        post_val        = posterior_value_at_location(out_df, usgs_lat, usgs_lon)
         ls              = log_score(out_df, usgs_lat, usgs_lon)
         bs              = brier_score(out_df, usgs_lat, usgs_lon)
         es              = energy_score(out_df, usgs_lat, usgs_lon, rng=self._rng)
@@ -335,6 +340,8 @@ class BenchmarkRunner:
              'prior_confidence_level': prior_cred,
              'like_confidence_level': like_cred,
              'like_val_at_usgs': like_val,
+             'like_val_raw_at_usgs': like_val_raw,  # TEMP: sigma_s sweep diagnostic
+             'post_val_at_usgs': post_val,
              'log_score': ls,
              'brier_score': bs,
              'energy_score': es}

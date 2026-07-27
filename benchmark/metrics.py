@@ -272,6 +272,42 @@ def likelihood_value_at_location(out_df, ref_lat, ref_lon):
     return float(p_norm[idx])
 
 
+# TEMP: sigma_s sweep diagnostic — compares raw vs. normalized likelihood at
+# the USGS location to check whether sigma_s selection is normalization-
+# sensitive. Delete alongside likelihood_value_at_location_unnormalized once
+# the experiment is done.
+def likelihood_value_at_location_unnormalized(out_df, ref_lat, ref_lon):
+    """
+    Raw (un-normalized) likelihood-surface value at the grid cell nearest
+    ref_lat/ref_lon — same lookup as likelihood_value_at_location, but skips
+    the p / p.sum() normalization step.
+    """
+    p = out_df['like'].values
+    idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
+    return float(p[idx])
+
+
+def posterior_value_at_location(out_df, ref_lat, ref_lon):
+    """
+    Normalized posterior mass at the grid cell nearest ref_lat/ref_lon.
+
+    Unlike posterior_confidence_level (the smallest HDR credible level
+    containing ref), this is the raw posterior value itself at that cell —
+    the same p_true term computed internally by log_score/brier_score,
+    exposed directly (equivalently, exp(log_score(out_df, ref_lat, ref_lon))).
+
+    Higher is better: a value near the grid's max means the posterior
+    concentrates its mass at the true location.
+
+    Note: like log_score/brier_score, this is grid-resolution dependent —
+    only compare across events or priors evaluated on the same grid.
+    """
+    p = out_df['post'].values
+    p_norm = p / p.sum()
+    idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
+    return float(p_norm[idx])
+
+
 def energy_score(out_df, ref_lat, ref_lon, n_samples=1000, rng=None):
     """
     Energy Score for a 2-D gridded posterior vs a point observation.

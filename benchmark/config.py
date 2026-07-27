@@ -156,10 +156,23 @@ BENCHMARK_PARAMS = {
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
-    'sigma_s':                   0.1,     # estimated travel time uncertainty per pick
+    'sigma_s':                   1.5,     # estimated travel time uncertainty per pick
     'edt_sigma_s':               0.02,   # estimated travel time uncertainty per pick for dff. travle time
     'dtt_weight':                0.0,   # How much to weight the differential travel time (0 = none, 1 = all)
 }
+
+# Allow shell-driven parameter sweeps (e.g. run_case_studies.sh) to override
+# BENCHMARK_PARAMS without editing this file. Unset env vars leave defaults untouched.
+_BENCHMARK_PARAM_ENV_CASTS = {
+    'sigma_s':     float,
+    'edt_sigma_s': float,
+    'dtt_weight':  float,
+    'max_trigs':   int,
+}
+for _key, _cast in _BENCHMARK_PARAM_ENV_CASTS.items():
+    _env_val = os.environ.get(f'BENCHMARK_{_key.upper()}')
+    if _env_val is not None:
+        BENCHMARK_PARAMS[_key] = _cast(_env_val)
 
 # ---------------------------------------------------------------------------
 # Case study definitions — single authoritative source

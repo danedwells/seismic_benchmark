@@ -1860,3 +1860,134 @@ def plot_scatter_calibration_by_param(
     if save_path is not None:
         plt.savefig(save_path, dpi=150)
     return fig
+
+
+def plot_log_likelihood_sum_by_param(
+    prior_names,
+    output_dirs,
+    param_label='sigma_s',
+    column='like_val_at_usgs',
+    title='Total log-likelihood vs {param_label}',
+    save_path=None,
+    ncols=3,
+    extra_panel=None,
+    n_trigs=None,
+    log_floor=1e-200,
+    highlight_best=True,
+):
+    """
+    Scatter of Σ log(column) — the total log-likelihood across events —
+    against a swept parameter (e.g. sigma_s), one panel per prior (plus an
+    optional extra_panel, e.g. dynamic ETAS), one point per swept value.
+
+    Maximizing Σ log(p_i) across events is equivalent to maximizing the
+    joint likelihood Π p_i (the parameter value best supported by where
+    events actually occurred), but is numerically stable — raw products of
+    many small per-event probabilities underflow to 0 long before the sum of
+    their logs does. This is the natural way to pick, e.g., the sigma_s that
+    best explains the benchmark catalog as a whole, rather than relying on a
+    raw mean (dominated by a few large outliers) or a median (ignores
+    magnitude, only reflects the middle event).
+
+    Parameters
+    ----------
+    prior_names : list[str]
+        Ordered list of prior display names; one panel per entry.
+    output_dirs : dict[str or float, str]
+        Maps a swept parameter value to a directory containing
+        ``{prior_name.lower()}_benchmark_results.csv``.
+    param_label : str
+        Name of the swept parameter, used in the axis label.
+    column : str
+        Benchmark CSV column to treat as a per-event probability and sum the
+        log of. Defaults to 'like_val_at_usgs' (the raw normalized
+        likelihood-surface value at the true location) — the natural choice
+        for picking the sigma_s that maximizes the travel-time likelihood.
+    title : str
+        Figure suptitle; ``{param_label}`` and ``{column}`` are substituted.
+    save_path : str or None
+        Full path for the saved PNG (written at 150 dpi).
+    ncols : int
+        Number of panel columns.
+    extra_panel : dict, optional
+        Adds one more panel for a series that lives in its own directory
+        tree with a fixed CSV filename (e.g. the dynamic ETAS prior). Keys:
+          'name'         — panel title
+          'output_dirs'  — dict[param_value, dir], analogous to `output_dirs`
+          'csv_filename' — filename read from each directory in 'output_dirs'
+    n_trigs : int or None
+        Which trigger-count version to use per event. Defaults to None,
+        which takes each event's last (most-triggered) row.
+    log_floor : float
+        Values are clipped to this floor before taking the log, so an exact
+        zero for one event doesn't send the whole panel's sum to -inf.
+    highlight_best : bool
+        If True, marks the argmax point (best parameter value) in each panel
+        with a red star.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    panel_specs = [
+        {'name': name, 'output_dirs': output_dirs,
+         'csv_filename': f'{name.lower()}_benchmark_results.csv'}
+        for name in prior_names
+    ]
+    if extra_panel is not None:
+        panel_specs.append(extra_panel)
+
+    n = len(panel_specs)
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4.2, nrows * 4.0),
+                              squeeze=False)
+    axes_flat = axes.flatten()
+
+    for ax, spec in zip(axes_flat, panel_specs):
+        panel_param_values = sorted(spec['output_dirs'].keys())
+        xs, ys = [], []
+        for param_value in panel_param_values:
+            csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
+            vals = load_final_values(csv_path, column, n_trigs=n_trigs)
+            if vals is None or len(vals) == 0:
+                print(f"  [{spec['name']}, {param_label}={param_value}] no data for {column}")
+                continue
+            n_floored = int((vals <= log_floor).sum())
+            if n_floored > 0:
+                print(f"  [{spec['name']}, {param_label}={param_value}] "
+                      f"{n_floored}/{len(vals)} events hit log_floor={log_floor:.0e}")
+            log_sum = float(np.log(np.clip(vals, log_floor, None)).sum())
+            xs.append(param_value)
+            ys.append(log_sum)
+
+        if not xs:
+            ax.set_title(f"{spec['name']} (no data)", fontsize=11)
+            ax.grid(True, alpha=0.2)
+            continue
+
+        ax.scatter(xs, ys, color='tab:blue', s=40, zorder=3)
+
+        if highlight_best:
+            best_i = int(np.argmax(ys))
+            ax.scatter([xs[best_i]], [ys[best_i]], color='tab:red', s=90,
+                       zorder=4, marker='*',
+                       label=f'best {param_label}={xs[best_i]}')
+            ax.legend(fontsize=7)
+
+        ax.set_title(spec['name'], fontsize=11)
+        ax.grid(True, alpha=0.2)
+
+    for ax in axes_flat[n:]:
+        ax.set_visible(False)
+
+    for ax in axes_flat[:n]:
+        ax.set_xlabel(param_label, fontsize=9)
+    for i, ax in enumerate(axes_flat[:n]):
+        if i % ncols == 0:
+            ax.set_ylabel(f'Σ log({column})', fontsize=9)
+
+    fig.suptitle(title.format(param_label=param_label, column=column), fontsize=13)
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150)
+    return fig

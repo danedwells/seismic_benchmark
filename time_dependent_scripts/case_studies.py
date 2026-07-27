@@ -69,7 +69,7 @@ print(PROJECT_ROOT)
 CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', 'Ferndale')
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
@@ -84,7 +84,7 @@ AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_
 # How often to re-evaluate the ETAS prior (in seconds of event time).
 # 0  → update before every event  (most accurate, slowest)
 # 3600 → update at most once per hour of event time
-ETAS_UPDATE_INTERVAL_S = 0
+ETAS_UPDATE_INTERVAL_S = int(os.environ.get('ETAS_UPDATE_INTERVAL_S', 0))
 
 # Focus event for single-event posterior grid / trajectory figures.
 # The prior used for this event is saved to disk during the run so it can be
@@ -101,8 +101,8 @@ DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
 
-_VARY_EDT      = False
-_VARY_SIG      = True
+_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
@@ -135,7 +135,7 @@ DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
-PRIOR_ALPHA = 0.1 # UNCHANGED behavior if this == 1
+PRIOR_ALPHA = float(os.environ.get('PRIOR_ALPHA', 0.1))  # UNCHANGED behavior if this == 1
 
 _avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
 if _avail:

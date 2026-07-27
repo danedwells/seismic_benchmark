@@ -45,8 +45,8 @@ cache_paths = {
     for name, fname in config.PRIOR_FILENAMES.items()
 }
 CASE_STUDIES = config.CASE_STUDIES
-# --- Select active case study ---
-ACTIVE_CASE_STUDY = 'Ferndale'
+# --- Select active case study --- (override with CASE_STUDY env var)
+ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', 'Ferndale')
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
@@ -61,8 +61,8 @@ DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
 
-_VARY_EDT      = False
-_VARY_SIG      = True
+_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
