@@ -47,8 +47,8 @@ EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 
-_VARY_EDT      = False
-_VARY_SIG      = True
+_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")

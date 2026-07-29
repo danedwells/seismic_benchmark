@@ -44,6 +44,47 @@ def load_final_values(csv_path, metric, n_trigs=None, min_events_warn=5):
 
     return vals if len(vals) > 0 else None
 
+
+def load_final_rows(csv_path, n_trigs=None, min_events_warn=5):
+    """
+    Load one row per event from a benchmark CSV: either the last available
+    trigger version (n_trigs=None) or the row at a specific trigger count.
+
+    Row-level counterpart to load_final_values — returns a DataFrame (so
+    callers can apply their own column selection and filter_fn) instead of
+    a single column's values.
+
+    Returns None if the file is missing.
+    """
+    import warnings
+    if not os.path.exists(csv_path):
+        return None
+    df = pd.read_csv(csv_path)
+
+    if 'n_trigs' not in df.columns:
+        df['n_trigs'] = (df.groupby('event_id')['version']
+                            .rank(method='dense')
+                            .astype(int))
+
+    if n_trigs is None:
+        return df.groupby('event_id').last().reset_index()
+
+    max_available = int(df['n_trigs'].max())
+    if n_trigs > max_available:
+        raise ValueError(
+            f"Requested n_trigs={n_trigs} exceeds the maximum available "
+            f"({max_available}) in {os.path.basename(csv_path)}."
+        )
+    subset = df[df['n_trigs'] == n_trigs].reset_index(drop=True)
+    if len(subset) < min_events_warn:
+        warnings.warn(
+            f"Only {len(subset)} events have data at n_trigs={n_trigs} "
+            f"in {os.path.basename(csv_path)} (min_events_warn={min_events_warn}). "
+            "Results may be unreliable.",
+            UserWarning, stacklevel=2,
+        )
+    return subset
+
 def load_per_version_stats(csv_path, metric, min_events=5):
     """
     Load a benchmark CSV and return per-trigger-count aggregate statistics.

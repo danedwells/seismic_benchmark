@@ -36,11 +36,11 @@ from benchmark.plots import plot_scatter_calibration_by_param
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = 'Ferndale'   # 'Ridgecrest', 'Ferndale', 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'   # 'Ridgecrest', 'Ferndale', 'ElMayor'
 MAX_TRIGS         = config.BENCHMARK_PARAMS['max_trigs']
 PRIOR_ORDER       = list(config.PRIOR_FILENAMES.keys())  # includes 'Uniform'
-N_TRIGS           = 5   # per-event trigger count to plot; None = each event's last (most-triggered) row
-SIGMA_S           = None   # single sigma_s value to plot (e.g. 0.3); None = all discovered values
+N_TRIGS           = 5  # per-event trigger count to plot; None = each event's last (most-triggered) row
+SIGMA_S           = 0.3   # single sigma_s value to plot (e.g. 0.3); None = all discovered values
 
 # Metrics to compare — any column in the benchmark results CSVs works, e.g.
 # 'best_misfit', 'usgs_credible_level', 'coverage_100km'. Each axis is

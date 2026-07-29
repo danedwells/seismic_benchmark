@@ -14,6 +14,7 @@ import obspy
 
 from .metrics import load_per_version_stats
 from .metrics import load_final_values
+from .metrics import load_final_rows
 from .metrics import COVERAGE_RADII_KM
 # Plots
 
@@ -1255,6 +1256,7 @@ def plot_qq_calibration(
     title='bEPIC posterior calibration — posterior_confidence_level vs U(0,1)',
     save_path=None,
     filter_fn=None,
+    n_trigs=None,
 ):
     """
     Single-panel Q-Q calibration plot: posterior_confidence_level vs Uniform(0,1).
@@ -1283,8 +1285,16 @@ def plot_qq_calibration(
     save_path : str or None
         Full path for the saved PNG (written at 150 dpi).
     filter_fn : callable(df) -> df, optional
-        Applied to the per-event final-trigger DataFrame before extracting
+        Applied to the per-event DataFrame before extracting
         posterior_confidence_level (e.g. a spatial subset like ``in_extent``).
+    n_trigs : int or None
+        posterior_confidence_level is computed for every trigger version, not
+        just the final one — without filtering, events with more trigger
+        versions would contribute more (correlated) points than events with
+        fewer, and different trigger counts would be blended together in the
+        same curve. None (default) takes each event's last available
+        version; pass an int to instead use each event's row at that
+        specific trigger count (events that never reached it are excluded).
 
     Returns
     -------
@@ -1298,12 +1308,10 @@ def plot_qq_calibration(
         csv_path = os.path.join(output_dir,
                                 f'{prior_name.lower()}_benchmark_results.csv')
 
-        if not os.path.exists(csv_path):
+        final = load_final_rows(csv_path, n_trigs=n_trigs)
+        if final is None:
             continue
-
-        df = pd.read_csv(csv_path)
-        # posterior_confidence_level is only set for the final trigger version per event
-        final = df.dropna(subset=['posterior_confidence_level'])
+        final = final.dropna(subset=['posterior_confidence_level'])
         if filter_fn is not None:
             final = filter_fn(final)
 
@@ -1336,6 +1344,7 @@ def plot_qq_calibration_prior(
     title='bEPIC prior calibration — prior_confidence_level vs U(0,1)',
     save_path=None,
     filter_fn=None,
+    n_trigs=None,
 ):
     """
     Single-panel Q-Q calibration plot: prior_confidence_level vs Uniform(0,1).
@@ -1360,6 +1369,9 @@ def plot_qq_calibration_prior(
     title : str
     save_path : str or None
     filter_fn : callable(df) -> df, optional
+    n_trigs : int or None
+        Which trigger-count version to use per event (see plot_qq_calibration).
+        None (default) takes each event's last available version.
     """
     colors = plt.cm.tab10.colors
 
@@ -1369,15 +1381,13 @@ def plot_qq_calibration_prior(
         csv_path = os.path.join(output_dir,
                                 f'{prior_name.lower()}_benchmark_results.csv')
 
-        if not os.path.exists(csv_path):
-            continue
-
-        df = pd.read_csv(csv_path)
         # Deduplicate by event: the prior is evaluated once per event, so all
         # trigger versions share the same prior_confidence_level.  Using all
         # rows inflates n with identical values, creating rectangular plateaus.
-        final = (df.groupby('event_id').last().reset_index()
-                   .dropna(subset=['prior_confidence_level']))
+        final = load_final_rows(csv_path, n_trigs=n_trigs)
+        if final is None:
+            continue
+        final = final.dropna(subset=['prior_confidence_level'])
         if filter_fn is not None:
             final = filter_fn(final)
 
@@ -1410,6 +1420,7 @@ def plot_qq_prior_comparison(
     column='map_err_km',
     title='Q-Q prior comparison — map_err_km',
     save_path=None,
+    n_trigs=None,
 ):
     """
     5×5 Q-Q comparison of location errors across all prior pairs.
@@ -1431,6 +1442,9 @@ def plot_qq_prior_comparison(
         Figure suptitle.
     save_path : str or None
         Full path for the saved PNG (written at 150 dpi).
+    n_trigs : int or None
+        Which trigger-count version to use per event (see plot_qq_calibration).
+        None (default) takes each event's last available version.
 
     Returns
     -------
@@ -1448,17 +1462,12 @@ def plot_qq_prior_comparison(
     for prior_name in prior_names:
         csv_path = os.path.join(output_dir,
                                 f'{prior_name.lower()}_benchmark_results.csv')
-        if not os.path.exists(csv_path):
+        final = load_final_rows(csv_path, n_trigs=n_trigs)
+        if final is None or column not in final.columns or final[column].isna().all():
             data[prior_name] = None
             continue
 
-        df = pd.read_csv(csv_path)
-
-        if column not in df.columns or df[column].isna().all():
-            data[prior_name] = None
-            continue
-
-        data[prior_name] = np.sort(df[column].dropna().values)
+        data[prior_name] = np.sort(final[column].dropna().values)
 
     # Shared axis limit clipped at the 99th percentile across all priors
     all_vals = [v for v in data.values() if v is not None]
@@ -1528,6 +1537,7 @@ def plot_qq_calibration_by_param(
     save_path=None,
     ncols=3,
     extra_panel=None,
+    y_column = 'posterior_confidence_level',
     x_column=None,
     x_label=None,
     log_x=False,
@@ -1624,7 +1634,7 @@ def plot_qq_calibration_by_param(
             csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
 
             try:
-                y_src = load_final_values(csv_path, 'posterior_confidence_level', n_trigs=n_trigs)
+                y_src = load_final_values(csv_path, y_column, n_trigs=n_trigs)
             except ValueError as e:
                 print(f"  [{spec['name']}, {param_label}={param_value}] {e}")
                 continue
@@ -1668,7 +1678,7 @@ def plot_qq_calibration_by_param(
         ax.set_xlabel(x_axis_label, fontsize=9)
     for i, ax in enumerate(axes_flat[:n]):
         if i % ncols == 0:
-            ax.set_ylabel('Empirical posterior_confidence_level', fontsize=9)
+            ax.set_ylabel(f'Empirical {y_column}', fontsize=9)
 
     fig.suptitle(title.format(param_label=param_label), fontsize=13)
     plt.tight_layout()

@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest" #"ElMayor" #"ElMayor"   # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "Ridgecrest"  # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -44,25 +44,36 @@ CASE_STUDIES = {
 # Resolve output paths based on mode
 # ---------------------------------------------------------------------------
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-#EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
-EDT_SIGMA_S = 0.2
+EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
+SIGMA_S     = config.BENCHMARK_PARAMS['sigma_s']
 EDT_TAG     = f'edt_{EDT_SIGMA_S}'
+S_TAG       = f'sig_{SIGMA_S}'
+
+# Matches the VARY_EDT/VARY_SIG convention used by case_studies.py and
+# run_benchmarks.py — set the env vars before running this script (or edit
+# the defaults below) to pick which sweep dimension's output directory to load.
+_VARY_EDT = os.environ.get('VARY_EDT', '0') == '1'
+_VARY_SIG = os.environ.get('VARY_SIG', '1') == '1'
+
+if _VARY_EDT and _VARY_SIG:
+    raise Exception("Cannot vary both EDT and Sigma at the same time")
+_PARAM_TAG = EDT_TAG if _VARY_EDT else S_TAG
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                       'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+                                       'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
-                                       'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison', EDT_TAG)
+                                       'time_dependent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison', _PARAM_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
-    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
-                                      f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison', EDT_TAG)
+                                      _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison', _PARAM_TAG)
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -119,7 +130,7 @@ else:
 fig_cred = plot_median_vs_triggers(
     metric        = 'posterior_confidence_level',
     ylabel        = 'Median posterior_confidence_level  (↓ better)',
-    title         = f'Posterior calibration vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title         = f'Figure 1: Posterior calibration vs trigger count — {PLOT_TITLE_SUFFIX}',
     ylim          = (0, 1),
     ref_line      = 0.5,
     ref_label     = 'calibrated median  (0.5)',
@@ -132,7 +143,7 @@ plt.show()
 fig_cred = plot_mean_vs_triggers(
     metric     = 'posterior_confidence_level',
     ylabel     = 'Mean nposterior_confidence_level  (↓ better)',
-    title      = f'Posterior calibration vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title      = f'Figure 1: Posterior calibration vs trigger count — {PLOT_TITLE_SUFFIX}',
     ylim       = (0, 1),
     ref_line   = 0.5,
     ref_label  = 'calibrated median  (0.5)',
@@ -150,7 +161,7 @@ plt.show()
 # ---------------------------------------------------------------------------
 fig_cov = plot_median_posterior_coverage(
     PRIOR_SPECS  = PRIOR_SPECS,
-    title        = f'Posterior coverage vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title        = f'Figure 2: Posterior coverage vs trigger count — {PLOT_TITLE_SUFFIX}',
     save_path    = os.path.join(FIGURES_DIR, 'coverage_median_vs_triggers.png'),
     shade_groups = ('static', 'dynamic'),
 )
@@ -158,7 +169,7 @@ plt.show()
 
 fig_cov = plot_mean_posterior_coverage(
     PRIOR_SPECS  = PRIOR_SPECS,
-    title        = f'Posterior coverage vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title        = f'Figure 2: Posterior coverage vs trigger count — {PLOT_TITLE_SUFFIX}',
     save_path    = os.path.join(FIGURES_DIR, 'coverage_mean_vs_triggers.png'),
     shade_groups = ('static', 'dynamic'),
 )
@@ -175,7 +186,7 @@ plt.show()
 fig_err = plot_median_vs_triggers(
     metric       = column_err,
     ylabel       = 'Median location error  km  (↓ better)',
-    title        = f'Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title        = f'Figure 3: Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
     log_y        = True,
     PRIOR_SPECS  = PRIOR_SPECS,
     save_path    = os.path.join(FIGURES_DIR, 'location_error_median_vs_triggers.png'),
@@ -186,7 +197,7 @@ plt.show()
 fig_err = plot_mean_vs_triggers(
     metric    = column_err,
     ylabel    = 'Mean location error  km  (↓ better)',
-    title     = f'Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title     = f'Figure 3: Location error vs trigger count — {PLOT_TITLE_SUFFIX}',
     log_y     = True,
     PRIOR_SPECS = PRIOR_SPECS,
     save_path = os.path.join(FIGURES_DIR, 'location_error_mean_vs_triggers.png'),
@@ -200,7 +211,7 @@ plt.show()
 fig_ls = plot_median_vs_triggers(
     metric      = 'log_score',
     ylabel      = 'Median log-score  (↑ better)',
-    title       = f'Log-score vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title       = f'Figure 4: Log-score vs trigger count — {PLOT_TITLE_SUFFIX}',
     PRIOR_SPECS = PRIOR_SPECS,
     save_path   = os.path.join(FIGURES_DIR, 'log_score_median_vs_triggers.png'),
     shade_groups = ('static', 'dynamic'),
@@ -213,7 +224,7 @@ plt.show()
 fig_bs = plot_median_vs_triggers(
     metric      = 'brier_score',
     ylabel      = 'Median Brier score  (↓ better)',
-    title       = f'Brier score vs trigger count — {PLOT_TITLE_SUFFIX}',
+    title       = f'Figure 5: Brier score vs trigger count — {PLOT_TITLE_SUFFIX}',
     PRIOR_SPECS = PRIOR_SPECS,
     save_path   = os.path.join(FIGURES_DIR, 'brier_score_median_vs_triggers.png'),
     shade_groups = ('static', 'dynamic'),
@@ -225,7 +236,7 @@ plt.show()
 # ---------------------------------------------------------------------------
 fig_sc = plot_score_scatter(
     PRIOR_SPECS = PRIOR_SPECS,
-    title       = f'Scoring metrics vs location error — {PLOT_TITLE_SUFFIX}',
+    title       = f'Figure 6: Scoring metrics vs location error — {PLOT_TITLE_SUFFIX}',
     save_path   = os.path.join(FIGURES_DIR, 'score_vs_location_error.png'),
 )
 plt.show()
@@ -233,7 +244,7 @@ plt.show()
 
 # %%
 # ---------------------------------------------------------------------------
-# Figure 8: count of events with location error >= threshold vs trigger count
+# Figure 7: count of events with location error >= threshold vs trigger count
 # ---------------------------------------------------------------------------
 # 2×2 panel, one per radius in COVERAGE_RADII_KM (10, 25, 50, 100 km).
 # Each panel tallies how many events still have MAP error ≥ that threshold at
@@ -303,7 +314,7 @@ for ax in axes_large[::2]:
 handles, labels = axes_large[0].get_legend_handles_labels()
 fig_large.legend(handles, labels, fontsize=8, loc='lower center',
                  ncol=min(len(loaded), 4), bbox_to_anchor=(0.5, -0.02))
-fig_large.suptitle(f'Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
+fig_large.suptitle(f'Figure 7: Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
                    fontsize=13)
 plt.tight_layout(rect=[0, 0.06, 1, 1])
 
@@ -312,35 +323,51 @@ fig_large.savefig(_save, dpi=150, bbox_inches='tight')
 print(f'Saved: {_save}')
 plt.show()
 
+#%%
 # ---------------------------------------------------------------------------
 # Figure 8: Histogram of event locations
 # ---------------------------------------------------------------------------
-trigger_number = 10
+import re
+
+trigger_number = 4
+
+# Reference (blue) distribution shown in every panel. Must match a 'name' in
+# PRIOR_SPECS, e.g. 'Uniform', 'KDE_Seismicity', 'Gear1', 'NSHM', 'Helmstetter',
+# or 'ETAS (dynamic)'.
+#REFERENCE_PRIOR = 'Uniform'
+REFERENCE_PRIOR = 'KDE_Seismicity'
+#REFERENCE_PRIOR = 'ETAS (dynamic)'
+
+_spec_by_name = {s['name']: s for s in PRIOR_SPECS}
+if REFERENCE_PRIOR not in _spec_by_name:
+    raise KeyError(f"REFERENCE_PRIOR {REFERENCE_PRIOR!r} not in PRIOR_SPECS "
+                    f"({list(_spec_by_name)})")
+_ref_tag = re.sub(r'[^a-z0-9]+', '_', REFERENCE_PRIOR.lower()).strip('_')
 
 fig = plt.figure(figsize=(14,8),dpi=300)
-ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])  
-ax2 = fig.add_axes([0.36, 0.5, 0.28, 0.43])   
-ax3 = fig.add_axes([0.7, 0.5, 0.28, 0.43])   
-ax4 = fig.add_axes([0.02, 0.02, 0.28, 0.43])  
-ax5 = fig.add_axes([0.36, 0.02, 0.28, 0.43])   
-ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])   
+ax1 = fig.add_axes([0.02, 0.5, 0.28, 0.43])
+ax2 = fig.add_axes([0.36, 0.5, 0.28, 0.43])
+ax3 = fig.add_axes([0.7, 0.5, 0.28, 0.43])
+ax4 = fig.add_axes([0.02, 0.02, 0.28, 0.43])
+ax5 = fig.add_axes([0.36, 0.02, 0.28, 0.43])
+ax6 = fig.add_axes([0.7, 0.02, 0.28, 0.43])
 
 bins = np.logspace(-1,3,20)
 
 
 axes = [ax1, ax2, ax3, ax4, ax5, ax6]
-spec_ref = PRIOR_SPECS[4] # Uniform as reference
+spec_ref = _spec_by_name[REFERENCE_PRIOR]
 ref_stats = load_final_values(spec_ref['csv'], column_err, n_trigs = trigger_number)
 
 for i,ax in enumerate(axes):
     spec = PRIOR_SPECS[i]
 
 
-    
+
     # Get stats
     stats = load_final_values(spec['csv'], column_err, n_trigs=trigger_number)
     # Plot ref
-    ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=['Uniform  (ref)'], alpha=0.4)
+    ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=[f'{REFERENCE_PRIOR}  (ref)'], alpha=0.4)
     # Plot stats
     ax.hist(stats, bins = bins, rwidth=0.9, color='r', alpha=0.6)
     ax.set_xscale('log')
@@ -367,10 +394,11 @@ for ax in [ax4, ax5, ax6]:
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
 
 
-fig.suptitle(f"Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
+
+fig.suptitle(f"Figure 8: Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
 
 plt.show()
-fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}.png"))
+fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}_ref_{_ref_tag}.png"))
 
 
 
@@ -589,7 +617,7 @@ else:
     fig_map.legend(handles=legend_handles, loc='lower center', ncol=7,
                    fontsize=9, bbox_to_anchor=(0.5, 0.01))
     fig_map.suptitle(
-        f'Posterior location errors at {trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
+        f'Figure 9: Posterior location errors at {trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
         fontsize=13)
     plt.tight_layout(rect=[0, 0.07, 1, 0.97])
 
@@ -659,7 +687,7 @@ if ACTIVE_CASE_STUDY == None:
     fig11.legend(_handles11, _labels11, fontsize=8, loc='lower center',
                 ncol=min(len(loaded), 4), bbox_to_anchor=(0.5, -0.02))
     fig11.suptitle(
-        f'MTJ region  |  Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
+        f'Figure 10: MTJ region  |  Events exceeding error threshold vs trigger count — {PLOT_TITLE_SUFFIX}',
         fontsize=13)
     plt.tight_layout(rect=[0, 0.06, 1, 1])
 
@@ -670,7 +698,7 @@ if ACTIVE_CASE_STUDY == None:
 
     #
     # ---------------------------------------------------------------------------
-    # Figure 11: Histogram of MTJ location errors (mirror of Figure 7)
+    # Figure 11: Histogram of MTJ location errors (mirror of Figure 8)
     # ---------------------------------------------------------------------------
     _trigger_number = 6
 
@@ -692,7 +720,7 @@ if ACTIVE_CASE_STUDY == None:
     _axes10 = [_ax1, _ax2, _ax3, _ax4, _ax5, _ax6]
 
     _bins10 = np.logspace(-1, 3, 20)
-    _ref_stats10 = _mtj_hist_vals(PRIOR_SPECS[4]['name'], _trigger_number)
+    _ref_stats10 = _mtj_hist_vals(REFERENCE_PRIOR, _trigger_number)
 
     for i, ax in enumerate(_axes10):
         spec = PRIOR_SPECS[i]
@@ -700,7 +728,7 @@ if ACTIVE_CASE_STUDY == None:
         _stats10 = _mtj_hist_vals(spec['name'], _trigger_number)
         if _ref_stats10 is not None:
             ax.hist(_ref_stats10, bins=_bins10, rwidth=0.9, color='b',
-                    label=['Uniform  (ref)'], alpha=0.4)
+                    label=[f'{REFERENCE_PRIOR}  (ref)'], alpha=0.4)
         if _stats10 is not None:
             ax.hist(_stats10, bins=_bins10, rwidth=0.9, color='r', alpha=0.6)
         ax.set_xscale('log')
@@ -720,10 +748,10 @@ if ACTIVE_CASE_STUDY == None:
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
 
     fig10.suptitle(
-        f'MTJ region  |  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {_trigger_number}',
+        f'Figure 11: MTJ region  |  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {_trigger_number}',
         fontsize=16)
     plt.show()
-    fig10.savefig(os.path.join(FIGURES_DIR, f'hist_location_error_{_trigger_number}_MTJ_{location_type}.png'))
+    fig10.savefig(os.path.join(FIGURES_DIR, f'hist_location_error_{_trigger_number}_MTJ_{location_type}_ref_{_ref_tag}.png'))
 
 
 
@@ -821,7 +849,7 @@ if ACTIVE_CASE_STUDY == None:
         fig12.legend(handles=_legend_handles12, loc='lower center', ncol=5,
                     fontsize=9, bbox_to_anchor=(0.5, 0.01))
         fig12.suptitle(
-            f'MTJ region  |  Posterior location errors at {_trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
+            f'Figure 12: MTJ region  |  Posterior location errors at {_trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
             fontsize=13)
         plt.tight_layout(rect=[0, 0.07, 1, 0.97])
 
@@ -885,7 +913,7 @@ for ax in _axes13_flat[:len(_comp_data)]:
     ax.set_ylim(0, _y_max13)
 
 fig13.suptitle(
-    f'MAP vs expectation location error — {PLOT_TITLE_SUFFIX}  ({_trigger_number_comp} triggers)',
+    f'Figure 13: MAP vs expectation location error — {PLOT_TITLE_SUFFIX}  ({_trigger_number_comp} triggers)',
     fontsize=13)
 plt.tight_layout()
 
@@ -951,7 +979,7 @@ if _comp_data:
         ax.set_visible(False)
 
     fig14.suptitle(
-        f'MAP vs expectation locations at {_trigger_number_comp} triggers — {PLOT_TITLE_SUFFIX}',
+        f'Figure 14: MAP vs expectation locations at {_trigger_number_comp} triggers — {PLOT_TITLE_SUFFIX}',
         fontsize=13)
     plt.tight_layout()
 
@@ -981,7 +1009,7 @@ if _comp_data:
 # ferndale = 'nc73821036' 'nc73822146'
 # El Mayor = '
 # benchmark = '243863'
-EVENT_ID_OVERRIDE  = "ci37221428"  #None   # e.g. '128041' — override to replot a specific event
+EVENT_ID_OVERRIDE  = '243863' #"ci37221428"  #None   # e.g. '128041' — override to replot a specific event
 N_TRIGGERS_OVERRIDE = 5  # e.g. 5 — plot the version that first reaches this many triggers
 
 _panel_specs15 = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
@@ -1216,7 +1244,7 @@ else:
             _ax15.set_visible(False)
 
         fig15.suptitle(
-            f'Posterior MAP (red ★) vs Expectation (blue ★) — '
+            f'Figure 15: Posterior MAP (red ★) vs Expectation (blue ★) — '
             f'event {_chosen_eid15} — {PLOT_TITLE_SUFFIX} - Trigs: {N_TRIGGERS_OVERRIDE}',
             fontsize=13)
         plt.tight_layout()
@@ -1225,4 +1253,42 @@ else:
         fig15.savefig(_save15, dpi=150, bbox_inches='tight')
         print(f'Saved: {_save15}')
         plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 16: Q-Q posterior calibration — posterior_confidence_level vs U(0,1)
+# ---------------------------------------------------------------------------
+# Static (time-independent) priors only — ETAS (dynamic) lives in a separate
+# directory/filename and isn't picked up by output_dir-based loading, matching
+# how case_studies.py / run_benchmarks.py already call this function.
+from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior,
+                             plot_qq_prior_comparison)
+
+QQ_TRIGS = 5
+_static_prior_names = list(config.PRIOR_FILENAMES.keys())
+
+fig16 = plot_qq_calibration(
+    prior_names = _static_prior_names,
+    output_dir  = OUTPUT_DIR_STATIC,
+    title       = f'Figure 16: Posterior calibration — posterior_confidence_level vs U(0,1) — {PLOT_TITLE_SUFFIX}',
+    save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_ntrigs_{QQ_TRIGS}.png'),
+    n_trigs     = QQ_TRIGS
+)
+plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 17: Q-Q prior calibration — prior_confidence_level vs U(0,1)
+# ---------------------------------------------------------------------------
+fig17 = plot_qq_calibration_prior(
+    prior_names = _static_prior_names,
+    output_dir  = OUTPUT_DIR_STATIC,
+    title       = f'Figure 17: Prior calibration — prior_confidence_level vs U(0,1) — {PLOT_TITLE_SUFFIX}',
+    save_path   = os.path.join(FIGURES_DIR, F'qq_calibration_prior_ntrigs_{QQ_TRIGS}.png'),
+    n_trigs     = QQ_TRIGS
+)
+plt.show()
+
+
+
 # %%

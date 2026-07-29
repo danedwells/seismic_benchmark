@@ -46,7 +46,9 @@ cache_paths = {
 }
 CASE_STUDIES = config.CASE_STUDIES
 # --- Select active case study --- (override with CASE_STUDY env var)
-ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', 'Ferndale')
+
+DEFAULT_CASE_STUDY = "ElMayor"
+ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 
@@ -131,6 +133,14 @@ job_args = [
     }
     for name, path in cache_paths.items()
 ]
+
+# Ad-hoc single-prior debugging: BENCHMARK_ONLY_PRIOR=Gear1 restricts the run
+# to one prior (e.g. to isolate an intermittent failure) without editing this
+# file. Leave unset to run all priors as usual.
+# _ONLY_PRIOR = "NSHM" # os.environ.get('BENCHMARK_ONLY_PRIOR')
+# if _ONLY_PRIOR:
+#     job_args = [a for a in job_args if a['prior_name'] == _ONLY_PRIOR]
+#     print(f"BENCHMARK_ONLY_PRIOR set — restricting run to: {_ONLY_PRIOR}")
 
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)

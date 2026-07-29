@@ -28,7 +28,7 @@ from benchmark.plots import plot_qq_calibration_by_param
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = 'ElMayor'   # 'Ridgecrest', 'Ferndale', 'ElMayor'
+ACTIVE_CASE_STUDY = 'Ridgecrest'   # 'Ridgecrest', 'Ferndale', 'ElMayor'
 MAX_TRIGS         = config.BENCHMARK_PARAMS['max_trigs']
 PRIOR_ORDER       = list(config.PRIOR_FILENAMES.keys())  # includes 'Uniform'
 N_TRIGS           = 5   # per-event trigger count to plot; None = each event's last (most-triggered) row
@@ -94,3 +94,18 @@ fig = plot_qq_calibration_by_param(
 plt.show()
 
 # %%
+
+COLUMN_NAME = 'post_val_at_usgs'
+fig = plot_qq_calibration_by_param(
+    prior_names = PRIOR_ORDER,
+    output_dirs = output_dirs,
+    param_label = 'sigma_s',
+    title       = f'{COLUMN_NAME} calibration vs sigma_s — {ACTIVE_CASE_STUDY}  ({_trigs_label})',
+    save_path   = os.path.join(FIGURES_DIR, f'{COLUMN_NAME}_qq_calibration_vs_sigma_s_{_trigs_tag}.png'),
+    extra_panel = extra_panel,
+    y_column    = COLUMN_NAME,
+    n_trigs     = N_TRIGS,
+)
+plt.show()
+
+#%%
