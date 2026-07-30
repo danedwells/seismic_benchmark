@@ -76,8 +76,10 @@ CONTEXTS = {
 # Subset to invert; edit to rebuild only specific contexts.
 BUILD_CONTEXTS = list(CONTEXTS.keys())
 
+
 # Set True to re-run even if parameters_{name}.json already exists.
 FORCE_RERUN = False
+SAVE_SPATIAL = True
 
 #%%
 # ── Download shared catalog (once) ────────────────────────────────────────────
@@ -213,7 +215,7 @@ for context_name in BUILD_CONTEXTS:
     calculation = ETASParameterCalculation(inversion_metadata)
     calculation.prepare()
     parameters  = calculation.invert()
-    calculation.store_results(OUTPUT_DIR + os.sep, store_pij=False)
+    calculation.store_results(OUTPUT_DIR + os.sep, store_pij=False, store_spatial_fields = SAVE_SPATIAL)
 
     print(f"\n  Inversion complete → {output_json}")
 

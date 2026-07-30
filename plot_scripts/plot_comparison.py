@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "Ridgecrest"  # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = None # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -46,6 +46,7 @@ CASE_STUDIES = {
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S     = config.BENCHMARK_PARAMS['sigma_s']
+SIGMA_S     = 0.35
 EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 S_TAG       = f'sig_{SIGMA_S}'
 

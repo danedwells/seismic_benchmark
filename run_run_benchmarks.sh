@@ -10,7 +10,6 @@
 #
 # Options:
 #   --which {both,ti,td}        Which workflow(s) to run (default: both)
-#   --case-study NAME           CASE_STUDY to use, e.g. Ferndale/Ridgecrest/ElMayor (default: Ferndale)
 #   --sigma-s   "v1 v2 ..."     Sweep sigma_s over these values (space-separated)
 #   --edt-sigma-s "v1 v2 ..."   Sweep edt_sigma_s over these values
 #   --dtt-weight "v1 v2 ..."    Sweep dtt_weight over these values
