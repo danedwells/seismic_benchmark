@@ -142,3 +142,12 @@ def test_etas_updater_config_bounds_match_construction_params():
 
 def test_etas_updater_config_grid_spacing_positive():
     assert config.ETAS_UPDATER_CONFIG['grid_spacing'] > 0
+
+
+def test_etas_updater_config_spatial_flags_default_off():
+    # parameters_benchmark.json was inverted with free_productivity=False and
+    # without store_spatial_fields=True, so use_spatial_productivity=True
+    # would fail against it; use_spatial_background=True would work today but
+    # stays opt-in until deliberately enabled.
+    assert config.ETAS_UPDATER_CONFIG['use_spatial_background'] is False
+    assert config.ETAS_UPDATER_CONFIG['use_spatial_productivity'] is False
