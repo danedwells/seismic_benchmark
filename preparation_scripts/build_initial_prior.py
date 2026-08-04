@@ -78,7 +78,7 @@ BUILD_CONTEXTS = list(CONTEXTS.keys())
 
 
 # Set True to re-run even if parameters_{name}.json already exists.
-FORCE_RERUN = False
+FORCE_RERUN = True
 SAVE_SPATIAL = True
 
 #%%
@@ -88,7 +88,13 @@ SAVE_SPATIAL = True
 # USGS 20,000-event limit, caching to SHARED_CATALOG_CACHE as parquet.
 
 _aux_start  = config.ETAS_INVERSION_CONFIG['auxiliary_start']
-_mc         = config.ETAS_INVERSION_CONFIG['mc']
+# Download/pre-filter floor. ETAS_INVERSION_CONFIG['mc'] is 'positive', a
+# rolling per-event completeness computed inside ETASParameterCalculation
+# (each event's mc_current = previous event's magnitude + delta_m) — not a
+# fixed number, so it can't be used as a magnitude filter here. m_ref is the
+# fixed reference/floor magnitude that mode still requires, and mirrors the
+# old fixed mc value this script used to filter on.
+_m_ref      = config.ETAS_INVERSION_CONFIG['m_ref']
 
 # Derive lon/lat bounds from the shape polygon for the USGS bounding box query.
 _shape_lats = [pt[0] for pt in config.ETAS_INVERSION_CONFIG['shape_coords']]
@@ -103,7 +109,7 @@ _query_bounds = (
 _start_year = pd.Timestamp(_aux_start).year
 _end_year   = max(pd.Timestamp(cutoff).year for cutoff in CONTEXTS.values())
 
-print(f"Loading shared seismicity catalog  M≥{_mc}  "
+print(f"Loading shared seismicity catalog  M≥{_m_ref}  "
       f"{_start_year}–{_end_year}  bounds={_query_bounds}")
 
 raw_catalog = load_background_seismicity(
@@ -111,7 +117,7 @@ raw_catalog = load_background_seismicity(
     bounds        = _query_bounds,
     start_year    = _start_year,
     end_year      = _end_year,
-    min_mag       = _mc,
+    min_mag       = _m_ref,
     force_refresh = False,
 )
 
@@ -122,16 +128,18 @@ raw_catalog.insert(0, 'id', range(len(raw_catalog)))
 raw_catalog = raw_catalog.rename(columns={'mag': 'magnitude'})
 raw_catalog['time'] = pd.to_datetime(raw_catalog['time'], utc=True).dt.tz_convert(None)
 raw_catalog = raw_catalog[['id', 'latitude', 'longitude', 'time', 'magnitude']]
-raw_catalog = raw_catalog[raw_catalog['magnitude'] >= _mc].reset_index(drop=True)
+raw_catalog = raw_catalog[raw_catalog['magnitude'] >= _m_ref].reset_index(drop=True)
 
 print(f"  Shared catalog: {len(raw_catalog):,} events  "
       f"{raw_catalog['time'].min().date()} → {raw_catalog['time'].max().date()}")
 
 #%%
 # ── Magnitude distribution (shared catalog) ───────────────────────────────────
-# Verify that catalog appears complete down to the magnitude of completeness
+# Verify that catalog appears complete down to m_ref. With mc='positive' the
+# actual per-event completeness is rolling (set inside ETASParameterCalculation
+# from each event's preceding magnitude), not this fixed floor — this plot only
+# confirms the download/pre-filter didn't cut into the complete part of the catalog.
 
-mc   = _mc
 bins = np.arange(
     np.floor(raw_catalog['magnitude'].min() * 10) / 10,
     raw_catalog['magnitude'].max() + 0.15,
@@ -140,12 +148,12 @@ bins = np.arange(
 fig, ax = plt.subplots(figsize=(8, 5))
 ax.hist(raw_catalog['magnitude'], bins=bins, color='steelblue',
         edgecolor='white', linewidth=0.4)
-ax.axvline(mc, color='crimson', linestyle='--', linewidth=1.5,
-           label=f'$M_c$ = {mc}')
+ax.axvline(_m_ref, color='crimson', linestyle='--', linewidth=1.5,
+           label=f'$M_{{ref}}$ = {_m_ref}')
 ax.set_yscale('log')
 ax.set_xlabel('Magnitude')
 ax.set_ylabel('Count')
-ax.set_title('Magnitude distribution — shared ETAS catalog (verify completeness above $M_c$)')
+ax.set_title('Magnitude distribution — shared ETAS catalog (verify completeness above $M_{ref}$)')
 ax.legend()
 plt.tight_layout()
 fig_path = os.path.join(OUTPUT_DIR, 'magnitude_distribution_shared.png')
@@ -158,7 +166,8 @@ print(f"  Magnitude distribution saved: {fig_path}")
 
 for context_name in BUILD_CONTEXTS:
     cutoff_str  = CONTEXTS[context_name]
-    output_json = os.path.join(OUTPUT_DIR, f'parameters_{context_name}.json')
+    tagged_id   = config.etas_output_id(context_name)
+    output_json = os.path.join(OUTPUT_DIR, f'parameters_{tagged_id}.json')
 
     print(f"\n{'='*70}")
     print(f"Context: {context_name}  (cutoff: {cutoff_str})")
@@ -183,10 +192,15 @@ for context_name in BUILD_CONTEXTS:
 
     if len(catalog_df) < 500:
         print(f"  WARNING: only {len(catalog_df)} events — parameter estimates "
-              f"may be unreliable.  Consider lowering mc or extending auxiliary_start.")
+              f"may be unreliable.  Consider lowering m_ref or extending auxiliary_start.")
 
     # Save per-context catalog so results are reproducible without re-filtering.
-    catalog_csv = os.path.join(INPUT_DIR, f'catalog_{context_name}.csv')
+    # Tagged with context + m_ref only (not the full fb/fp/mc tag) — its
+    # content doesn't depend on those flags, so a full tag would just
+    # duplicate an identical file across every combination sharing the same
+    # context+m_ref.
+    catalog_tag = config.etas_catalog_tag(context_name)
+    catalog_csv = os.path.join(INPUT_DIR, f'catalog_{catalog_tag}.csv')
     catalog_df.to_csv(catalog_csv, index=False)
     print(f"  Catalog saved: {catalog_csv}")
 
@@ -194,10 +208,12 @@ for context_name in BUILD_CONTEXTS:
     # Copy config template; override context-specific fields only.
     inversion_metadata = dict(config.ETAS_INVERSION_CONFIG)
     inversion_metadata['timewindow_end'] = cutoff_str
-    inversion_metadata['id']             = context_name
+    inversion_metadata['id']             = tagged_id
     inversion_metadata['catalog']        = catalog_df
     inversion_metadata['data_path']      = OUTPUT_DIR + os.sep
     inversion_metadata.pop('fn_catalog', None)
+    print("Free_background: ", inversion_metadata['free_background'])
+    print("Free_productivity: ", inversion_metadata['free_productivity'])
 
     print(f"\n  Inversion configuration:")
     _display = {k: v for k, v in inversion_metadata.items()
@@ -209,7 +225,7 @@ for context_name in BUILD_CONTEXTS:
     # -- Run inversion --------------------------------------------------------
     set_up_logger(level=logging.INFO)
 
-    print(f"\n  Running ETAS inversion (id='{context_name}')…")
+    print(f"\n  Running ETAS inversion (id='{tagged_id}')…")
     print("  This typically takes several minutes.\n")
 
     calculation = ETASParameterCalculation(inversion_metadata)
@@ -250,9 +266,10 @@ print(f"\n{'='*70}")
 print("All contexts complete.")
 print(f"Outputs in: {OUTPUT_DIR}")
 for context_name in BUILD_CONTEXTS:
-    p = os.path.join(OUTPUT_DIR, f'parameters_{context_name}.json')
+    tagged_id = config.etas_output_id(context_name)
+    p = os.path.join(OUTPUT_DIR, f'parameters_{tagged_id}.json')
     status = 'OK' if os.path.exists(p) else 'MISSING'
-    print(f"  [{status}]  parameters_{context_name}.json")
+    print(f"  [{status}]  parameters_{tagged_id}.json")
 print(f"{'='*70}")
 
 # %%
