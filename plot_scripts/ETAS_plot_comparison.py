@@ -113,27 +113,31 @@ ETAS_RUNS = [
     # 1st
     dict(config.ETAS_INVERSION_CONFIG, 
          free_background=True,  
-         free_productivity=True,  
-         mc='var', 
-         m_ref=3.0),
+         free_productivity=False,  
+         mc='positive', 
+         m_ref=3.0,
+         bw_sq=4),
     # 2nd
     dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=False, 
+         free_background=True, 
          free_productivity=False, 
-         mc='var', 
-         m_ref=3.0),
+         mc=3.0, 
+         m_ref=3.0,
+         bw_sq=4),
     # 3rd
     dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=True,  
+         free_background=False,  
          free_productivity=False, 
-         mc='var', 
-         m_ref=3.0),
+         mc=3.0, 
+         m_ref=3.0,
+         bw_sq=4),
     # 4th
     dict(config.ETAS_INVERSION_CONFIG, 
          free_background=False, 
          free_productivity=True,  
          mc='var', 
-         m_ref=3.0),
+         m_ref=3.0,
+         bw_sq=4),
 ]
 
 # ---------------------------------------------------------------------------
@@ -1060,21 +1064,23 @@ if _comp_data:
 # ---------------------------------------------------------------------------
 # Figure 16: Q-Q posterior calibration — posterior_confidence_level vs U(0,1)
 # ---------------------------------------------------------------------------
-# KDE_Seismicity / Uniform only — matches this script's PRIOR_SPECS scope
-# (not the full config.PRIOR_FILENAMES.keys(), which would reintroduce
-# Gear1/NSHM/Helmstetter). The four ETAS runs can't be added here: unlike
-# PRIOR_SPECS, plot_qq_calibration()/plot_qq_calibration_prior() derive each
-# CSV path from output_dir + prior_name.lower() directly, so they don't
-# support the per-config subfolder each ETAS run's results live in.
+# Covers every entry in PRIOR_SPECS (KDE_Seismicity, Uniform, and all four
+# ETAS runs). plot_qq_calibration()/plot_qq_calibration_prior() normally
+# derive each CSV path from output_dir + prior_name.lower(), which can't
+# reach the per-config subfolder each ETAS run's results live in — so pass
+# csv_paths (built from PRIOR_SPECS, which already has the correct path per
+# entry) to override that for every name it covers.
 from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
 
 QQ_TRIGS = 5
-_static_prior_names = ['KDE_Seismicity', 'Uniform']
+_qq_prior_names = [s['name'] for s in PRIOR_SPECS]
+_qq_csv_paths   = {s['name']: s['csv'] for s in PRIOR_SPECS}
 
 fig16 = plot_qq_calibration(
-    prior_names = _static_prior_names,
+    prior_names = _qq_prior_names,
     output_dir  = OUTPUT_DIR_STATIC,
+    csv_paths   = _qq_csv_paths,
     title       = f'Figure 16: Posterior calibration — posterior_confidence_level vs U(0,1) — {PLOT_TITLE_SUFFIX}',
     save_path   = os.path.join(FIGURES_DIR, f'qq_calibration_ntrigs_{QQ_TRIGS}.png'),
     n_trigs     = QQ_TRIGS
@@ -1086,8 +1092,9 @@ plt.show()
 # Figure 17: Q-Q prior calibration — prior_confidence_level vs U(0,1)
 # ---------------------------------------------------------------------------
 fig17 = plot_qq_calibration_prior(
-    prior_names = _static_prior_names,
+    prior_names = _qq_prior_names,
     output_dir  = OUTPUT_DIR_STATIC,
+    csv_paths   = _qq_csv_paths,
     title       = f'Figure 17: Prior calibration — prior_confidence_level vs U(0,1) — {PLOT_TITLE_SUFFIX}',
     save_path   = os.path.join(FIGURES_DIR, F'qq_calibration_prior_ntrigs_{QQ_TRIGS}.png'),
     n_trigs     = QQ_TRIGS
@@ -1095,5 +1102,225 @@ fig17 = plot_qq_calibration_prior(
 plt.show()
 
 
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 18: Spatial map of large-error events — 6 panels, one per prior
+# ---------------------------------------------------------------------------
+# Events whose location error exceeds LARGE_ERROR_THRESHOLD_KM at trigger
+# count LARGE_ERROR_TRIG_N, plotted per prior — a visual comparison of where
+# each prior's worst failures cluster geographically. Reuses `loaded`,
+# `map_specs`, `prior_grids`, `ref_catalog` built in Figure 9's cell above.
+# ---------------------------------------------------------------------------
+LARGE_ERROR_THRESHOLD_KM = 100          # km — events with column_err above this are shown
+LARGE_ERROR_TRIG_N       = trigger_number  # reuses Figure 8/9's trigger count by default; override freely
+
+large_err_data = {}
+for spec in map_specs:
+    name = spec['name']
+    if name not in loaded:
+        continue
+    _, df = loaded[name]
+    sub = (df[(df['n_trigs'] == LARGE_ERROR_TRIG_N) & (df[column_err] > LARGE_ERROR_THRESHOLD_KM)]
+           [['event_id', column_lat, column_lon, column_err]]
+           .dropna())
+    large_err_data[name] = (spec, sub)  # kept even if empty so the panel still renders (n=0)
+
+if not any(len(sub) for _, sub in large_err_data.values()):
+    print(f'No events exceed {LARGE_ERROR_THRESHOLD_KM} km at {LARGE_ERROR_TRIG_N} triggers '
+          f'for any prior — skipping Figure 18.')
+else:
+    _nonempty18 = [d for _, d in large_err_data.values() if len(d)]
+    _all_lats18 = pd.concat(_nonempty18)[column_lat]
+    _all_lons18 = pd.concat(_nonempty18)[column_lon]
+    _buf18 = 1.5
+    _extent18 = [_all_lons18.min() - _buf18, _all_lons18.max() + _buf18,
+                 _all_lats18.min() - _buf18, _all_lats18.max() + _buf18]
+
+    _proj18 = ccrs.PlateCarree()
+    fig18, _axes18 = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+                                   subplot_kw={'projection': _proj18})
+    _axes18_flat = _axes18.flatten()
+
+    for ax_idx, (name, (spec, sub)) in enumerate(large_err_data.items()):
+        ax = _axes18_flat[ax_idx]
+        ax.set_extent(_extent18, crs=_proj18)
+        ax.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
+        ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
+        ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+
+        if name in prior_grids:
+            p    = prior_grids[name]
+            buf2 = 0.5
+            lon_mask = (p.lons >= _extent18[0] - buf2) & (p.lons <= _extent18[1] + buf2)
+            lat_mask = (p.lats >= _extent18[2] - buf2) & (p.lats <= _extent18[3] + buf2)
+            if lon_mask.any() and lat_mask.any():
+                sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
+                sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
+                pos = sub_grid[sub_grid > 0]
+                if len(pos) > 0:
+                    vmin = float(np.percentile(pos, 5))
+                    vmax = float(np.percentile(pos, 99))
+                    if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
+                        ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=_proj18,
+                                      cmap='YlOrBr', shading='auto', alpha=0.35,
+                                      norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
+
+        if ref_catalog is not None and not sub.empty:
+            sub['event_id'] = sub['event_id'].astype(str)
+            matched = sub.merge(
+                ref_catalog[['event_id', 'usgs_lon', 'usgs_lat']],
+                on='event_id', how='inner',
+            )
+            if not matched.empty:
+                n = len(matched)
+                seg_lons = np.empty(n * 3)
+                seg_lats = np.empty(n * 3)
+                seg_lons[0::3] = matched['usgs_lon'].values
+                seg_lons[1::3] = matched[column_lon].values
+                seg_lons[2::3] = np.nan
+                seg_lats[0::3] = matched['usgs_lat'].values
+                seg_lats[1::3] = matched[column_lat].values
+                seg_lats[2::3] = np.nan
+                ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
+                        alpha=0.35, transform=_proj18, zorder=4)
+                ax.scatter(matched['usgs_lon'], matched['usgs_lat'], c='gray', s=10,
+                           alpha=0.2, transform=_proj18, zorder=4)
+
+        ax.scatter(sub[column_lon].values, sub[column_lat].values,
+                   c='crimson', s=40, alpha=0.8, transform=_proj18, zorder=5,
+                   linewidths=0.4, edgecolors='white')
+
+        ax.set_title(f'{name}  (n={len(sub)})', fontsize=11)
+
+    for ax in _axes18_flat[len(large_err_data):]:
+        ax.set_visible(False)
+
+    fig18.suptitle(
+        f'Figure 18: Events with location error > {LARGE_ERROR_THRESHOLD_KM} km '
+        f'at {LARGE_ERROR_TRIG_N} triggers — {PLOT_TITLE_SUFFIX}',
+        fontsize=13)
+    plt.tight_layout()
+
+    _save18 = os.path.join(
+        FIGURES_DIR,
+        f'large_error_spatial_{LARGE_ERROR_TRIG_N}trigs_{LARGE_ERROR_THRESHOLD_KM}km_{location_type}.png')
+    fig18.savefig(_save18, dpi=150, bbox_inches='tight')
+    print(f'Saved: {_save18}')
+    plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Shared prep for Figures 19-20: join Figure 18's large-error events against
+# USGS ground-truth magnitude/depth (not carried by `ref_catalog`, which only
+# keeps lat/lon — pull mag/depth from the same source objects that built it:
+# `_raw` for the main benchmark, `_cs_df` for a case study).
+# ---------------------------------------------------------------------------
+if ACTIVE_CASE_STUDY is not None:
+    _usgs_extra19 = (
+        _cs_df.rename(columns={'id': 'event_id', 'mag': 'usgs_mag', 'depth': 'usgs_depth'})
+              [['event_id', 'usgs_mag', 'usgs_depth']]
+        if ref_catalog is not None else None
+    )
+else:
+    if ref_catalog is not None:
+        _usgs_extra19 = _raw[['event_id', 'usgs_mag', 'usgs_depth']].copy()
+        _usgs_extra19['event_id'] = _usgs_extra19['event_id'].astype(str)
+    else:
+        _usgs_extra19 = None
+
+large_err_usgs = {}
+for name, (spec, sub) in large_err_data.items():
+    if _usgs_extra19 is None or sub.empty:
+        large_err_usgs[name] = (spec, sub.assign(usgs_mag=np.nan, usgs_depth=np.nan))
+        continue
+    _s = sub.copy()
+    _s['event_id'] = _s['event_id'].astype(str)
+    large_err_usgs[name] = (spec, _s.merge(_usgs_extra19, on='event_id', how='left'))
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 19: Magnitude vs location error — large-error events, 6 panels
+# ---------------------------------------------------------------------------
+_mag_vals19 = pd.concat([df['usgs_mag'] for _, df in large_err_usgs.values()]).dropna()
+_err_vals19 = pd.concat([df[column_err] for _, df in large_err_usgs.values()]).dropna()
+
+fig19, _axes19 = plt.subplots(2, 3, figsize=(14, 8), dpi=150)
+_axes19_flat = _axes19.flatten()
+
+for ax_idx, (name, (spec, df)) in enumerate(large_err_usgs.items()):
+    ax = _axes19_flat[ax_idx]
+    _valid = df.dropna(subset=[column_err, 'usgs_mag'])
+    ax.scatter(_valid[column_err], _valid['usgs_mag'], c='crimson', s=30, alpha=0.7,
+               edgecolors='white', linewidths=0.4)
+    ax.axvline(LARGE_ERROR_THRESHOLD_KM, color='gray', linestyle=':', linewidth=1)
+    ax.set_title(f'{name}  (n={len(_valid)})', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    if len(_err_vals19) and len(_mag_vals19):
+        ax.set_xlim(_err_vals19.min() * 0.95, _err_vals19.max() * 1.05)
+        ax.set_ylim(_mag_vals19.min() - 0.2, _mag_vals19.max() + 0.2)
+    if ax_idx % 3 == 0:
+        ax.set_ylabel('USGS magnitude')
+    if ax_idx >= 3:
+        ax.set_xlabel('Location error (km)')
+
+for ax in _axes19_flat[len(large_err_usgs):]:
+    ax.set_visible(False)
+
+fig19.suptitle(
+    f'Figure 19: Magnitude vs location error — events > {LARGE_ERROR_THRESHOLD_KM} km '
+    f'at {LARGE_ERROR_TRIG_N} triggers — {PLOT_TITLE_SUFFIX}',
+    fontsize=13)
+plt.tight_layout()
+
+_save19 = os.path.join(
+    FIGURES_DIR,
+    f'large_error_magnitude_{LARGE_ERROR_TRIG_N}trigs_{LARGE_ERROR_THRESHOLD_KM}km_{location_type}.png')
+fig19.savefig(_save19, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save19}')
+plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 20: Depth vs location error — large-error events, 6 panels
+# ---------------------------------------------------------------------------
+_depth_vals20 = pd.concat([df['usgs_depth'] for _, df in large_err_usgs.values()]).dropna()
+_err_vals20   = pd.concat([df[column_err] for _, df in large_err_usgs.values()]).dropna()
+
+fig20, _axes20 = plt.subplots(2, 3, figsize=(14, 8), dpi=150)
+_axes20_flat = _axes20.flatten()
+
+for ax_idx, (name, (spec, df)) in enumerate(large_err_usgs.items()):
+    ax = _axes20_flat[ax_idx]
+    _valid = df.dropna(subset=[column_err, 'usgs_depth'])
+    ax.scatter(_valid[column_err], _valid['usgs_depth'], c='crimson', s=30, alpha=0.7,
+               edgecolors='white', linewidths=0.4)
+    ax.axvline(LARGE_ERROR_THRESHOLD_KM, color='gray', linestyle=':', linewidth=1)
+    ax.set_title(f'{name}  (n={len(_valid)})', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    if len(_err_vals20) and len(_depth_vals20):
+        ax.set_xlim(_err_vals20.min() * 0.95, _err_vals20.max() * 1.05)
+        ax.set_ylim(_depth_vals20.min() - 1, _depth_vals20.max() + 1)
+    if ax_idx % 3 == 0:
+        ax.set_ylabel('USGS depth (km)')
+    if ax_idx >= 3:
+        ax.set_xlabel('Location error (km)')
+
+for ax in _axes20_flat[len(large_err_usgs):]:
+    ax.set_visible(False)
+
+fig20.suptitle(
+    f'Figure 20: Depth vs location error — events > {LARGE_ERROR_THRESHOLD_KM} km '
+    f'at {LARGE_ERROR_TRIG_N} triggers — {PLOT_TITLE_SUFFIX}',
+    fontsize=13)
+plt.tight_layout()
+
+_save20 = os.path.join(
+    FIGURES_DIR,
+    f'large_error_depth_{LARGE_ERROR_TRIG_N}trigs_{LARGE_ERROR_THRESHOLD_KM}km_{location_type}.png')
+fig20.savefig(_save20, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save20}')
+plt.show()
 
 # %%

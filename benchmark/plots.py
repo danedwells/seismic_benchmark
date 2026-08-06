@@ -1257,6 +1257,7 @@ def plot_qq_calibration(
     save_path=None,
     filter_fn=None,
     n_trigs=None,
+    csv_paths=None,
 ):
     """
     Single-panel Q-Q calibration plot: posterior_confidence_level vs Uniform(0,1).
@@ -1280,6 +1281,7 @@ def plot_qq_calibration(
         Ordered list of prior names; one line per entry.
     output_dir : str
         Directory containing ``{prior_name.lower()}_benchmark_results.csv``.
+        Ignored for any prior_name present in ``csv_paths``.
     title : str
         Figure title.
     save_path : str or None
@@ -1295,6 +1297,10 @@ def plot_qq_calibration(
         same curve. None (default) takes each event's last available
         version; pass an int to instead use each event's row at that
         specific trigger count (events that never reached it are excluded).
+    csv_paths : dict[str, str] or None
+        Optional {prior_name: csv_path} overrides for priors whose results
+        don't follow the ``output_dir/{name.lower()}_benchmark_results.csv``
+        convention (e.g. dynamic ETAS runs living in a per-config subfolder).
 
     Returns
     -------
@@ -1305,8 +1311,11 @@ def plot_qq_calibration(
     fig, ax = plt.subplots(figsize=(7, 6))
 
     for color, prior_name in zip(colors, prior_names):
-        csv_path = os.path.join(output_dir,
-                                f'{prior_name.lower()}_benchmark_results.csv')
+        if csv_paths is not None and prior_name in csv_paths:
+            csv_path = csv_paths[prior_name]
+        else:
+            csv_path = os.path.join(output_dir,
+                                    f'{prior_name.lower()}_benchmark_results.csv')
 
         final = load_final_rows(csv_path, n_trigs=n_trigs)
         if final is None:
@@ -1345,6 +1354,7 @@ def plot_qq_calibration_prior(
     save_path=None,
     filter_fn=None,
     n_trigs=None,
+    csv_paths=None,
 ):
     """
     Single-panel Q-Q calibration plot: prior_confidence_level vs Uniform(0,1).
@@ -1366,20 +1376,26 @@ def plot_qq_calibration_prior(
     ----------
     prior_names : list[str]
     output_dir : str
+        Ignored for any prior_name present in ``csv_paths``.
     title : str
     save_path : str or None
     filter_fn : callable(df) -> df, optional
     n_trigs : int or None
         Which trigger-count version to use per event (see plot_qq_calibration).
         None (default) takes each event's last available version.
+    csv_paths : dict[str, str] or None
+        Optional {prior_name: csv_path} overrides — see plot_qq_calibration.
     """
     colors = plt.cm.tab10.colors
 
     fig, ax = plt.subplots(figsize=(7, 6))
 
     for color, prior_name in zip(colors, prior_names):
-        csv_path = os.path.join(output_dir,
-                                f'{prior_name.lower()}_benchmark_results.csv')
+        if csv_paths is not None and prior_name in csv_paths:
+            csv_path = csv_paths[prior_name]
+        else:
+            csv_path = os.path.join(output_dir,
+                                    f'{prior_name.lower()}_benchmark_results.csv')
 
         # Deduplicate by event: the prior is evaluated once per event, so all
         # trigger versions share the same prior_confidence_level.  Using all

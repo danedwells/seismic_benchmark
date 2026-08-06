@@ -70,9 +70,9 @@ ACTIVE_CASE_STUDY = 'Ferndale'
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 # ETAS inversion parameters and catalog — context-specific
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
-                                   f'parameters_{ACTIVE_CASE_STUDY}.json')
+                                   f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
-                                   f'catalog_{ACTIVE_CASE_STUDY}.csv')
+                                   f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
@@ -233,18 +233,22 @@ updater = EtasPriorUpdater.from_inversion_json(
 print(updater)
 
 # Prepare case-study events for incremental ETAS feeding.
-# Only events at or above mc are meaningful for the ETAS intensity sum.
-mc = config.ETAS_INVERSION_CONFIG['mc']
+# Only events at or above m_ref are meaningful for the ETAS intensity sum.
+# ETAS_INVERSION_CONFIG['mc'] is 'positive' (a rolling per-event completeness
+# computed inside ETASParameterCalculation, not a fixed number) so it can't
+# be used as a magnitude filter here — m_ref is the fixed floor that mode
+# still requires.
+m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
 cs_etas_catalog = (
     catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
     .rename(columns={'mag': 'magnitude'})
     .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
-    .query(f'magnitude >= {mc}')
+    .query(f'magnitude >= {m_ref}')
     .sort_values('time')
     .reset_index(drop=True)
 )
 cs_event_lookup = cs_etas_catalog.set_index('id')
-print(f"  {len(cs_etas_catalog)} case-study events at or above mc={mc} "
+print(f"  {len(cs_etas_catalog)} case-study events at or above m_ref={m_ref} "
       f"will be fed to ETAS incrementally.")
 
 #%%

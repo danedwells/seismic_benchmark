@@ -102,8 +102,12 @@ ETAS_INVERSION_CONFIG = {
     'timewindow_end':   None,   # set per-context in build_initial_prior.py
 
     # -- Magnitude completeness --
-    'mc':      3.0, # default value
+    # NOTE - positive and fixed value work fine - 
+    # however, catalog needs 'mc_current' column for 'var' to work.
+    'mc': 3.0, # if number, means 'fixed at this number'. Other options are 'positive' and 'var'
+
     'delta_m': 0.1,
+    'm_ref': 3.0,
 
     # -- Spatial region (California + PNW benchmark polygon, [lat, lon] pairs) --
 
@@ -117,8 +121,9 @@ ETAS_INVERSION_CONFIG = {
 
     # -- Model settings --
     'coppersmith_multiplier': 100,
-    'free_background':        True,
     'bw_sq':                  4,
+    'free_background':        False,
+    'free_productivity':      False,
 
     # -- Initial parameter guess --
     'theta_0': {
@@ -134,15 +139,74 @@ ETAS_INVERSION_CONFIG = {
     },
 
     # -- Output label (output files will be parameters_{id}.json, etc.) --
+    # NOTE - gets overwritten in most settings, but is the default value in
+    # run_benchmarks.py. Don't change without addressing this.
     'id': 'benchmark',
 }
+
+
+def _etas_mc_tag(cfg):
+    """('mc-<mode>', m_ref) for 'positive'/'var' mc, or ('mc-fixed<mc>', mc)
+    for a fixed numeric mc — etas_2 ignores metadata['m_ref'] when mc is a
+    fixed float (self.m_ref = metadata["m_ref"] if mc in ('var','positive')
+    else self.mc — inversion.py:766), so tag with the value etas_2 actually
+    uses, not the (possibly stale/unused) config m_ref.
+    """
+    mc = cfg['mc']
+    if mc in ('positive', 'var'):
+        return f'mc-{mc}', cfg['m_ref']
+    return f'mc-fixed{float(mc):g}', mc
+
+
+def etas_run_tag(cfg=None):
+    """Filename-safe tag encoding the ETAS inversion flags that change
+    parameters_{id}*.json / sources_{id}*.csv / catalog_{id}*.csv content,
+    so different flag combinations don't overwrite each other."""
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    mc_tag, m_ref = _etas_mc_tag(cfg)
+    return (
+        f"fb{int(cfg['free_background'])}"
+        f"_fp{int(cfg['free_productivity'])}"
+        f"_{mc_tag}"
+        f"_mref{float(m_ref):g}"
+        f"_bw{float(cfg['bw_sq']):g}"
+    )
+
+
+def etas_run_label(cfg=None):
+    """Human-readable counterpart to etas_run_tag(), for figure legends/titles
+    comparing multiple ETAS inversion configs (e.g. ETAS_plot_comparison.py)."""
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    bg   = 'free-bg'   if cfg['free_background']   else 'flat-bg'
+    prod = 'free-prod' if cfg['free_productivity'] else 'flat-prod'
+    mc_tag, _ = _etas_mc_tag(cfg)
+    return f"{bg}, {prod}, {mc_tag}, bw_sq={cfg['bw_sq']:g}"
+
+
+def etas_output_id(context_name, cfg=None):
+    """Tagged id for everything ETASParameterCalculation.store_results()
+    writes (parameters_/sources_/trig_and_bg_probs_/catalog_{id})."""
+    return f"{context_name}__{etas_run_tag(cfg)}"
+
+
+def etas_catalog_tag(context_name, cfg=None):
+    """Minimal tag for input/catalog_{context}.csv (the raw download,
+    written directly by build_initial_prior.py — not by store_results()).
+    Its content only depends on context + the download floor (effective
+    m_ref), not free_background/free_productivity/mc mode, so it's tagged
+    separately to avoid duplicating an identical file across every
+    fb/fp/mc combination sharing the same context+m_ref."""
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    _, m_ref = _etas_mc_tag(cfg)
+    return f"{context_name}__mref{float(m_ref):g}"
+
 
 # Parameters for the EtasPriorUpdater built from the inversion output above.
 # These are passed to EtasPriorUpdater.from_inversion_json() at runtime.
 ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
     'grid_spacing':     0.1,
-    'out_of_bounds_fill': 0.0000001,  # fill for cells outside the ETAS polygon
+    'out_of_bounds_fill': 1E-9,  # fill for cells outside the ETAS polygon
 
     # Opt-in spatially-varying background/productivity fields (see
     # EtasPriorUpdater.from_inversion_json docstring in priors/time_dependent.py).
@@ -167,9 +231,11 @@ BENCHMARK_PARAMS = {
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
-    'sigma_s':                   0.22,     # estimated travel time uncertainty per pick
+    'sigma_s':                   0.35,     # estimated travel time uncertainty per pick
     'edt_sigma_s':               0.02,   # estimated travel time uncertainty per pick for dff. travle time
     'dtt_weight':                0.0,   # How much to weight the differential travel time (0 = none, 1 = all)
+    'search_depths':             [8.0],  # km; candidate source depths for bEPIC's grid search.
+                                          # [8.0] preserves the original fixed-depth behaviour.
 }
 
 # Allow shell-driven parameter sweeps (e.g. run_case_studies.sh) to override

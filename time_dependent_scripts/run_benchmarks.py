@@ -32,9 +32,9 @@ SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'backgroun
 STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
 RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
-                                   f'parameters_{config.ETAS_INVERSION_CONFIG["id"]}.json')
+                                   f'parameters_{config.etas_output_id(config.ETAS_INVERSION_CONFIG["id"])}.json')
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
-                                   f'catalog_{config.ETAS_INVERSION_CONFIG["id"]}.csv')
+                                   f'catalog_{config.etas_catalog_tag(config.ETAS_INVERSION_CONFIG["id"])}.csv')
 
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
@@ -43,20 +43,26 @@ DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
 
+# Tags the ETAS inversion flags (free_background/free_productivity/mc/m_ref)
+# these results were run against, so different inversion configs land in
+# their own subfolder instead of overwriting each other's benchmark results
+# — same idea as etas_output_id() for the inversion outputs themselves.
+ETAS_TAG       = config.etas_run_tag()
+
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
 _VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 elif _VARY_SIG == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)

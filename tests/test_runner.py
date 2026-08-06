@@ -32,6 +32,7 @@ class _MockSearchOut:
         self.best_like     = 1.2
         self.best_prior    = 0.001
         self.frac_misfit   = 0.1
+        self.best_depth    = 8.0
 
 
 def _make_mock_runner(n_events=2):
@@ -67,7 +68,7 @@ def test_results_to_df_required_columns():
     required = {
         'event_id', 'version', 'n_trigs',
         'posterior_lat', 'posterior_lon',
-        'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
+        'best_misfit', 'best_like', 'best_prior', 'frac_misfit', 'best_depth',
         'map_err_km', 'posterior_confidence_level', 'prior_confidence_level',
     }
     assert required.issubset(set(df.columns))

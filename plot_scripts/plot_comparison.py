@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = None # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = 'ElMayor' # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -46,7 +46,7 @@ CASE_STUDIES = {
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S     = config.BENCHMARK_PARAMS['sigma_s']
-SIGMA_S     = 0.35
+SIGMA_S     = 0.22
 EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 S_TAG       = f'sig_{SIGMA_S}'
 
@@ -1396,5 +1396,118 @@ else:
     fig18.savefig(_save18, dpi=150, bbox_inches='tight')
     print(f'Saved: {_save18}')
     plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Shared prep for Figures 19-20: join Figure 18's large-error events against
+# USGS ground-truth magnitude/depth (not carried by `ref_catalog`, which only
+# keeps lat/lon — pull mag/depth from the same source objects that built it:
+# `_raw` for the main benchmark, `_cs_df` for a case study).
+# ---------------------------------------------------------------------------
+if ACTIVE_CASE_STUDY is not None:
+    _usgs_extra19 = (
+        _cs_df.rename(columns={'id': 'event_id', 'mag': 'usgs_mag', 'depth': 'usgs_depth'})
+              [['event_id', 'usgs_mag', 'usgs_depth']]
+        if ref_catalog is not None else None
+    )
+else:
+    if ref_catalog is not None:
+        _usgs_extra19 = _raw[['event_id', 'usgs_mag', 'usgs_depth']].copy()
+        _usgs_extra19['event_id'] = _usgs_extra19['event_id'].astype(str)
+    else:
+        _usgs_extra19 = None
+
+large_err_usgs = {}
+for name, (spec, sub) in large_err_data.items():
+    if _usgs_extra19 is None or sub.empty:
+        large_err_usgs[name] = (spec, sub.assign(usgs_mag=np.nan, usgs_depth=np.nan))
+        continue
+    _s = sub.copy()
+    _s['event_id'] = _s['event_id'].astype(str)
+    large_err_usgs[name] = (spec, _s.merge(_usgs_extra19, on='event_id', how='left'))
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 19: Magnitude vs location error — large-error events, 6 panels
+# ---------------------------------------------------------------------------
+_mag_vals19 = pd.concat([df['usgs_mag'] for _, df in large_err_usgs.values()]).dropna()
+_err_vals19 = pd.concat([df[column_err] for _, df in large_err_usgs.values()]).dropna()
+
+fig19, _axes19 = plt.subplots(2, 3, figsize=(14, 8), dpi=150)
+_axes19_flat = _axes19.flatten()
+
+for ax_idx, (name, (spec, df)) in enumerate(large_err_usgs.items()):
+    ax = _axes19_flat[ax_idx]
+    _valid = df.dropna(subset=[column_err, 'usgs_mag'])
+    ax.scatter(_valid[column_err], _valid['usgs_mag'], c='crimson', s=30, alpha=0.7,
+               edgecolors='white', linewidths=0.4)
+    ax.axvline(LARGE_ERROR_THRESHOLD_KM, color='gray', linestyle=':', linewidth=1)
+    ax.set_title(f'{name}  (n={len(_valid)})', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    if len(_err_vals19) and len(_mag_vals19):
+        ax.set_xlim(_err_vals19.min() * 0.95, _err_vals19.max() * 1.05)
+        ax.set_ylim(_mag_vals19.min() - 0.2, _mag_vals19.max() + 0.2)
+    if ax_idx % 3 == 0:
+        ax.set_ylabel('USGS magnitude')
+    if ax_idx >= 3:
+        ax.set_xlabel('Location error (km)')
+
+for ax in _axes19_flat[len(large_err_usgs):]:
+    ax.set_visible(False)
+
+fig19.suptitle(
+    f'Figure 19: Magnitude vs location error — events > {LARGE_ERROR_THRESHOLD_KM} km '
+    f'at {LARGE_ERROR_TRIG_N} triggers — {PLOT_TITLE_SUFFIX}',
+    fontsize=13)
+plt.tight_layout()
+
+_save19 = os.path.join(
+    FIGURES_DIR,
+    f'large_error_magnitude_{LARGE_ERROR_TRIG_N}trigs_{LARGE_ERROR_THRESHOLD_KM}km_{location_type}.png')
+fig19.savefig(_save19, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save19}')
+plt.show()
+
+# %%
+# ---------------------------------------------------------------------------
+# Figure 20: Depth vs location error — large-error events, 6 panels
+# ---------------------------------------------------------------------------
+_depth_vals20 = pd.concat([df['usgs_depth'] for _, df in large_err_usgs.values()]).dropna()
+_err_vals20   = pd.concat([df[column_err] for _, df in large_err_usgs.values()]).dropna()
+
+fig20, _axes20 = plt.subplots(2, 3, figsize=(14, 8), dpi=150)
+_axes20_flat = _axes20.flatten()
+
+for ax_idx, (name, (spec, df)) in enumerate(large_err_usgs.items()):
+    ax = _axes20_flat[ax_idx]
+    _valid = df.dropna(subset=[column_err, 'usgs_depth'])
+    ax.scatter(_valid[column_err], _valid['usgs_depth'], c='crimson', s=30, alpha=0.7,
+               edgecolors='white', linewidths=0.4)
+    ax.axvline(LARGE_ERROR_THRESHOLD_KM, color='gray', linestyle=':', linewidth=1)
+    ax.set_title(f'{name}  (n={len(_valid)})', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    if len(_err_vals20) and len(_depth_vals20):
+        ax.set_xlim(_err_vals20.min() * 0.95, _err_vals20.max() * 1.05)
+        ax.set_ylim(_depth_vals20.min() - 1, _depth_vals20.max() + 1)
+    if ax_idx % 3 == 0:
+        ax.set_ylabel('USGS depth (km)')
+    if ax_idx >= 3:
+        ax.set_xlabel('Location error (km)')
+
+for ax in _axes20_flat[len(large_err_usgs):]:
+    ax.set_visible(False)
+
+fig20.suptitle(
+    f'Figure 20: Depth vs location error — events > {LARGE_ERROR_THRESHOLD_KM} km '
+    f'at {LARGE_ERROR_TRIG_N} triggers — {PLOT_TITLE_SUFFIX}',
+    fontsize=13)
+plt.tight_layout()
+
+_save20 = os.path.join(
+    FIGURES_DIR,
+    f'large_error_depth_{LARGE_ERROR_TRIG_N}trigs_{LARGE_ERROR_THRESHOLD_KM}km_{location_type}.png')
+fig20.savefig(_save20, dpi=150, bbox_inches='tight')
+print(f'Saved: {_save20}')
+plt.show()
 
 # %%

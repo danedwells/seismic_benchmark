@@ -50,7 +50,9 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
 
     benchmark_params must contain: grid_size, grid_km, max_trigs.
     Optional keys (with defaults): migrate_grid (True), migrate_grid_min_triggers (1),
-    activity_mask_threshold (0.30).
+    activity_mask_threshold (0.30), search_depths ([8.0] -- candidate source
+    depths in km for bEPIC's grid search; a single 8.0 entry preserves the
+    original fixed-depth behaviour).
 
     station_inventory : pandas.DataFrame or None
         DataFrame with columns station, network, longitude, latitude.
@@ -73,6 +75,7 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     params.edt_sigma_s               = benchmark_params.get('edt_sigma_s', 0.2)
     params.sigma_s                   = benchmark_params.get('sigma_s', 1.0)
     params.dtt_weight                = benchmark_params.get('dtt_weight', 0.5)
+    params.search_depths             = benchmark_params.get('search_depths', [8.0])
     return params
 
 
@@ -98,6 +101,7 @@ def runner_results_to_df(runner):
             'best_like':                 t.best_like,
             'best_prior':                t.best_prior,
             'frac_misfit':               t.frac_misfit,
+            'best_depth':                t.best_depth,
             'map_err_km':                    m.get('map_err_km'),
             'exp_err_km':                    m.get('exp_err_km'),
             'like_err_km':                   m.get('like_err_km'),
@@ -118,7 +122,7 @@ def runner_results_to_df(runner):
     _cols = (['event_id', 'version', 'n_trigs', 'posterior_lat', 'posterior_lon',
               'exp_lat', 'exp_lon', 'like_lon', 'like_lat','like_exp_lon','like_exp_lat',
               'like_err_km','like_exp_err_km',
-              'best_misfit', 'best_like', 'best_prior', 'frac_misfit',
+              'best_misfit', 'best_like', 'best_prior', 'frac_misfit', 'best_depth',
               'map_err_km', 'exp_err_km', 'log_score', 'brier_score', 'energy_score'] + cov_cols
              + ['posterior_confidence_level', 'prior_confidence_level', 'like_confidence_level',
                 'like_val_at_usgs', 'like_val_raw_at_usgs', 'post_val_at_usgs'])

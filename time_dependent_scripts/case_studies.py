@@ -70,14 +70,14 @@ CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
 
-DEFAULT_CASE_STUDY = "ElMayor"
+DEFAULT_CASE_STUDY = "Ridgecrest"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
 INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
-                                f'parameters_{ACTIVE_CASE_STUDY}.json')
+                                f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
-                                  f'catalog_{ACTIVE_CASE_STUDY}.csv')
+                                  f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
@@ -103,6 +103,12 @@ DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
 
+# Tags the ETAS inversion flags (free_background/free_productivity/mc/m_ref)
+# these results were run against, so different inversion configs land in
+# their own subfolder instead of overwriting each other's benchmark results
+# — same idea as etas_output_id() for the inversion outputs themselves.
+ETAS_TAG       = config.etas_run_tag()
+
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
 _VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
@@ -112,14 +118,14 @@ CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 elif _VARY_SIG == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 else:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -198,19 +204,23 @@ if RUN_DYNAMIC_PRIORS:
 
     # -- Prepare the case-study catalog in ETAS column format ----------------
     # Events are sorted chronologically so append_events() stays causal.
-    # Only events above mc are meaningful for the ETAS intensity sum.
-    mc = config.ETAS_INVERSION_CONFIG['mc']
+    # Only events above m_ref are meaningful for the ETAS intensity sum.
+    # ETAS_INVERSION_CONFIG['mc'] is 'positive' (a rolling per-event
+    # completeness computed inside ETASParameterCalculation, not a fixed
+    # number) so it can't be used as a magnitude filter here — m_ref is the
+    # fixed floor that mode still requires.
+    m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
     cs_etas_catalog = (
         catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
         .rename(columns={'mag': 'magnitude'})
         .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
-        .query(f'magnitude >= {mc}')
+        .query(f'magnitude >= {m_ref}')
         .sort_values('time')
         .reset_index(drop=True)
     )
     # Build a lookup: ANSS event_id → catalog row (for after_event_fn)
     cs_event_lookup = cs_etas_catalog.set_index('id')
-    print(f"  {len(cs_etas_catalog)} case-study events above mc={mc} "
+    print(f"  {len(cs_etas_catalog)} case-study events above m_ref={m_ref} "
           f"will be fed to ETAS incrementally.")
 
     # -- Define callbacks ----------------------------------------------------
@@ -488,12 +498,12 @@ else:
         )
 
         # -- Append pre-event case-study catalog entries ----------------------
-        mc = config.ETAS_INVERSION_CONFIG['mc']
+        m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
         _cs_cat = (
             catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
             .rename(columns={'mag': 'magnitude'})
             .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
-            .query(f'magnitude >= {mc}')
+            .query(f'magnitude >= {m_ref}')
             .sort_values('time')
             .reset_index(drop=True)
         )
