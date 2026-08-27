@@ -23,6 +23,29 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
                               load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
+# ETAS inversion variant selection
+# ---------------------------------------------------------------------------
+# bw_sq = squared Gaussian KDE bandwidth of the ETAS free-background term.
+# Set it here (or via BW_SQ=... in the shell) to sweep bw_sq without editing
+# config.py.  MUST come before the Paths block below: both INVERSION_JSON and
+# ETAS_TAG are derived from ETAS_INVERSION_CONFIG at import time.
+#
+# NOTE: etas_2 only reads bw_sq inside `if self.free_background:`
+# (inversion.py:1815), and EtasPriorUpdater only reads it when
+# use_spatial_background=True.  With ETAS_INVERSION_CONFIG['free_background']
+# = False, every bw_sq yields identical inverted parameters and identical
+# benchmark results.
+#BW_SQ = float(os.environ.get('BW_SQ', config.ETAS_INVERSION_CONFIG['bw_sq']))
+# Manual override
+BW_SQ = 4
+config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
+
+#manual override of spatial kernel size
+# put an integeor or None
+spatial_factor = 8 # multiply inverted d (spatial decay size) by this factor
+
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
@@ -50,7 +73,7 @@ S_TAG          = f'sig_{SIGMA_S}'
 ETAS_TAG       = config.etas_run_tag()
 
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
 
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
@@ -61,8 +84,8 @@ elif _VARY_SIG == True:
     OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
     FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -149,6 +172,7 @@ if RUN_DYNAMIC_PRIORS:
         json_path  = INVERSION_JSON,
         catalog_df = hist_catalog,
         **config.ETAS_UPDATER_CONFIG,
+        spatial_factor = spatial_factor
     )
     print(updater)
 

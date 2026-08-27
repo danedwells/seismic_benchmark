@@ -122,7 +122,7 @@ ETAS_INVERSION_CONFIG = {
     # -- Model settings --
     'coppersmith_multiplier': 100,
     'bw_sq':                  4,
-    'free_background':        False,
+    'free_background':        True,
     'free_productivity':      False,
 
     # -- Initial parameter guess --
@@ -205,7 +205,7 @@ def etas_catalog_tag(context_name, cfg=None):
 # These are passed to EtasPriorUpdater.from_inversion_json() at runtime.
 ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
-    'grid_spacing':     0.1,
+    'grid_spacing':     0.05,
     'out_of_bounds_fill': 1E-9,  # fill for cells outside the ETAS polygon
 
     # Opt-in spatially-varying background/productivity fields (see
@@ -216,8 +216,9 @@ ETAS_UPDATER_CONFIG = {
     # free_productivity=True and store_results(..., store_spatial_fields=True)
     # at inversion time — neither is currently the case for this benchmark's
     # stored parameters_benchmark.json, so leave both False until re-inverted.
-    'use_spatial_background':   False,
+    'use_spatial_background':   True,
     'use_spatial_productivity': False,
+    'max_lookback_days': 365,
 }
 
 # Parameters for the main benchmark run.

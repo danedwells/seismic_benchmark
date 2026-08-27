@@ -68,6 +68,13 @@ print(PROJECT_ROOT)
 # ---------------------------------------------------------------------------
 CASE_STUDIES = config.CASE_STUDIES
 
+SIGMA_S = float(os.environ.get('BENCHMARK_SIGMA_S', 0.22))
+print(SIGMA_S)
+config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
+
+BW_SQ = 4
+config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
+
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
 
 DEFAULT_CASE_STUDY = "Ridgecrest"

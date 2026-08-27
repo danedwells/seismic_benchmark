@@ -46,7 +46,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = None # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = None #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -114,10 +114,10 @@ ETAS_RUNS = [
     dict(config.ETAS_INVERSION_CONFIG, 
          free_background=True,  
          free_productivity=False,  
-         mc='positive', 
+         mc=3.0, 
          m_ref=3.0,
-         bw_sq=4),
-    # 2nd
+         bw_sq=1),
+    # 2n
     dict(config.ETAS_INVERSION_CONFIG, 
          free_background=True, 
          free_productivity=False, 
@@ -126,18 +126,18 @@ ETAS_RUNS = [
          bw_sq=4),
     # 3rd
     dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=False,  
+         free_background=True,  
          free_productivity=False, 
          mc=3.0, 
          m_ref=3.0,
-         bw_sq=4),
+         bw_sq=16),
     # 4th
     dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=False, 
-         free_productivity=True,  
-         mc='var', 
+         free_background=True, 
+         free_productivity=False,  
+         mc=3.0, 
          m_ref=3.0,
-         bw_sq=4),
+         bw_sq=32),
 ]
 
 # ---------------------------------------------------------------------------
@@ -446,6 +446,17 @@ for i,ax in enumerate(axes):
     ax.set_title(spec["name"])
     ax.grid()
 
+    # Annotate median error and modal bin (by count) in the top-right corner
+    if stats is not None and len(stats) > 0:
+        median_err = np.median(stats)
+        counts, edges = np.histogram(stats, bins=bins)
+        mode_idx = np.argmax(counts)
+        mode_lo, mode_hi = edges[mode_idx], edges[mode_idx + 1]
+        stats_text = f"median: {median_err:.1f} km\nmode: {mode_lo:.1f}–{mode_hi:.1f} km"
+        ax.text(0.95, 0.95, stats_text, transform=ax.transAxes,
+                ha='right', va='top', fontsize=9,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+
     # Label the ref in one plot only
     if i == 0:
         ax.legend()
@@ -462,15 +473,19 @@ for ax in [ax2,ax3,ax5,ax6]:
     ax.set_yticklabels([])
 
 for ax in [ax4, ax5, ax6]:
-    
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+    ax.set_xlabel('Location error (km)', fontsize=11)
+
+for ax in [ax1, ax4]:
+    ax.set_ylabel('Event count', fontsize=11)
 
 
 
 fig.suptitle(f"Figure 8: Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
 
 plt.show()
-fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}_ref_{_ref_tag}.png"))
+fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}_ref_{_ref_tag}.png"),
+            bbox_inches='tight')
 
 
 
@@ -934,7 +949,7 @@ if ACTIVE_CASE_STUDY == None:
 # ---------------------------------------------------------------------------
 # Figures 13–14: MAP vs expectation location estimate comparison
 # ---------------------------------------------------------------------------
-_trigger_number_comp = 6  # trigger count to compare at
+_trigger_number_comp = 4  # trigger count to compare at
 
 _comp_data = {}
 for spec in PRIOR_SPECS:

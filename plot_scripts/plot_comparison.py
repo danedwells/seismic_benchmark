@@ -32,7 +32,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = 'ElMayor' # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = 'Ridgecrest' # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -375,6 +375,17 @@ for i,ax in enumerate(axes):
     ax.set_title(spec["name"])
     ax.grid()
 
+    # Annotate median error and modal bin (by count) in the top-right corner
+    if stats is not None and len(stats) > 0:
+        median_err = np.median(stats)
+        counts, edges = np.histogram(stats, bins=bins)
+        mode_idx = np.argmax(counts)
+        mode_lo, mode_hi = edges[mode_idx], edges[mode_idx + 1]
+        stats_text = f"median: {median_err:.1f} km\nmode: {mode_lo:.1f}–{mode_hi:.1f} km"
+        ax.text(0.95, 0.95, stats_text, transform=ax.transAxes,
+                ha='right', va='top', fontsize=9,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+
     # Label the ref in one plot only
     if i == 0:
         ax.legend()
@@ -391,15 +402,19 @@ for ax in [ax2,ax3,ax5,ax6]:
     ax.set_yticklabels([])
 
 for ax in [ax4, ax5, ax6]:
-    
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+    ax.set_xlabel('Location error (km)', fontsize=11)
+
+for ax in [ax1, ax4]:
+    ax.set_ylabel('Event count', fontsize=11)
 
 
 
 fig.suptitle(f"Figure 8: Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}",fontsize=16)
 
 plt.show()
-fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}_ref_{_ref_tag}.png"))
+fig.savefig(os.path.join(FIGURES_DIR,f"hist_location_error_{trigger_number}_{location_type}_ref_{_ref_tag}.png"),
+            bbox_inches='tight')
 
 
 
@@ -701,7 +716,7 @@ if ACTIVE_CASE_STUDY == None:
     # ---------------------------------------------------------------------------
     # Figure 11: Histogram of MTJ location errors (mirror of Figure 8)
     # ---------------------------------------------------------------------------
-    _trigger_number = 6
+    _trigger_number = 4
 
     def _mtj_hist_vals(name, n_trigs):
         if name not in loaded or not mtj_event_ids:
@@ -735,6 +750,18 @@ if ACTIVE_CASE_STUDY == None:
         ax.set_xscale('log')
         ax.set_title(spec['name'])
         ax.grid()
+
+        # Annotate median error and modal bin (by count) in the top-right corner
+        if _stats10 is not None and len(_stats10) > 0:
+            _median_err10 = np.median(_stats10)
+            _counts10, _edges10 = np.histogram(_stats10, bins=_bins10)
+            _mode_idx10 = np.argmax(_counts10)
+            _mode_lo10, _mode_hi10 = _edges10[_mode_idx10], _edges10[_mode_idx10 + 1]
+            _stats_text10 = f"median: {_median_err10:.1f} km\nmode: {_mode_lo10:.1f}–{_mode_hi10:.1f} km"
+            ax.text(0.95, 0.95, _stats_text10, transform=ax.transAxes,
+                    ha='right', va='top', fontsize=9,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+
         if i == 0:
             ax.legend()
 
@@ -747,12 +774,16 @@ if ACTIVE_CASE_STUDY == None:
         ax.set_yticklabels([])
     for ax in [_ax4, _ax5, _ax6]:
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+        ax.set_xlabel('Location error (km)', fontsize=11)
+    for ax in [_ax1, _ax4]:
+        ax.set_ylabel('Event count', fontsize=11)
 
     fig10.suptitle(
         f'Figure 11: MTJ region  |  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {_trigger_number}',
         fontsize=16)
     plt.show()
-    fig10.savefig(os.path.join(FIGURES_DIR, f'hist_location_error_{_trigger_number}_MTJ_{location_type}_ref_{_ref_tag}.png'))
+    fig10.savefig(os.path.join(FIGURES_DIR, f'hist_location_error_{_trigger_number}_MTJ_{location_type}_ref_{_ref_tag}.png'),
+                  bbox_inches='tight')
 
 
 
@@ -1265,7 +1296,7 @@ else:
 from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
 
-QQ_TRIGS = 5
+QQ_TRIGS = 4
 _static_prior_names = list(config.PRIOR_FILENAMES.keys())
 
 fig16 = plot_qq_calibration(
