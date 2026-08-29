@@ -279,18 +279,31 @@ CASE_STUDIES = {
         'bounds':    (-117.0, -114.5, 31.5, 33.5),
         'min_mag':   3.0,
     },
+    'MTJ_2024_M7': {
+        'name':      'MTJ M7 2024',
+        'starttime': '2024-12-04T22:00:00',
+        'endtime':   '2025-01-04T00:00:00',
+        'bounds':    (-127.375, -122.673, 38.93, 41.837), #amy's search
+        'min_mag':   3.0,
+    },
 }
+# The Cascadia region's background/reference catalog config (previously a
+# 'Cascadia' entry here) moved to benchmark/config_cascadia.py's
+# REFERENCE_CATALOG_CONFIG — it's a region-scale background catalog, not a
+# short aftershock-sequence case study like the entries above.
 
 # Representative aftershocks used for single-event posterior / trajectory figures.
 # Set _MS_ = True in any case_studies.py to use FOCUS_EVENTS_MAINSHOCK instead.
 FOCUS_EVENTS = {
-    'Ridgecrest': 'ci38548295',  # M 4.9 aftershock
-    'Ferndale':   'nc73831091',  # M 4.05 aftershock
-    'ElMayor':    'ci10148002',  # M 5.2 aftershock
+    'Ridgecrest':  'ci38548295',  # M 4.9 aftershock
+    'Ferndale':    'nc73831091',  # M 4.05 aftershock
+    'ElMayor':     'ci10148002',  # M 5.2 aftershock
+    'MTJ_2024_M7': 'nc75001903',  # M 4.67 aftershock
 }
 
 FOCUS_EVENTS_MAINSHOCK = {
-    'Ridgecrest': 'ci38457511',  # M7.1 mainshock  2019-07-06
-    'Ferndale':   'nc73821036',  # M6.4 mainshock  2022-12-20
-    'ElMayor':    'ci14607652',  # M7.2 mainshock
+    'Ridgecrest':  'ci38457511',  # M7.1 mainshock  2019-07-06
+    'Ferndale':    'nc73821036',  # M6.4 mainshock  2022-12-20
+    'ElMayor':     'ci14607652',  # M7.2 mainshock
+    'MTJ_2024_M7': 'nc75095651',  # M7.0 mainshock  2024-12-05
 }

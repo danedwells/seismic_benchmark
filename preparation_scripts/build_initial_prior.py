@@ -67,10 +67,15 @@ SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'etas_base_seismicity.parquet')
 # Must match the CONTEXTS dict in preparation_scripts/build_priors.py.
 
 CONTEXTS = {
-    'benchmark':  '2018-09-30T00:00:00',   # first event in bEPIC reference catalog
-    'Ridgecrest': '2019-07-04T17:00:00',   # Ridgecrest mainshock origin time
-    'ElMayor':    '2010-04-04T22:00:00',   # El Mayor-Cucapah mainshock origin time
-    'Ferndale':   '2022-12-20T10:00:00',   # Ferndale mainshock origin time
+    #'benchmark':  '2018-09-30T00:00:00',   # first event in bEPIC reference catalog
+    #'Ridgecrest': '2019-07-04T17:00:00',   # Ridgecrest mainshock origin time
+    #'ElMayor':    '2010-04-04T22:00:00',   # El Mayor-Cucapah mainshock origin time
+    #'Ferndale':   '2022-12-20T10:00:00',   # Ferndale mainshock origin time
+    #'MTJ_2024_M7': '2024-12-04T00:00:00',  # 2024 M7 MTJ
+    # 'Cascadia' removed: this script uses config.py's CA-only ETAS polygon
+    # (shape_coords caps at ~44N), which doesn't cover the Pacific Northwest.
+    # See preparation_scripts/build_initial_prior_cascadia.py instead, which
+    # uses benchmark/config_cascadia.py's wider polygon.
 }
 
 # Subset to invert; edit to rebuild only specific contexts.

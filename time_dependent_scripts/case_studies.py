@@ -77,7 +77,8 @@ config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
 
-DEFAULT_CASE_STUDY = "Ridgecrest"
+#DEFAULT_CASE_STUDY = "Ferndale"
+DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
@@ -117,7 +118,7 @@ S_TAG          = f'sig_{SIGMA_S}'
 ETAS_TAG       = config.etas_run_tag()
 
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
 
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')

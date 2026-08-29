@@ -52,6 +52,7 @@ CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
     'Ferndale':   {'name': 'Ferndale 2022'},
     'ElMayor':    {'name': 'El Mayor-Cucapah 2010'},
+    'MTJ_2024_M7': {'name': 'MTJ M7 2024'},
 }
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ S_TAG       = f'sig_{SIGMA_S}'
 # run_benchmarks.py — set the env vars before running this script (or edit
 # the defaults below) to pick which sweep dimension's output directory to load.
 _VARY_EDT = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG = os.environ.get('VARY_SIG', '1') == '1'
+_VARY_SIG = os.environ.get('VARY_SIG', '0') == '1'
 
 if _VARY_EDT and _VARY_SIG:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
@@ -109,36 +110,50 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 #   mc: a fixed float, e.g. 3.0 — fixed magnitude of completeness
 #       (m_ref then unused — etas_2 ignores it for a fixed mc)
 # ---------------------------------------------------------------------------
-ETAS_RUNS = [
-    # 1st
-    dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=True,  
-         free_productivity=False,  
-         mc=3.0, 
-         m_ref=3.0,
-         bw_sq=1),
-    # 2n
-    dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=True, 
-         free_productivity=False, 
-         mc=3.0, 
-         m_ref=3.0,
-         bw_sq=4),
-    # 3rd
-    dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=True,  
-         free_productivity=False, 
-         mc=3.0, 
-         m_ref=3.0,
-         bw_sq=16),
-    # 4th
-    dict(config.ETAS_INVERSION_CONFIG, 
-         free_background=True, 
-         free_productivity=False,  
-         mc=3.0, 
-         m_ref=3.0,
-         bw_sq=32),
-]
+# ORIGINAL — bw_sq sweep at fixed spatial_factor. Commented out to instead
+# compare the spatial_factor sweep below; uncomment to restore.
+# ETAS_RUNS = [
+#     # 1st
+#     dict(config.ETAS_INVERSION_CONFIG,
+#          free_background=True,
+#          free_productivity=False,
+#          mc=3.0,
+#          m_ref=3.0,
+#          bw_sq=1),
+#     # 2n
+#     dict(config.ETAS_INVERSION_CONFIG,
+#          free_background=True,
+#          free_productivity=False,
+#          mc=3.0,
+#          m_ref=3.0,
+#          bw_sq=4),
+#     # 3rd
+#     dict(config.ETAS_INVERSION_CONFIG,
+#          free_background=True,
+#          free_productivity=False,
+#          mc=3.0,
+#          m_ref=3.0,
+#          bw_sq=16),
+#     # 4th
+#     dict(config.ETAS_INVERSION_CONFIG,
+#          free_background=True,
+#          free_productivity=False,
+#          mc=3.0,
+#          m_ref=3.0,
+#          bw_sq=32),
+# ]
+
+# NEW — spatial_factor sweep (2, 4, 8) at fixed bw_sq=4. Results live under
+# results/output/time_dependent/max_trigs_{N}_spatialfactor_{K}/ rather than
+# OUTPUT_DIR_DYNAMIC (spatial_factor isn't part of etas_run_tag()), so paths
+# are built directly below instead of going through ETAS_RUNS.
+SPATIAL_FACTORS = [2, 4, 8]
+_SPATIAL_RUN_CFG = dict(config.ETAS_INVERSION_CONFIG,
+                         free_background=True,
+                         free_productivity=False,
+                         mc=3.0,
+                         m_ref=3.0,
+                         bw_sq=4)
 
 # ---------------------------------------------------------------------------
 # Prior specs: two ETAS-agnostic baselines + four ETAS inversion configs
@@ -156,13 +171,35 @@ PRIOR_SPECS = [
      'group': 'static'}
     for name in ('KDE_Seismicity', 'Uniform')
 ] + [
-    {'name':  f'ETAS ({config.etas_run_label(run_cfg)})',
-     'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run_cfg),
+    # ORIGINAL — one entry per ETAS_RUNS config, under OUTPUT_DIR_DYNAMIC.
+    # Commented out alongside ETAS_RUNS above; uncomment both to restore.
+    # {'name':  f'ETAS ({config.etas_run_label(run_cfg)})',
+    #  'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run_cfg),
+    #                         'etas_dynamic_benchmark_results.csv'),
+    #  'ls':    '-',
+    #  'lw':    2.5,
+    #  'group': 'static'}
+    # for run_cfg in ETAS_RUNS
+] + [
+    # NEW — no-spatial-factor baseline, bw_sq=4, under OUTPUT_DIR_DYNAMIC
+    # (sig_0.35/max_trigs_10) rather than a max_trigs_{N}_spatialfactor_{K} dir.
+    {'name':  'ETAS (no spatial factor)',
+     'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(_SPATIAL_RUN_CFG),
                             'etas_dynamic_benchmark_results.csv'),
      'ls':    '-',
      'lw':    2.5,
      'group': 'static'}
-    for run_cfg in ETAS_RUNS
+] + [
+    # NEW — spatial_factor sweep (2, 4, 8), bw_sq=4 fixed.
+    {'name':  f'ETAS (spatial_factor={sf})',
+     'csv':   os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',
+                            f'max_trigs_{MAX_TRIGS}_spatialfactor_{sf}',
+                            config.etas_run_tag(_SPATIAL_RUN_CFG),
+                            'etas_dynamic_benchmark_results.csv'),
+     'ls':    '-',
+     'lw':    2.5,
+     'group': 'static'}
+    for sf in SPATIAL_FACTORS
 ]
 
 # Choose location type - Expectatoin ('exp') or Maximum posterior ('map')
@@ -188,7 +225,7 @@ else:
 
 # F#%%
 # ---------------------------------------------------------------------------
-# Figure 1: posterior_confidence_level vs trigger count
+# Figure 1: posterior_confidence_level v   s trigger count
 # ---------------------------------------------------------------------------
 # The smallest HDR fraction needed to contain the USGS location.
 # Lower = better (USGS falls in a high-probability region of the posterior).
@@ -503,6 +540,8 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from priors import SeismicPrior
 from matplotlib.colors import LogNorm
+from matplotlib.ticker import MaxNLocator
+from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 from benchmark.runner import load_reference_catalog
 
 if ACTIVE_CASE_STUDY is not None:
@@ -529,7 +568,7 @@ else:
 ERROR_BINS  = [0, 10, 25, 50, 100, np.inf]
 BIN_LABELS  = ['< 10 km', '10–25 km', '25–50 km', '50–100 km', '≥ 100 km']
 BIN_COLORS  = ['#2196F3', '#66BB6A', '#FFA726', '#EF5350', '#7B1FA2']
-BIN_SIZES   = [12, 28, 50, 75, 105]
+BIN_SIZES   = [9, 21, 38, 56, 79]
 
 map_specs = [s for s in PRIOR_SPECS if s['name'] != 'Smooth_seismicity']
 
@@ -555,65 +594,76 @@ else:
     extent = [all_lons.min() - buf, all_lons.max() + buf,
               all_lats.min() - buf, all_lats.max() + buf]
 
+    # Set to [lon_min, lon_max, lat_min, lat_max] to zoom into a sub-region
+    # instead of the auto-computed extent above; applied identically to every
+    # panel. None keeps the auto-computed extent.
+    CUSTOM_EXTENT = [-127.5, -116, 30, 42]
+    if CUSTOM_EXTENT is not None:
+        extent = CUSTOM_EXTENT
+
     # Pre-load .tt3 priors for background shading.
     # Skips ETAS (dynamic) and Uniform — neither has a .tt3 in PRIOR_FILENAMES.
     # KDE_Seismicity uses a context-specific filename resolved here.
-    _context = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
-    _kde_override = {'KDE_Seismicity': f'kde_seismicity_{_context}.tt3'}
-
+    # COMMENTED OUT — background seismicity shading removed from Figure 9 per request.
+    # _context = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
+    # _kde_override = {'KDE_Seismicity': f'kde_seismicity_{_context}.tt3'}
+    #
+    # prior_grids = {}
+    # for spec in map_specs:
+    #     fn = _kde_override.get(spec['name']) or config.PRIOR_FILENAMES.get(spec['name'])
+    #     if fn is None:
+    #         continue
+    #     path = os.path.join(SeismicPrior.data_dir, fn)
+    #     if not os.path.exists(path):
+    #         continue
+    #     prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
     prior_grids = {}
-    for spec in map_specs:
-        fn = _kde_override.get(spec['name']) or config.PRIOR_FILENAMES.get(spec['name'])
-        if fn is None:
-            continue
-        path = os.path.join(SeismicPrior.data_dir, fn)
-        if not os.path.exists(path):
-            continue
-        prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
-
 
     # Pre-aggregate triggered and active station positions across all events shown.
     # Triggered = first version per event that reached exactly trigger_number stations.
     # Active (untriggered) = availability-cache stations not in the triggered set.
-    _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
-                 if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
-    _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
-                                  'station_availability_cache.parquet')
-                    if ACTIVE_CASE_STUDY else
-                    os.path.join(PROJECT_ROOT, 'data', 'reference',
-                                 'station_availability_cache.parquet'))
-    _avail_df9 = pd.read_parquet(_avail_path9) if os.path.exists(_avail_path9) else None
-
-    _all_eids9 = set().union(*[set(sub9['event_id'].astype(str)) for _, sub9 in map_data.values()])
-
-    _trig_frames9 = []
-    for _eid9 in sorted(_all_eids9):
-        _rp9 = os.path.join(_run_dir9, f'{_eid9}.run')
-        if not os.path.exists(_rp9):
-            continue
-        _rdf9 = pd.read_csv(_rp9)
-        _rdf9.columns = [c.replace(' ', '_') for c in _rdf9.columns]
-        _vcounts9 = _rdf9.groupby('version').size()
-        _tgt9 = _vcounts9[_vcounts9 == trigger_number].index
-        if len(_tgt9) == 0:
-            continue
-        _trig_frames9.append(
-            _rdf9[_rdf9['version'] == _tgt9[0]][['station', 'network', 'longitude', 'latitude']]
-        )
-    _trig_stas9 = (pd.concat(_trig_frames9).drop_duplicates(subset=['station', 'network'])
-                   if _trig_frames9 else
-                   pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude']))
-
-    if _avail_df9 is not None:
-        _av9 = (_avail_df9[_avail_df9['event_id'].astype(str).isin(_all_eids9)]
-                [['station', 'network', 'longitude', 'latitude']]
-                .drop_duplicates(subset=['station', 'network']))
-        _untrig_stas9 = _av9.merge(
-            _trig_stas9[['station', 'network']], on=['station', 'network'],
-            how='left', indicator=True
-        ).query('_merge == "left_only"').drop(columns='_merge')
-    else:
-        _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
+    # COMMENTED OUT — seismic station markers removed from Figure 9 per request.
+    # _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+    #              if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+    # _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+    #                               'station_availability_cache.parquet')
+    #                 if ACTIVE_CASE_STUDY else
+    #                 os.path.join(PROJECT_ROOT, 'data', 'reference',
+    #                              'station_availability_cache.parquet'))
+    # _avail_df9 = pd.read_parquet(_avail_path9) if os.path.exists(_avail_path9) else None
+    #
+    # _all_eids9 = set().union(*[set(sub9['event_id'].astype(str)) for _, sub9 in map_data.values()])
+    #
+    # _trig_frames9 = []
+    # for _eid9 in sorted(_all_eids9):
+    #     _rp9 = os.path.join(_run_dir9, f'{_eid9}.run')
+    #     if not os.path.exists(_rp9):
+    #         continue
+    #     _rdf9 = pd.read_csv(_rp9)
+    #     _rdf9.columns = [c.replace(' ', '_') for c in _rdf9.columns]
+    #     _vcounts9 = _rdf9.groupby('version').size()
+    #     _tgt9 = _vcounts9[_vcounts9 == trigger_number].index
+    #     if len(_tgt9) == 0:
+    #         continue
+    #     _trig_frames9.append(
+    #         _rdf9[_rdf9['version'] == _tgt9[0]][['station', 'network', 'longitude', 'latitude']]
+    #     )
+    # _trig_stas9 = (pd.concat(_trig_frames9).drop_duplicates(subset=['station', 'network'])
+    #                if _trig_frames9 else
+    #                pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude']))
+    #
+    # if _avail_df9 is not None:
+    #     _av9 = (_avail_df9[_avail_df9['event_id'].astype(str).isin(_all_eids9)]
+    #             [['station', 'network', 'longitude', 'latitude']]
+    #             .drop_duplicates(subset=['station', 'network']))
+    #     _untrig_stas9 = _av9.merge(
+    #         _trig_stas9[['station', 'network']], on=['station', 'network'],
+    #         how='left', indicator=True
+    #     ).query('_merge == "left_only"').drop(columns='_merge')
+    # else:
+    #     _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
+    _trig_stas9   = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
+    _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
 
     proj = ccrs.PlateCarree()
     fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
@@ -628,22 +678,24 @@ else:
         ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
 
-        if name in prior_grids:
-            p    = prior_grids[name]
-            buf2 = 0.5
-            lon_mask = (p.lons >= extent[0] - buf2) & (p.lons <= extent[1] + buf2)
-            lat_mask = (p.lats >= extent[2] - buf2) & (p.lats <= extent[3] + buf2)
-            if lon_mask.any() and lat_mask.any():
-                sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
-                sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
-                pos = sub_grid[sub_grid > 0]
-                if len(pos) > 0:
-                    vmin = float(np.percentile(pos, 5))
-                    vmax = float(np.percentile(pos, 99))
-                    if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
-                        ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=proj,
-                                      cmap='YlOrBr', shading='auto', alpha=0.35,
-                                      norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
+        # COMMENTED OUT — background seismicity (prior density) shading removed
+        # from Figure 9 per request.
+        # if name in prior_grids:
+        #     p    = prior_grids[name]
+        #     buf2 = 0.5
+        #     lon_mask = (p.lons >= extent[0] - buf2) & (p.lons <= extent[1] + buf2)
+        #     lat_mask = (p.lats >= extent[2] - buf2) & (p.lats <= extent[3] + buf2)
+        #     if lon_mask.any() and lat_mask.any():
+        #         sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
+        #         sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
+        #         pos = sub_grid[sub_grid > 0]
+        #         if len(pos) > 0:
+        #             vmin = float(np.percentile(pos, 5))
+        #             vmax = float(np.percentile(pos, 99))
+        #             if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
+        #                 ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=proj,
+        #                               cmap='YlOrBr', shading='auto', alpha=0.35,
+        #                               norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
 
         if ref_catalog is not None and not sub.empty:
             sub['event_id'] = sub['event_id'].astype(str)
@@ -652,37 +704,40 @@ else:
                 on='event_id', how='inner',
             )
             if not matched.empty:
-                n = len(matched)
-                seg_lons = np.empty(n * 3)
-                seg_lats = np.empty(n * 3)
-                seg_lons[0::3] = matched['usgs_lon'].values
-                seg_lons[1::3] = matched[column_lon].values
-                seg_lons[2::3] = np.nan
-                seg_lats[0::3] = matched['usgs_lat'].values
-                seg_lats[1::3] = matched[column_lat].values
-                seg_lats[2::3] = np.nan
-                ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
-                        alpha=0.35, transform=proj, zorder=4)
-                ax.scatter(matched['usgs_lon'],matched['usgs_lat'], c='gray',s=10,alpha=0.2)
+                # Arrow color matches the destination point's error bin
+                # (e.g. a >=100km/purple event gets a purple arrow pointing
+                # from the posterior location at the USGS location).
+                for _bi, (_lo, _hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
+                    _bin_matched = matched[(matched[column_err] >= _lo) & (matched[column_err] < _hi)]
+                    if _bin_matched.empty:
+                        continue
+                    ax.quiver(_bin_matched[column_lon].values, _bin_matched[column_lat].values,
+                              (_bin_matched['usgs_lon'] - _bin_matched[column_lon]).values,
+                              (_bin_matched['usgs_lat'] - _bin_matched[column_lat]).values,
+                              angles='xy', scale_units='xy', scale=1,
+                              color=BIN_COLORS[_bi], alpha=0.5, width=0.005,
+                              headwidth=6, headlength=6, headaxislength=5.5,
+                              transform=proj, zorder=4)
 
         # Seismometers: triggered (orange ▼) and untriggered-but-active (gray ▼),
         # aggregated as unique station positions across all events in the map.
-        if not _untrig_stas9.empty:
-            ax.scatter(_untrig_stas9['longitude'].values, _untrig_stas9['latitude'].values,
-                       s=10, color='lightgray', marker='v', edgecolors='gray',
-                       linewidths=0.3, transform=proj, zorder=3)
-        if not _trig_stas9.empty:
-            ax.scatter(_trig_stas9['longitude'].values, _trig_stas9['latitude'].values,
-                       s=15, color='orange', marker='v', edgecolors='darkorange',
-                       linewidths=0.3, transform=proj, zorder=3)
-            
+        # COMMENTED OUT — seismic station markers removed from Figure 9 per request.
+        # if not _untrig_stas9.empty:
+        #     ax.scatter(_untrig_stas9['longitude'].values, _untrig_stas9['latitude'].values,
+        #                s=10, color='lightgray', marker='v', edgecolors='gray',
+        #                linewidths=0.3, transform=proj, zorder=3)
+        # if not _trig_stas9.empty:
+        #     ax.scatter(_trig_stas9['longitude'].values, _trig_stas9['latitude'].values,
+        #                s=15, color='orange', marker='v', edgecolors='darkorange',
+        #                linewidths=0.3, transform=proj, zorder=3)
+
         for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
             mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
             pts  = sub[mask]
             if len(pts) == 0:
                 continue
             ax.scatter(pts[column_lon].values, pts[column_lat].values,
-                       c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.75,
+                       c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.5,
                        transform=proj, zorder=5,
                        linewidths=0.3, edgecolors='white')
 
@@ -691,16 +746,41 @@ else:
     for ax in axes_map_flat[len(map_data):]:
         ax.set_visible(False)
 
+    # Coarse shared lon/lat ticks — identical locations on every panel (same
+    # extent everywhere), but labels only drawn on the bottom row (longitude)
+    # and left column (latitude) so the 2x3 grid reads like one shared axis.
+    _lon_ticks = MaxNLocator(nbins=5).tick_values(extent[0], extent[1])
+    _lat_ticks = MaxNLocator(nbins=5).tick_values(extent[2], extent[3])
+    for _idx, ax in enumerate(axes_map_flat):
+        _row, _col = divmod(_idx, 3)
+        ax.set_xticks(_lon_ticks, crs=proj)
+        ax.set_yticks(_lat_ticks, crs=proj)
+        ax.xaxis.set_major_formatter(LongitudeFormatter())
+        ax.yaxis.set_major_formatter(LatitudeFormatter())
+        ax.tick_params(labelsize=8)
+        if _row != 1:
+            ax.tick_params(labelbottom=False)
+        if _col != 0:
+            ax.tick_params(labelleft=False)
+
+    for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
+        ax.set_xlabel('Longitude', fontsize=10)
+    for ax in [axes_map_flat[0], axes_map_flat[3]]:
+        ax.set_ylabel('Latitude', fontsize=10)
+
     legend_handles = [
         plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
                     label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
         for i in range(len(BIN_LABELS))
-    ] + [
-        plt.scatter([], [], c='orange',    s=15, marker='v', label='Triggered',
-                    edgecolors='darkorange', linewidths=0.3),
-        plt.scatter([], [], c='lightgray', s=10, marker='v', label='Active (untriggered)',
-                    edgecolors='gray', linewidths=0.3),
     ]
+    # COMMENTED OUT — station legend entries removed alongside the station
+    # markers above.
+    # legend_handles += [
+    #     plt.scatter([], [], c='orange',    s=15, marker='v', label='Triggered',
+    #                 edgecolors='darkorange', linewidths=0.3),
+    #     plt.scatter([], [], c='lightgray', s=10, marker='v', label='Active (untriggered)',
+    #                 edgecolors='gray', linewidths=0.3),
+    # ]
     fig_map.legend(handles=legend_handles, loc='lower center', ncol=7,
                    fontsize=9, bbox_to_anchor=(0.5, 0.01))
     fig_map.suptitle(
@@ -727,8 +807,8 @@ if ACTIVE_CASE_STUDY == None:
     # ---------------------------------------------------------------------------
     # Adjust these four values to zoom into a different sub-region.
     # Format: [lon_min, lon_max, lat_min, lat_max]  (matches Cartopy set_extent)
-    MTJ_LON_MIN, MTJ_LON_MAX = -129.5, -121.5
-    MTJ_LAT_MIN, MTJ_LAT_MAX =   37.5,   43.5
+    MTJ_LON_MIN, MTJ_LON_MAX = -127.2, -122.3
+    MTJ_LAT_MIN, MTJ_LAT_MAX =   38.5,   42.
     MTJ_EXTENT = [MTJ_LON_MIN, MTJ_LON_MAX, MTJ_LAT_MIN, MTJ_LAT_MAX]
 
     if ref_catalog is not None:
@@ -787,7 +867,7 @@ if ACTIVE_CASE_STUDY == None:
     # ---------------------------------------------------------------------------
     # Figure 11: Histogram of MTJ location errors (mirror of Figure 8)
     # ---------------------------------------------------------------------------
-    _trigger_number = 6
+    _trigger_number = 4
 
     def _mtj_hist_vals(name, n_trigs):
         if name not in loaded or not mtj_event_ids:
@@ -821,6 +901,18 @@ if ACTIVE_CASE_STUDY == None:
         ax.set_xscale('log')
         ax.set_title(spec['name'])
         ax.grid()
+
+        # Annotate median error and modal bin (by count) in the top-right corner
+        if _stats10 is not None and len(_stats10) > 0:
+            _median_err10 = np.median(_stats10)
+            _counts10, _edges10 = np.histogram(_stats10, bins=_bins10)
+            _mode_idx10 = np.argmax(_counts10)
+            _mode_lo10, _mode_hi10 = _edges10[_mode_idx10], _edges10[_mode_idx10 + 1]
+            _stats_text10 = f"median: {_median_err10:.1f} km\nmode: {_mode_lo10:.1f}–{_mode_hi10:.1f} km"
+            ax.text(0.95, 0.95, _stats_text10, transform=ax.transAxes,
+                    ha='right', va='top', fontsize=9,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+
         if i == 0:
             ax.legend()
 
@@ -900,18 +992,20 @@ if ACTIVE_CASE_STUDY == None:
                     on='event_id', how='inner',
                 )
                 if not matched.empty:
-                    n = len(matched)
-                    seg_lons = np.empty(n * 3)
-                    seg_lats = np.empty(n * 3)
-                    seg_lons[0::3] = matched['usgs_lon'].values
-                    seg_lons[1::3] = matched[column_lon].values
-                    seg_lons[2::3] = np.nan
-                    seg_lats[0::3] = matched['usgs_lat'].values
-                    seg_lats[1::3] = matched[column_lat].values
-                    seg_lats[2::3] = np.nan
-                    ax.plot(seg_lons, seg_lats, color='black', linewidth=0.5,
-                            alpha=0.35, transform=_proj12, zorder=4)
-                    ax.scatter(matched['usgs_lon'],matched['usgs_lat'], c='gray',s=10,alpha=0.2)
+                    # Arrow color matches the destination point's error bin
+                    # (e.g. a >=100km/purple event gets a purple arrow pointing
+                    # from the posterior location at the USGS location).
+                    for _bi, (_lo, _hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
+                        _bin_matched = matched[(matched[column_err] >= _lo) & (matched[column_err] < _hi)]
+                        if _bin_matched.empty:
+                            continue
+                        ax.quiver(_bin_matched[column_lon].values, _bin_matched[column_lat].values,
+                                  (_bin_matched['usgs_lon'] - _bin_matched[column_lon]).values,
+                                  (_bin_matched['usgs_lat'] - _bin_matched[column_lat]).values,
+                                  angles='xy', scale_units='xy', scale=1,
+                                  color=BIN_COLORS[_bi], alpha=0.5, width=0.005,
+                                  headwidth=5, headlength=6, headaxislength=5.5,
+                                  transform=_proj12, zorder=4)
 
             for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
                 mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
@@ -919,7 +1013,7 @@ if ACTIVE_CASE_STUDY == None:
                 if len(pts) == 0:
                     continue
                 ax.scatter(pts[column_lon].values, pts[column_lat].values,
-                        c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.75,
+                        c=BIN_COLORS[i], s=BIN_SIZES[i], alpha=0.5,
                         transform=_proj12, zorder=5,
                         linewidths=0.3, edgecolors='white')
 
@@ -928,12 +1022,35 @@ if ACTIVE_CASE_STUDY == None:
         for ax in _axes12_flat[len(_map_data_mtj):]:
             ax.set_visible(False)
 
+        # Coarse shared lon/lat ticks — identical locations on every panel
+        # (same MTJ_EXTENT everywhere), labels only on the bottom row
+        # (longitude) and left column (latitude).
+        _lon_ticks12 = MaxNLocator(nbins=5).tick_values(MTJ_EXTENT[0], MTJ_EXTENT[1])
+        _lat_ticks12 = MaxNLocator(nbins=5).tick_values(MTJ_EXTENT[2], MTJ_EXTENT[3])
+        for _idx, ax in enumerate(_axes12_flat):
+            _row, _col = divmod(_idx, 3)
+            ax.set_xticks(_lon_ticks12, crs=_proj12)
+            ax.set_yticks(_lat_ticks12, crs=_proj12)
+            ax.xaxis.set_major_formatter(LongitudeFormatter())
+            ax.yaxis.set_major_formatter(LatitudeFormatter())
+            ax.tick_params(labelsize=8)
+            if _row != 1:
+                ax.tick_params(labelbottom=False)
+            if _col != 0:
+                ax.tick_params(labelleft=False)
+
+        for ax in [_axes12_flat[3], _axes12_flat[4], _axes12_flat[5]]:
+            ax.set_xlabel('Longitude', fontsize=10)
+        for ax in [_axes12_flat[0], _axes12_flat[3]]:
+            ax.set_ylabel('Latitude', fontsize=10)
+
         _legend_handles12 = [
             plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
                         label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
             for i in range(len(BIN_LABELS))
         ]
         fig12.legend(handles=_legend_handles12, loc='lower center', ncol=5,
+
                     fontsize=9, bbox_to_anchor=(0.5, 0.01))
         fig12.suptitle(
             f'Figure 12: MTJ region  |  Posterior location errors at {_trigger_number} triggers — {PLOT_TITLE_SUFFIX}',
