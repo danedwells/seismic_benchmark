@@ -54,9 +54,9 @@ COLUMN = 'post_val_at_usgs'
 #COLUMN = 'like_val_raw_at_usgs'
 
 if ACTIVE_CASE_STUDY is None:
-    CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_independent')
-    CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent')
+    CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_independent')
+    CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_dependent')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_independent')
 else:
     CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                 ACTIVE_CASE_STUDY, 'output', 'time_independent')

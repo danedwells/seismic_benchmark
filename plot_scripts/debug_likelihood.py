@@ -49,11 +49,11 @@ CASE_STUDIES = {
 MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
 
 if ACTIVE_CASE_STUDY is None:
-    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_independent', f'max_trigs_{MAX_TRIGS}')
-    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison')
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'comparison')
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
@@ -138,7 +138,7 @@ if ACTIVE_CASE_STUDY is not None:
     else:
         ref_catalog = None
 else:
-    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
     if os.path.exists(_catalog_path):
         _raw = load_reference_catalog(_catalog_path)
         ref_catalog = _raw[['event_id', 'usgs_lat', 'usgs_lon']].copy()
@@ -207,7 +207,7 @@ print(f'[Figure 15] event_id = {_chosen_eid15}')
 # ── Run file ─────────────────────────────────────────────────────────────────
 _run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
               if ACTIVE_CASE_STUDY
-              else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+              else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
 _run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
 
 
@@ -252,7 +252,7 @@ except NameError:
 _avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
                                'station_availability_cache.parquet')
                  if ACTIVE_CASE_STUDY
-                 else os.path.join(PROJECT_ROOT, 'data', 'reference',
+                 else os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
                                    'station_availability_cache.parquet'))
 _avail_df15 = pd.read_parquet(_avail_path15) if os.path.exists(_avail_path15) else None
 _sta_inv15 = (
@@ -482,7 +482,7 @@ cache_paths = {
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(PROJECT_ROOT)
-SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 #AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 
 # ---------------------------------------------------------------------------

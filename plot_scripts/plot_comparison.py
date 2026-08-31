@@ -61,11 +61,11 @@ if _VARY_EDT and _VARY_SIG:
 _PARAM_TAG = EDT_TAG if _VARY_EDT else S_TAG
 
 if ACTIVE_CASE_STUDY is None:
-    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_dependent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'comparison', _PARAM_TAG)
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'comparison', _PARAM_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
@@ -447,7 +447,7 @@ if ACTIVE_CASE_STUDY is not None:
     else:
         ref_catalog = None
 else:
-    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
     if os.path.exists(_catalog_path):
         _raw = load_reference_catalog(_catalog_path)
         ref_catalog = _raw[['event_id', 'usgs_lat', 'usgs_lon']].copy()
@@ -505,11 +505,11 @@ else:
     # Triggered = first version per event that reached exactly trigger_number stations.
     # Active (untriggered) = availability-cache stations not in the triggered set.
     _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
-                 if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+                 if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
     _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
                                   'station_availability_cache.parquet')
                     if ACTIVE_CASE_STUDY else
-                    os.path.join(PROJECT_ROOT, 'data', 'reference',
+                    os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
                                  'station_availability_cache.parquet'))
     _avail_df9 = pd.read_parquet(_avail_path9) if os.path.exists(_avail_path9) else None
 
@@ -1056,7 +1056,7 @@ print(f'[Figure 15] event_id = {_chosen_eid15}')
 # ── Run file ─────────────────────────────────────────────────────────────────
 _run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
               if ACTIVE_CASE_STUDY
-              else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
+              else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
 _run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
 
 if not os.path.exists(_run_path15):
@@ -1104,7 +1104,7 @@ else:
     _avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
                                 'station_availability_cache.parquet')
                     if ACTIVE_CASE_STUDY
-                    else os.path.join(PROJECT_ROOT, 'data', 'reference',
+                    else os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
                                     'station_availability_cache.parquet'))
     _avail_df15 = pd.read_parquet(_avail_path15) if os.path.exists(_avail_path15) else None
     _sta_inv15 = (
@@ -1127,7 +1127,7 @@ else:
 
         if _pname15 == 'ETAS (dynamic)':
             _etas_id15  = 'benchmark' if ACTIVE_CASE_STUDY is None else ACTIVE_CASE_STUDY
-            _etas_json15 = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+            _etas_json15 = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
                                         f'parameters_{config.etas_output_id(_etas_id15)}.json')
             if not os.path.exists(_etas_json15):
                 print(f'  [ETAS] inversion JSON not found: {_etas_json15} — skipping.')
@@ -1139,7 +1139,7 @@ else:
             # prior reflects realistic aftershock-enhanced rates in the search area.
             if ACTIVE_CASE_STUDY is None:
                 _ctx_raw15 = load_reference_catalog(
-                    os.path.join(PROJECT_ROOT, 'data', 'reference',
+                    os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
                                  'bEPIC_testing_catalog.txt'))
                 _ctx15 = (_ctx_raw15[_ctx_raw15['usgs_time'] < _event_ts15]
                           .rename(columns={'usgs_time': 'time', 'usgs_lat': 'latitude',

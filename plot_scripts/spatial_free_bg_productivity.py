@@ -45,9 +45,9 @@ PROJECT_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Make sure these files are up to date
 _ETAS_ID       = config.etas_output_id('benchmark')
-INVERSION_JSON = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', f'parameters_{_ETAS_ID}.json')
-SOURCES_CSV    = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', f'sources_{_ETAS_ID}.csv')
-OUTPUT_DIR     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion')
+INVERSION_JSON = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', f'parameters_{_ETAS_ID}.json')
+SOURCES_CSV    = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', f'sources_{_ETAS_ID}.csv')
+OUTPUT_DIR     = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion')
 
 proj = ccrs.PlateCarree()
 

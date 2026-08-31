@@ -40,8 +40,8 @@ from benchmark.background import load_background_seismicity
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
-SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
+SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 
 
 #%%
@@ -134,7 +134,7 @@ cbar = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
 cbar.set_label('ANSS Magnitude', fontsize=10)
 ax.set_title(f'USGS/ANSS Event Locations  (n={len(catalog)})', fontsize=12)
 plt.tight_layout()
-plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_map.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'catalog_map.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -205,7 +205,7 @@ ax3.yaxis.set_major_formatter(
 )
 ax3.grid(True, linewidth=0.3, alpha=0.4)
 
-plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_magnitude_time.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'catalog_magnitude_time.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -246,7 +246,7 @@ gl.right_labels = False
 
 ax.set_title(f'Temporal Evolution of Catalog Events  (n={len(catalog)})', fontsize=12)
 plt.tight_layout()
-plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_temporal_evolution.png'), dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'catalog_temporal_evolution.png'), dpi=150, bbox_inches='tight')
 plt.show()
 
 
@@ -343,7 +343,7 @@ if not flagged.empty:
                     'd_depth', 'd_time_s', 'status']].to_string(index=False))
 
 # Save verification table
-out_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'catalog_verification.csv')
+out_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'catalog_verification.csv')
 verify_df.to_csv(out_path, index=False)
 print(f"\nVerification results saved to {out_path}")
 

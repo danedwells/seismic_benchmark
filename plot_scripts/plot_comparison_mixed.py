@@ -59,13 +59,13 @@ EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
 EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 
 if ACTIVE_CASE_STUDY is None:
-    OUTPUT_DIR_MIXED   = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_MIXED   = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                       'mixed', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
-    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                       'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                       'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures',
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures',
                                       'comparison_mixed', EDT_TAG, ALPHA_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:

@@ -37,9 +37,9 @@ cache_paths = {
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
-RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files')
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
@@ -53,14 +53,14 @@ _VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
 elif _VARY_SIG == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
 else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -70,7 +70,7 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 # Reference catalog and station list
 # ---------------------------------------------------------------------------
 # Run bEPIC on this catalog, updating ETAS and prior as it goes.
-catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
 catalog_df = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
 
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark.tt3')
@@ -88,7 +88,7 @@ station_availability = (
 RUN_ALL_PRIORS  = True  # run all six priors in parallel
 
 # ── 1. Create reference locations ─────────────────────────────────────────
-ref_dir = os.path.join(PROJECT_ROOT, 'data', 'reference')
+ref_dir = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference')
 
 job_args = [
     {

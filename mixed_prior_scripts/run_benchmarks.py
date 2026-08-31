@@ -68,17 +68,17 @@ cache_paths = {
     for name, fname in config.PRIOR_FILENAMES.items()
 }
 
-SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'reference', 'station_availability_cache.parquet')
-RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'run_files')
-INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files')
+INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
                                    f'parameters_{config.etas_output_id(config.ETAS_INVERSION_CONFIG["id"])}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
                                    f'catalog_{config.etas_catalog_tag(config.ETAS_INVERSION_CONFIG["id"])}.csv')
 
 MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'output',  'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -86,7 +86,7 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 # Reference catalog
 # ---------------------------------------------------------------------------
 
-catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
 catalog_df   = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
 
 station_availability = (

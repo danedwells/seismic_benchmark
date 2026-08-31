@@ -1,7 +1,7 @@
 #%%
 # =============================================================================
-# run_benchmarks.py  —  bEPIC prior benchmark
-# Prerequisite: run scripts/build_priors.py first to build the .tt3 cache files.
+# run_cascadia.py  —  bEPIC prior benchmark for Cascadia specifically
+# Prerequisite: run preparation_scripts/build_initial_prior_cascadia.py first to build the .tt3 cache files.
 import os
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
 from benchmark import runner as benchmark_runner
-from benchmark import config
+from benchmark import config_cascadia as config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
                               run_single_event_get_grid, make_epic_params,
                               load_station_availability_cache)
@@ -25,24 +25,13 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
 # ---------------------------------------------------------------------------
 # ETAS inversion variant selection
 # ---------------------------------------------------------------------------
-# bw_sq = squared Gaussian KDE bandwidth of the ETAS free-background term.
-# Set it here (or via BW_SQ=... in the shell) to sweep bw_sq without editing
-# config.py.  MUST come before the Paths block below: both INVERSION_JSON and
-# ETAS_TAG are derived from ETAS_INVERSION_CONFIG at import time.
-#
-# NOTE: etas_2 only reads bw_sq inside `if self.free_background:`
-# (inversion.py:1815), and EtasPriorUpdater only reads it when
-# use_spatial_background=True.  With ETAS_INVERSION_CONFIG['free_background']
-# = False, every bw_sq yields identical inverted parameters and identical
-# benchmark results.
-#BW_SQ = float(os.environ.get('BW_SQ', config.ETAS_INVERSION_CONFIG['bw_sq']))
-# Manual override
-BW_SQ = 4
+
+BW_SQ = 4 # 4 is the default value. Unchanged behavior
 config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 
 #manual override of spatial kernel size
 # put an integeor or None
-spatial_factor = 8 # multiply inverted d (spatial decay size) by this factor
+spatial_factor = None # multiply inverted d (spatial decay size) by this factor
 
 
 # ---------------------------------------------------------------------------
@@ -51,13 +40,13 @@ spatial_factor = 8 # multiply inverted d (spatial decay size) by this factor
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
-STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'station_availability_cache.parquet')
-RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files')
-INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
-                                   f'parameters_{config.etas_output_id(config.ETAS_INVERSION_CONFIG["id"])}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
-                                   f'catalog_{config.etas_catalog_tag(config.ETAS_INVERSION_CONFIG["id"])}.csv')
+SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'background_seismicity.parquet')
+STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'station_availability_cache.parquet')
+RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'run_files')
+INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'cascadia','etas_inversion',
+                                   f'parameters_{config.etas_output_id(config.ETAS_INVERSION_CONFIG["id"], config.ETAS_INVERSION_CONFIG)}.json')
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'cascadia','etas_inversion', 'input',
+                                   f'catalog_{config.etas_catalog_tag(config.ETAS_INVERSION_CONFIG["id"], config.ETAS_INVERSION_CONFIG)}.csv')
 
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
@@ -70,7 +59,7 @@ S_TAG          = f'sig_{SIGMA_S}'
 # these results were run against, so different inversion configs land in
 # their own subfolder instead of overwriting each other's benchmark results
 # — same idea as etas_output_id() for the inversion outputs themselves.
-ETAS_TAG       = config.etas_run_tag()
+ETAS_TAG       = config.etas_run_tag(config.ETAS_INVERSION_CONFIG)
 
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
 _VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
@@ -78,28 +67,28 @@ _VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 elif _VARY_SIG == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
 else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
+    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-MTJ_EVENT_ID = 130646  # event used in standalone prior/posterior test below
-MTJ_VERSION  = None    # None = last available trigger version
+MTJ_EVENT_ID = 'nc73821036'  # 2022-12-20 M6.4 Ferndale — event used in standalone prior/posterior test below
+MTJ_VERSION  = None          # None = last available trigger version
 
 #%%
 # ---------------------------------------------------------------------------
 # Reference catalog and station list
 # ---------------------------------------------------------------------------
 # Run bEPIC on this catalog, updating ETAS and prior as it goes.
-catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
-catalog_df = benchmark_runner.load_reference_catalog(catalog_path) if os.path.exists(catalog_path) else None
+catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia','reference', 'cascadia_test_catalog.csv')
+catalog_df = benchmark_runner.load_reference_catalog_usgs(catalog_path) if os.path.exists(catalog_path) else None
 
 station_availability = (
     load_station_availability_cache(STATION_AVAIL_CACHE)
@@ -218,10 +207,11 @@ if RUN_DYNAMIC_PRIORS:
 
     def after_event_fn(event_id):
         # Feeds USGS final location into ETAS — deliberately NOT the bEPIC estimate.
-        eid_int = int(event_id)
-        if eid_int not in _usgs_ref_lookup.index:
+        # event_id is the ANSS string id (.run files are named by it directly),
+        # not an int like the CA benchmark's postgres ids.
+        if event_id not in _usgs_ref_lookup.index:
             return
-        row = _usgs_ref_lookup.loc[eid_int]
+        row = _usgs_ref_lookup.loc[event_id]
         updater.append_events(pd.DataFrame([{
             'time':      row['time'],
             'latitude':  row['latitude'],
@@ -255,7 +245,7 @@ stations_df = get_unique_stations(RUN_DIR)
 # Overall background seismicity for plotting (this is a static file)
 bg = load_background_seismicity(
     cache_path  = SEIS_CACHE,
-    bounds      = (-129, -112, 30, 45),
+    bounds      = (-132, -115, 40, 50),
     start_year  = 2000,
     end_year    = 2025,
     min_mag     = 3.5,

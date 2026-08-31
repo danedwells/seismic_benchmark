@@ -76,13 +76,13 @@ if _VARY_EDT and _VARY_SIG:
 _PARAM_TAG = EDT_TAG if _VARY_EDT else S_TAG
 
 if ACTIVE_CASE_STUDY is None:
-    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
     # Base dir only — run_benchmarks.py appends config.etas_run_tag() as an
     # extra subfolder beneath max_trigs_{N} per ETAS config (see ETAS_RUNS below).
-    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'output',
+    OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_dependent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'figures', 'etas_comparison', _PARAM_TAG)
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'etas_comparison', _PARAM_TAG)
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
@@ -192,7 +192,7 @@ PRIOR_SPECS = [
 ] + [
     # NEW — spatial_factor sweep (2, 4, 8), bw_sq=4 fixed.
     {'name':  f'ETAS (spatial_factor={sf})',
-     'csv':   os.path.join(PROJECT_ROOT, 'results', 'output', 'time_dependent',
+     'csv':   os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_dependent',
                             f'max_trigs_{MAX_TRIGS}_spatialfactor_{sf}',
                             config.etas_run_tag(_SPATIAL_RUN_CFG),
                             'etas_dynamic_benchmark_results.csv'),
@@ -557,7 +557,7 @@ if ACTIVE_CASE_STUDY is not None:
     else:
         ref_catalog = None
 else:
-    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'reference', 'bEPIC_testing_catalog.txt')
+    _catalog_path = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'bEPIC_testing_catalog.txt')
     if os.path.exists(_catalog_path):
         _raw = load_reference_catalog(_catalog_path)
         ref_catalog = _raw[['event_id', 'usgs_lat', 'usgs_lon']].copy()

@@ -81,10 +81,10 @@ config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
-SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
-INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
+INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
                                 f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
                                   f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
@@ -100,8 +100,8 @@ ETAS_UPDATE_INTERVAL_S = int(os.environ.get('ETAS_UPDATE_INTERVAL_S', 0))
 # The prior used for this event is saved to disk during the run so it can be
 # visualised even though every event has a different prior.
 _MS_ = False  # set True to use mainshock events instead of representative aftershocks
-FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
-FOCUS_VERSION  = None
+#FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
+#FOCUS_VERSION  = None
 
 # Per-case-study directories
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']

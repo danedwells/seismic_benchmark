@@ -39,7 +39,7 @@ from etas.inversion import ETASParameterCalculation
 
 from priors import EtasPriorUpdater
 from benchmark import config_cascadia as config
-from benchmark.background import load_background_seismicity
+from benchmark.background import download_background_seismicity
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -51,8 +51,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 INPUT_DIR  = os.path.join(OUTPUT_DIR, 'input')
 os.makedirs(INPUT_DIR, exist_ok=True)
 
-# Shared catalog cache — downloaded once, filtered per context.
-SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'etas_base_seismicity.parquet')
+# Shared catalog cache — downloaded once, filtered per context. Plain CSV (not
+# the parquet load_background_seismicity() writes) so it's directly inspectable.
+SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'cascadia_reference_catalog.csv')
 
 # ── Per-context cutoff dates ───────────────────────────────────────────────────
 # timewindow_end for each inversion = the moment auxiliary/training data ends.
@@ -61,11 +62,11 @@ SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'etas_base_seismicity.parquet')
 # 'cascadia' is a whole-region background fit (not tied to a single
 # aftershock sequence's case-study benchmark -- MTJ_2024_M7 is benchmarked
 # through the California polygon in config.py/CASE_STUDIES on purpose).
-# Cutoff chosen as the MTJ 2024 mainshock origin time so this region-level
-# prior is directly comparable to that case study's forecast time if needed
-# later -- adjust freely if a different cutoff makes more sense.
+# Cutoff = the start of the Cascadia benchmark test-set window
+# (config_cascadia.BENCHMARK_CATALOG_CONFIG['starttime']), so all events
+# used to fit the inversion strictly predate the events being benchmarked.
 CONTEXTS = {
-    'cascadia': '2024-12-04T22:00:00',
+    'cascadia': config.BENCHMARK_CATALOG_CONFIG['starttime'],
 }
 
 # Subset to invert; edit to rebuild only specific contexts.
@@ -78,8 +79,10 @@ SAVE_SPATIAL = True
 #%%
 # ── Download shared catalog (once) ────────────────────────────────────────────
 # Covers the full span from auxiliary_start through the latest context cutoff.
-# load_background_seismicity() uses recursive bisection to stay under the
-# USGS 20,000-event limit, caching to SHARED_CATALOG_CACHE as parquet.
+# download_background_seismicity() uses recursive bisection to stay under the
+# USGS 20,000-event limit. Cached manually as CSV at SHARED_CATALOG_CACHE
+# (rather than via load_background_seismicity(), which always writes
+# parquet regardless of the given filename's extension).
 
 _aux_start  = config.ETAS_INVERSION_CONFIG['auxiliary_start']
 _m_ref      = config.ETAS_INVERSION_CONFIG['m_ref']
@@ -97,23 +100,26 @@ _query_bounds = (
 _start_year = pd.Timestamp(_aux_start).year
 _end_year   = max(pd.Timestamp(cutoff).year for cutoff in CONTEXTS.values())
 
-print(f"Loading shared Cascadia seismicity catalog  M≥{_m_ref}  "
-      f"{_start_year}–{_end_year}  bounds={_query_bounds}")
-
-raw_catalog = load_background_seismicity(
-    cache_path    = SHARED_CATALOG_CACHE,
-    bounds        = _query_bounds,
-    start_year    = _start_year,
-    end_year      = _end_year,
-    min_mag       = _m_ref,
-    force_refresh = False,
-)
+if os.path.exists(SHARED_CATALOG_CACHE):
+    print(f"Loading cached Cascadia seismicity catalog: {SHARED_CATALOG_CACHE}")
+    raw_catalog = pd.read_csv(SHARED_CATALOG_CACHE, parse_dates=['time'])
+else:
+    print(f"Downloading Cascadia seismicity catalog  M≥{_m_ref}  "
+          f"{_start_year}–{_end_year}  bounds={_query_bounds}")
+    raw_catalog = download_background_seismicity(
+        bounds     = _query_bounds,
+        start_year = _start_year,
+        end_year   = _end_year,
+        min_mag    = _m_ref,
+    )
+    raw_catalog.to_csv(SHARED_CATALOG_CACHE, index=False)
+    print(f"  Cached to {SHARED_CATALOG_CACHE}")
 
 # Normalise to ETAS column format: id, latitude, longitude, time, magnitude.
 raw_catalog = raw_catalog.copy()
-raw_catalog.insert(0, 'id', range(len(raw_catalog)))
+#raw_catalog.insert(0, 'id', range(len(raw_catalog)))
 raw_catalog = raw_catalog.rename(columns={'mag': 'magnitude'})
-raw_catalog['time'] = pd.to_datetime(raw_catalog['time'], utc=True).dt.tz_convert(None)
+raw_catalog['time'] = pd.to_datetime(raw_catalog['time'], utc=True,format='ISO8601').dt.tz_convert(None)
 raw_catalog = raw_catalog[['id', 'latitude', 'longitude', 'time', 'magnitude']]
 raw_catalog = raw_catalog[raw_catalog['magnitude'] >= _m_ref].reset_index(drop=True)
 

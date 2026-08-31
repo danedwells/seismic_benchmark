@@ -67,11 +67,11 @@ CASE_STUDIES = config.CASE_STUDIES
 ACTIVE_CASE_STUDY = 'Ferndale'
 
 # Background seismicity catalog (plotting only)
-SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'reference', 'background_seismicity.parquet')
+SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 # ETAS inversion parameters and catalog — context-specific
-INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion',
+INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
                                    f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
                                    f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 

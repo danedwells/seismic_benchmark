@@ -540,6 +540,58 @@ def load_reference_catalog(catalog_path):
     })
 
 
+def load_reference_catalog_usgs(catalog_path):
+    """
+    Read a catalog produced by the USGS ComCat download helpers
+    (download_case_study_catalog / download_background_seismicity /
+    load_background_seismicity — id, time, latitude, longitude, depth, mag)
+    and normalise it to the same shape load_reference_catalog() returns.
+
+    Unlike load_reference_catalog(), which only reads the one-off
+    bEPIC_testing_catalog.txt archive format, this works for any
+    region whose reference catalog comes straight from a USGS download —
+    used by regions (e.g. Cascadia) that have no such archive and instead
+    run .run files named directly by the ANSS event id.
+
+    Parameters
+    ----------
+    catalog_path : str
+        Path to a .parquet or .csv file with columns id/time/latitude/
+        longitude/mag (depth optional).
+
+    Returns
+    -------
+    DataFrame with columns:
+        event_id   — ANSS event id (str); matches run file stems
+        anss_id    — same as event_id (kept for interface parity with
+                      load_reference_catalog())
+        usgs_time  — event origin time (tz-naive)
+        usgs_lat
+        usgs_lon
+        usgs_depth
+        usgs_mag
+    """
+    ext = os.path.splitext(catalog_path)[1].lower()
+    if ext == '.parquet':
+        raw = pd.read_parquet(catalog_path)
+    elif ext == '.csv':
+        raw = pd.read_csv(catalog_path)
+    else:
+        raise ValueError(f"Unsupported catalog format '{ext}': {catalog_path} "
+                          "(expected .parquet or .csv)")
+
+    event_id = raw['id'].astype(str)
+    return pd.DataFrame({
+        'event_id':   event_id,
+        'anss_id':    event_id,
+        'usgs_time':  pd.to_datetime(raw['time'], format='ISO8601', utc=True).dt.tz_convert(None),
+        'usgs_lat':   raw['latitude'],
+        'usgs_lon':   raw['longitude'],
+        'usgs_depth': raw['depth'] if 'depth' in raw.columns else np.nan,
+        'usgs_mag':   raw['mag'],
+    })
+
+
 def run_prior(args):
     """
     Module-level worker for ProcessPoolExecutor.
@@ -583,7 +635,10 @@ def run_prior(args):
     if catalog_df is None:
         catalog_path = args.get('catalog_path')
         if catalog_path and os.path.exists(catalog_path):
-            catalog_df = load_reference_catalog(catalog_path)
+            if catalog_path.lower().endswith(('.parquet', '.csv')):
+                catalog_df = load_reference_catalog_usgs(catalog_path)
+            else:
+                catalog_df = load_reference_catalog(catalog_path)
 
     # Initiate the runner
     runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
