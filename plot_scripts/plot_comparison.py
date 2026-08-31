@@ -1127,12 +1127,16 @@ else:
 
         if _pname15 == 'ETAS (dynamic)':
             _etas_id15  = 'benchmark' if ACTIVE_CASE_STUDY is None else ACTIVE_CASE_STUDY
-            _etas_json15 = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
-                                        f'parameters_{config.etas_output_id(_etas_id15)}.json')
+            _etas_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion')
+                           if ACTIVE_CASE_STUDY is None
+                           else os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion'))
+            _etas_json15 = os.path.join(_etas_dir15, f'parameters_{config.etas_output_id(_etas_id15)}.json')
             if not os.path.exists(_etas_json15):
                 print(f'  [ETAS] inversion JSON not found: {_etas_json15} — skipping.')
                 continue
             from priors import EtasPriorUpdater
+            from benchmark.runner import repair_inversion_json_paths
+            repair_inversion_json_paths(_etas_json15)
             _upd15 = EtasPriorUpdater.from_inversion_json(
                 _etas_json15, **config.ETAS_UPDATER_CONFIG)
             # Feed catalog events before this event as ETAS context so the

@@ -69,9 +69,9 @@ ACTIVE_CASE_STUDY = 'Ferndale'
 # Background seismicity catalog (plotting only)
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 # ETAS inversion parameters and catalog — context-specific
-INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
+INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion',
                                    f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion', 'input',
                                    f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
@@ -225,6 +225,7 @@ hist_catalog['time'] = pd.to_datetime(
 print(f"  {len(hist_catalog)} events loaded.")
 
 print(f"\nBuilding EtasPriorUpdater from:\n  {INVERSION_JSON}")
+benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
 updater = EtasPriorUpdater.from_inversion_json(
     json_path  = INVERSION_JSON,
     catalog_df = hist_catalog,
@@ -533,6 +534,7 @@ else:
                 _hist['time'], format='ISO8601', utc=True
             ).dt.tz_convert(None)
 
+        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
         _updater = EtasPriorUpdater.from_inversion_json(
             json_path  = INVERSION_JSON,
             catalog_df = _hist,

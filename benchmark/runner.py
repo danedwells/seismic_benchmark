@@ -1,4 +1,6 @@
+import json
 import os
+import warnings
 import numpy as np
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -43,6 +45,58 @@ def load_station_availability_cache(path):
         str(eid): grp.drop(columns='event_id').reset_index(drop=True)
         for eid, grp in df.groupby('event_id')
     }
+
+
+def repair_inversion_json_paths(json_path):
+    """
+    Repair stale fn_catalog/fn_ip/fn_src paths stored inside an ETAS inversion
+    JSON (written by ETASParameterCalculation.store_results(), consumed by
+    EtasPriorUpdater.from_inversion_json()).
+
+    Those three fields are absolute paths captured at inversion time as
+    siblings of the JSON in the same directory. If data/ is later
+    reorganized — files moved/renamed together, as happens whenever this
+    benchmark's data/ layout changes — the stored paths go stale even though
+    the referenced file is still a same-named sibling of the JSON.
+    EtasPriorUpdater has no way to know that and fails with a bare
+    FileNotFoundError deep inside pandas.
+
+    Call this before EtasPriorUpdater.from_inversion_json(json_path=...): for
+    each field, if the stored path doesn't exist, falls back to
+    <directory of json_path>/<basename of stored path>, warns, and rewrites
+    the JSON in place so the fix persists for future loads. No-ops (writes
+    nothing) if every stored path already resolves.
+    """
+    with open(json_path) as fh:
+        cfg = json.load(fh)
+
+    changed = False
+    for key in ('fn_catalog', 'fn_ip', 'fn_src'):
+        stored = cfg.get(key)
+        if not stored or os.path.exists(stored):
+            continue
+        fallback = os.path.join(os.path.dirname(json_path), os.path.basename(stored))
+        if os.path.exists(fallback):
+            warnings.warn(
+                f"{json_path}: stored '{key}' path {stored!r} does not exist "
+                f"— repairing to sibling file {fallback!r}. This usually "
+                f"means the inversion output directory was moved/renamed "
+                f"after this JSON was written.",
+                stacklevel=2,
+            )
+            cfg[key] = fallback
+            changed = True
+        else:
+            warnings.warn(
+                f"{json_path}: stored '{key}' path {stored!r} does not exist, "
+                f"and no sibling file {fallback!r} was found either — leaving "
+                f"as-is; EtasPriorUpdater will raise when it tries to read it.",
+                stacklevel=2,
+            )
+
+    if changed:
+        with open(json_path, 'w') as fh:
+            json.dump(cfg, fh, indent=2)
 
 
 def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None):

@@ -47,6 +47,7 @@ from etas.inversion import ETASParameterCalculation
 from priors import EtasPriorUpdater
 from benchmark import config
 from benchmark.background import load_background_seismicity
+from benchmark.runner import repair_inversion_json_paths
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -255,6 +256,7 @@ for context_name in BUILD_CONTEXTS:
     hist = pd.read_csv(catalog_csv, parse_dates=['time'])
     hist['time'] = pd.to_datetime(hist['time']).dt.tz_localize(None)
 
+    repair_inversion_json_paths(output_json)
     updater = EtasPriorUpdater.from_inversion_json(
         json_path  = output_json,
         catalog_df = hist,

@@ -208,6 +208,7 @@ hist_catalog['time'] = pd.to_datetime(
 print(f"  {len(hist_catalog)} events loaded.")
 
 print(f"\nBuilding EtasPriorUpdater from:\n  {INVERSION_JSON}")
+benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
 updater = EtasPriorUpdater.from_inversion_json(
     json_path  = INVERSION_JSON,
     catalog_df = hist_catalog,

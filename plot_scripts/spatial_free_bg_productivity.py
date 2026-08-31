@@ -40,6 +40,7 @@ from scipy import ndimage
 from etas.intensity import _compute_smoothed_field
 from priors import EtasPriorUpdater
 from benchmark import config
+from benchmark.runner import repair_inversion_json_paths
 
 PROJECT_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -65,6 +66,7 @@ _spatial_cfg = dict(config.ETAS_UPDATER_CONFIG)
 _spatial_cfg['use_spatial_background']   = True
 _spatial_cfg['use_spatial_productivity'] = False
 
+repair_inversion_json_paths(INVERSION_JSON)
 updater = EtasPriorUpdater.from_inversion_json(
     json_path = INVERSION_JSON,
     **_spatial_cfg,

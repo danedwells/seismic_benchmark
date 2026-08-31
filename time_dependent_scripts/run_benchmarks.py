@@ -168,6 +168,7 @@ if RUN_DYNAMIC_PRIORS:
     # TODO - decide if that is prudent, or give it a shorter window, or don't give it 
     # the historical catalog as context at all
     print(f"\nBuilding EtasPriorUpdater from:\n  {INVERSION_JSON}")
+    benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
     updater = EtasPriorUpdater.from_inversion_json(
         json_path  = INVERSION_JSON,
         catalog_df = hist_catalog,
@@ -473,6 +474,7 @@ else:
             _hist = pd.read_csv(HISTORICAL_CATALOG, index_col=0, dtype={'url': str, 'alert': str})
             _hist['time'] = pd.to_datetime(_hist['time'], format='ISO8601', utc=True).dt.tz_convert(None)
 
+        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
         _updater = EtasPriorUpdater.from_inversion_json(
             json_path  = INVERSION_JSON,
             catalog_df = _hist,

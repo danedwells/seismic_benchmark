@@ -63,12 +63,7 @@ _kde_construction = {
 # The benchmark cutoff is the first event in the reference catalog 
 # is a safe conservative value; adjust if you know the exact first event time).
 CONTEXTS = {
-    'California':  '2018-09-30T00:00:00',   # first event in bEPIC reference catalog
-    'Ridgecrest': '2019-07-04T17:00:00',   # Ridgecrest mainshock origin time
-    'Ferndale':   '2022-12-20T10:00:00',   # Ferndale mainshock origin time
-    'ElMayor':    '2010-04-04T22:00:00',   # El Mayor-Cucapah mainshock origin time
-    'MTJ_2024_M7': '2024-12-04T22:00:00',  # 2024 M7 in the mendocino Triple Junction (MTJ)
-    
+    'Cascadia':  '2022-01-01T00:00:00'
 }
 
 # Extracted from a function 

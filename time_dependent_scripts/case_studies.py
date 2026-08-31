@@ -82,9 +82,9 @@ DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
-INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion',
+INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'case_studies',ACTIVE_CASE_STUDY, 'etas_inversion',
                                 f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion', 'input',
                                   f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
@@ -100,7 +100,7 @@ ETAS_UPDATE_INTERVAL_S = int(os.environ.get('ETAS_UPDATE_INTERVAL_S', 0))
 # The prior used for this event is saved to disk during the run so it can be
 # visualised even though every event has a different prior.
 _MS_ = False  # set True to use mainshock events instead of representative aftershocks
-#FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
+FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
 #FOCUS_VERSION  = None
 
 # Per-case-study directories
@@ -203,6 +203,7 @@ if RUN_DYNAMIC_PRIORS:
 
     # -- Build EtasPriorUpdater from the pre-inverted parameters -------------
     print(f"\nBuilding EtasPriorUpdater from:\n  {INVERSION_JSON}")
+    benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
     updater = EtasPriorUpdater.from_inversion_json(
         json_path  = INVERSION_JSON,
         catalog_df = hist_catalog,
@@ -499,6 +500,7 @@ else:
                 dtype={'url': str, 'alert': str},
             )
 
+        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
         _updater = EtasPriorUpdater.from_inversion_json(
             json_path  = INVERSION_JSON,
             catalog_df = _hist,

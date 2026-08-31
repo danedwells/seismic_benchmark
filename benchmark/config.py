@@ -141,7 +141,7 @@ ETAS_INVERSION_CONFIG = {
     # -- Output label (output files will be parameters_{id}.json, etc.) --
     # NOTE - gets overwritten in most settings, but is the default value in
     # run_benchmarks.py. Don't change without addressing this.
-    'id': 'benchmark',
+    'id': 'benchmark', # TODO - change to cali (not sure what is affected by this)
 }
 
 
