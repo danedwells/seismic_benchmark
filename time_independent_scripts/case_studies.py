@@ -47,7 +47,7 @@ cache_paths = {
 CASE_STUDIES = config.CASE_STUDIES
 # --- Select active case study --- (override with CASE_STUDY env var)
 
-DEFAULT_CASE_STUDY = "ElMayor"
+DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
@@ -59,6 +59,12 @@ cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+
+# manual override
+SIGMA_S = 0.35
+config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
+# end manual override
+
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
@@ -66,20 +72,28 @@ S_TAG          = f'sig_{SIGMA_S}'
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
 _VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
 
+# Quick-test toggle: DISABLE_ACTIVITY_MASK=1 skips loading the per-event
+# station availability cache, so params.station_inventory stays None and
+# bEPIC's activity-fraction mask (EPIC_locate_prelim.py's
+# "Per-grid-point activity mask" block) never engages. Results land in a
+# '_nomask'-suffixed subfolder so they don't clobber the normal run.
+_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
+_MASK_SUFFIX = '_nomask' if _DISABLE_ACTIVITY_MASK else ''
+
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
 elif _VARY_SIG == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
 else:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -109,10 +123,12 @@ _cs_ref_df = catalog_df.rename(columns={
 })[['event_id', 'usgs_lat', 'usgs_lon']]
 
 # Get the station availability inventory from (preparation_scripts/build_station_availability.py)
-_avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
+_avail = (load_station_availability_cache(AVAIL_CACHE)
+          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
 if _avail:
     print("Station availability cache loaded")
-#_avail = None
+elif _DISABLE_ACTIVITY_MASK:
+    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
 job_args = [
     {
         'prior_name': name,

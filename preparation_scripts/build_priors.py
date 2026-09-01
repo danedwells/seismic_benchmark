@@ -195,6 +195,11 @@ n, d = points.shape
 # g = np.exp(np.mean(np.log(np.clip(f_pilot, 1e-30, None))))
 # bw_per_point = h_global * (g / f_pilot) ** alpha  # shape (N,)
 
+fig,ax = plt.subplots(figsize=(8,6))
+ax.scatter(catalog['longitude'], catalog['latitude'])
+plt.show()
+
+
 #%%
 # Grid setup (shared between KDE implementations)
 xx, yy = np.meshgrid(grid_lons, grid_lats)
@@ -289,6 +294,7 @@ def _plot_prior(prior, label, extent):
         ax.set_title(f'{label}\n{scale}', fontsize=9)
     plt.tight_layout()
     plt.show()
+    fig.savefig(os.path.join(SeismicPrior.data_dir,f'kde_seismicity_{context_name}_map.png'))
 
 
 plot_extent = EXTENT if EXTENT is not None else (

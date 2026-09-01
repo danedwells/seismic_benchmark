@@ -28,6 +28,7 @@
 # =============================================================================
 
 import os
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -101,12 +102,14 @@ ETAS_UPDATE_INTERVAL_S = int(os.environ.get('ETAS_UPDATE_INTERVAL_S', 0))
 # visualised even though every event has a different prior.
 _MS_ = False  # set True to use mainshock events instead of representative aftershocks
 FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
-#FOCUS_VERSION  = None
+FOCUS_VERSION  = None   # None = last available trigger version
 
 # Per-case-study directories
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+SIGMA_S = 0.22
+config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 EDT_TAG        = f'edt_{EDT_SIGMA_S}'
 S_TAG          = f'sig_{SIGMA_S}'
@@ -118,7 +121,15 @@ S_TAG          = f'sig_{SIGMA_S}'
 ETAS_TAG       = config.etas_run_tag()
 
 _VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
+_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
+
+# Quick-test toggle: DISABLE_ACTIVITY_MASK=1 skips loading the per-event
+# station availability cache, so params.station_inventory stays None and
+# bEPIC's activity-fraction mask (EPIC_locate_prelim.py's
+# "Per-grid-point activity mask" block) never engages. Results land in a
+# '_nomask'-suffixed subfolder so they don't clobber the normal run.
+_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
+_MASK_SUFFIX = '_nomask' if _DISABLE_ACTIVITY_MASK else ''
 
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
@@ -126,14 +137,14 @@ CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 if _VARY_EDT == True & _VARY_SIG == True:
     raise Exception("Cannot vary both EDT and Sigma at the same time")
 elif _VARY_EDT == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
 elif _VARY_SIG == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
 else:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
+    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
+    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -151,11 +162,14 @@ DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
-PRIOR_ALPHA = float(os.environ.get('PRIOR_ALPHA', 0.1))  # UNCHANGED behavior if this == 1
+PRIOR_ALPHA = float(os.environ.get('PRIOR_ALPHA', 1))  # UNCHANGED behavior if this == 1
 
-_avail = load_station_availability_cache(AVAIL_CACHE) if os.path.exists(AVAIL_CACHE) else None
+_avail = (load_station_availability_cache(AVAIL_CACHE)
+          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
 if _avail:
     print("Station availability cache loaded")
+elif _DISABLE_ACTIVITY_MASK:
+    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
 
 #%%
 # ---------------------------------------------------------------------------
@@ -320,6 +334,7 @@ if RUN_DYNAMIC_PRIORS:
     runner_results_to_df(runner).to_csv(out_path, index=False)
     print(f"\nDynamic ETAS results saved to:\n  {out_path}")
 
+
 #%%
 # ---------------------------------------------------------------------------
 # Figures
@@ -471,6 +486,19 @@ _params_kw = {
     'sigma_s': SIGMA_S,
 
 }
+
+# The curated FOCUS_EVENT_ID (config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]) doesn't
+# always have a .run file for every case study / prep state — fall back to a
+# random event from CS_RUN_DIR rather than just skipping this section.
+if not os.path.exists(focus_run_path):
+    print(f'[single-event] configured FOCUS_EVENT_ID {FOCUS_EVENT_ID} has no .run file: {focus_run_path}')
+    _fallback_run_files = sorted(Path(CS_RUN_DIR).glob('*.run'))
+    if _fallback_run_files:
+        FOCUS_EVENT_ID = random.choice(_fallback_run_files).stem
+        focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
+        print(f'  → picked a random event instead: {FOCUS_EVENT_ID}')
+    else:
+        print(f'  → no .run files found in {CS_RUN_DIR} either; run BUILD_RUN_FILES first.')
 
 if not os.path.exists(focus_run_path):
     print(f'[single-event] .run file not found: {focus_run_path}')

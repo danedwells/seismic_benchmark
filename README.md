@@ -4,6 +4,8 @@
 
 A benchmarking framework for evaluating the [bEPIC](https://github.com/danedwells/bEPIC) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
 
+Two regions are supported: **California** (the main, ~700-event benchmark catalog) and **Cascadia** (Pacific Northwest). Both share the same code and workflows below; Cascadia-specific scripts are named `..._cascadia.py` and its config lives in `benchmark/config_cascadia.py`.
+
 Three parallel workflows are provided:
 
 - **Time-independent** (`time_independent_scripts/`) — five static spatial priors, unchanged per-event, evaluated in parallel.
@@ -21,7 +23,7 @@ For each event in the test catalog, bEPIC is run once per trigger version (i.e.,
 | `Gear1` | GEAR1 global seismic hazard table | Time-independent |
 | `NSHM` | USGS NSHM gridded + fault moment rates (summed in linear space) | Time-independent |
 | `Helmstetter` | Helmstetter (2007) smoothed seismicity (requires pycsep) | Time-independent |
-| `Smooth_seismicity` | Pre-built US/Canada smoothed seismicity grid | Time-independent |
+| `KDE_Seismicity` | Smoothed historical seismicity, built from a downloaded USGS catalog (replaces the older `Smooth_seismicity` prior) | Time-independent |
 | `Uniform` | Uninformative baseline; equivalent to having no prior | Time-independent |
 | `ETAS` | Dynamic ETAS conditional intensity λ(x, y, t), updated before each event | Time-dependent |
 | `{prior}_etas_mixed` | Linear blend of each static prior with the dynamic ETAS prior (default α = 0.5) | Mixed |
@@ -63,7 +65,7 @@ pip install git+https://github.com/SCECcode/pycsep.git
 ### Optional
 
 **[etas_2](https://github.com/danedwells/etas_2)** — ETAS parameter inversion and catalog simulation.
-Required only for the **time-dependent workflow** if you need to re-run the ETAS parameter inversion (`time_dependent_scripts/build_initial_prior.py`). Pre-inverted parameters (`data/etas_inversion/parameters_benchmark.json`) are committed to the repository, so you can run the dynamic benchmark without `etas_2` as long as that file is present.
+Required only for the **time-dependent workflow** if you need to re-run the ETAS parameter inversion (`time_dependent_scripts/build_initial_prior.py`). Pre-inverted parameters (`data/california/etas_inversion/parameters_benchmark.json`) are committed to the repository, so you can run the dynamic benchmark without `etas_2` as long as that file is present.
 
 ---
 
@@ -84,7 +86,8 @@ This makes the `benchmark` package importable from the entry-point scripts.
 ```
 seismic_benchmark/
 ├── benchmark/                          # Python package — import as "benchmark"
-│   ├── config.py                       # Prior filenames, bounds, benchmark/ETAS parameters
+│   ├── config.py                       # Prior filenames, bounds, benchmark/ETAS parameters (California)
+│   ├── config_cascadia.py              # Same, for the Cascadia region
 │   ├── runner.py                       # BenchmarkRunner class; run_prior / run_all_priors_parallel workers
 │   ├── priors.py                       # build_and_cache_priors() — constructs .tt3 files from source data
 │   ├── plots.py                        # Reusable figure helpers: maps, histograms, posterior grids
@@ -92,50 +95,49 @@ seismic_benchmark/
 │   └── background.py                   # Background seismicity download/cache from USGS ComCat
 ├── preparation_scripts/                # Run these once before any benchmarking workflow
 │   ├── build_priors.py                 # Construct all static prior .tt3 cache files
-│   └── case_study_preparation.py       # Download USGS catalogs + build .run files for all case studies
+│   ├── case_study_preparation.py       # Download USGS catalogs + build .run files for all case studies
+│   ├── build_station_availability.py   # Optional: per-event station-availability cache
+│   └── ..._cascadia.py                 # Same steps, for the Cascadia region
 ├── time_independent_scripts/           # Static prior workflow
 │   ├── run_benchmarks.py               # Main workflow: load priors → run bEPIC → plot
-│   └── case_studies.py                 # Case-study runner (preparation_scripts must run first)
+│   ├── case_studies.py                 # Case-study runner (preparation_scripts must run first)
+│   └── run_cascadia.py                 # Same workflow for the Cascadia region
 ├── time_dependent_scripts/             # Dynamic ETAS prior workflow
 │   ├── build_initial_prior.py          # ETAS parameter inversion — run once to regenerate parameters_benchmark.json
 │   ├── run_benchmarks.py               # Main workflow with time-evolving ETAS prior
-│   └── case_studies.py                 # Case-study workflow with dynamic ETAS prior
+│   ├── case_studies.py                 # Case-study workflow with dynamic ETAS prior
+│   └── run_cascadia.py                 # Same workflow for the Cascadia region
 ├── mixed_prior_scripts/                # Mixed (TI + ETAS) prior workflow
 │   ├── run_benchmarks.py               # Main workflow: five TI × ETAS blended priors, serial event loop
 │   └── case_studies.py                 # Case-study workflow with blended priors
+├── plot_scripts/                       # Comparison plots that read results from more than one workflow
+├── data_examination_scripts/           # Small standalone scripts for inspecting priors/catalogs/results
 ├── tests/                              # pytest unit tests (run with `pytest`)
 │   ├── test_metrics.py                 # metrics.py — haversine, HDR levels, credible levels, coverage
 │   ├── test_config.py                  # config.py — structure and value sanity checks
 │   ├── test_runner.py                  # runner.py — DataFrame assembly, column normalisation, init
 │   └── test_priors.py                  # priors.py — build_and_cache_priors error handling
 ├── data/                               # Input data — not committed to git
-│   ├── run_files/                      # Per-event trigger sequences (*.run) for the standard benchmark
-│   ├── etas_inversion/                 # ETAS inversion outputs
-│   │   ├── parameters_benchmark.json   # Pre-inverted ETAS parameters (committed)
-│   │   ├── catalog_benchmark.csv       # Catalog used for inversion
-│   │   └── input/downloaded_catalog.csv
-│   ├── case_studies/                   # Per-case-study subdirs (run_files/, catalog cache)
-│   │   ├── Ridgecrest/
-│   │   ├── Ferndale/
-│   │   └── ElMayor/
-│   └── reference/                      # Reference catalog, background seismicity cache
+│   ├── california/                     # Main benchmark region
+│   │   ├── run_files/                  # Per-event trigger sequences (*.run)
+│   │   ├── etas_inversion/             # ETAS inversion outputs (parameters, catalog)
+│   │   └── reference/                  # Reference catalog, background seismicity cache
+│   ├── cascadia/                       # Same layout, for the Cascadia region
+│   └── case_studies/                   # Per-case-study subdirs (run_files/, catalog cache)
+│       ├── Ridgecrest/
+│       ├── Ferndale/
+│       ├── ElMayor/
+│       └── MTJ_2024_M7/
 ├── results/                            # Generated outputs — not committed to git
-│   ├── output/
-│   │   ├── max_trigs_{N}/              # Static prior CSVs: {prior}_benchmark_results.csv
-│   │   ├── time_dependent/max_trigs_{N}/  # Dynamic ETAS CSV
-│   │   └── mixed/max_trigs_{N}/        # Mixed prior CSVs: {prior}_etas_mixed_benchmark_results.csv
-│   ├── figures/
-│   │   ├── max_trigs_{N}/              # Maps, histograms, posterior grids (static priors)
-│   │   ├── time_dependent/max_trigs_{N}/  # Same figures for dynamic ETAS
-│   │   └── mixed/max_trigs_{N}/        # Same figures for mixed priors
-│   └── case_studies/                   # Per-case-study output and figures
-│       └── {name}/output/{time_independent,time_dependent,mixed}/
+│   ├── california/output/, california/figures/    # Same sub-layout as before (time_independent/time_dependent/mixed)
+│   ├── cascadia/output/, cascadia/figures/
+│   └── case_studies/{name}/output/, case_studies/{name}/figures/
 ├── pyproject.toml
 ├── README.md
 └── CLAUDE.md                           # Developer notes
 ```
 
-`data/` and `results/` are excluded from version control (see `.gitignore`). You will need to supply the `data/run_files/` trigger sequences and `data/reference/bEPIC_testing_catalog.txt` separately.
+`data/` and `results/` are excluded from version control (see `.gitignore`). You will need to supply the trigger-sequence and reference-catalog files separately.
 
 ---
 
@@ -149,7 +151,7 @@ These files are not included in this repository due to file size. Contact daniel
 | NSHM (gridded) | [gridded_moment_rates.xyz](https://data.opensha.org/nshm23/reports/branch_averaged_gridded/resources/gridded_moment_rates.xyz) |
 | NSHM (fault) | [fault_moment_rates.xyz](https://data.opensha.org/nshm23/reports/branch_averaged_gridded/resources/fault_moment_rates.xyz) |
 | Helmstetter | [PyCSEP artifact](https://github.com/cseptesting/pycsep/blob/main/csep/artifacts/ExampleForecasts/GriddedForecasts/helmstetter_et_al.hkj-fromXML.dat) / [paper](https://hal.science/hal-00195399/document) |
-| Smooth_seismicity | Williamson smoothed seismicity — contact Amy Williamson (reach out to me, danedwells@gmail.com for contact info if you don't have it) |
+| KDE_Seismicity | No external file needed — built from a downloaded USGS catalog. See `data_examination_scripts/examine_kde_prior.py`. |
 | ETAS | Generated by `time_dependent_scripts/build_initial_prior.py` — see below |
 
 Both NSHM files share the same 0.1° grid. Values are log₁₀-encoded moment rates (N·m/yr); `build_priors.py` exponentiates both, sums in linear space, then normalizes.
@@ -172,7 +174,7 @@ python preparation_scripts/build_priors.py
 
 #### Step 2 — Case study data (`preparation_scripts/case_study_preparation.py`)
 
-Downloads USGS event catalogs and builds `.run` trigger files for all predefined case studies (Ridgecrest, Ferndale, El Mayor). Must be run before any `case_studies.py` workflow script. Set `REDOWNLOAD=True` or `REBUILD_RUN_FILES=True` to force a refresh.
+Downloads USGS event catalogs and builds `.run` trigger files for all predefined case studies (Ridgecrest, Ferndale, El Mayor, MTJ_2024_M7). Must be run before any `case_studies.py` workflow script. Set `REDOWNLOAD=True` or `REBUILD_RUN_FILES=True` to force a refresh.
 
 ```bash
 python preparation_scripts/case_study_preparation.py
@@ -193,7 +195,7 @@ RUN_ALL_PRIORS = False   # Run all five static priors in parallel
 SKIP_RUN       = False   # Skip running bEPIC and load existing CSVs instead
 ```
 
-Results appear in `results/output/max_trigs_{N}/` and figures in `results/figures/max_trigs_{N}/`.
+Results appear in `results/california/output/time_independent/max_trigs_{N}/` and figures in `results/california/figures/time_independent/max_trigs_{N}/`.
 
 **Figures produced:**
 
@@ -213,6 +215,7 @@ Set `ACTIVE_CASE_STUDY` to one of the predefined sequences:
 | `Ridgecrest` | Ridgecrest 2019 aftershock sequence |
 | `Ferndale` | Ferndale 2022 sequence |
 | `ElMayor` | El Mayor-Cucapah 2010 aftershock sequence |
+| `MTJ_2024_M7` | Mendocino Triple Junction M7 2024 sequence |
 
 Two boolean flags control the run:
 
@@ -231,9 +234,9 @@ The dynamic workflow maintains a running earthquake catalog and recomputes the E
 
 #### Step 1 — ETAS parameter inversion (`time_dependent_scripts/build_initial_prior.py`)
 
-**Skip this step if `data/etas_inversion/parameters_benchmark.json` already exists.**
+**Skip this step if `data/california/etas_inversion/parameters_benchmark.json` already exists.**
 
-Runs ETAS parameter inversion on a historical seismicity catalog using `etas_2`. Produces the pre-inverted parameter file consumed at runtime by `EtasPriorUpdater`. There is an inverted parameters_benchmark.josn included in this repository. This was produced by inverting ETAS on a downloaded catalog of California from 2000 to 2018, with a minimum magnitude of 3.
+Runs ETAS parameter inversion on a historical seismicity catalog using `etas_2`. Produces the pre-inverted parameter file consumed at runtime by `EtasPriorUpdater`. An inverted `parameters_benchmark.json` is included in this repository, produced by inverting ETAS on a downloaded catalog of California from 2000 to 2018, with a minimum magnitude of 3.
 
 ```bash
 python time_dependent_scripts/build_initial_prior.py
@@ -243,7 +246,7 @@ This is slow (minutes to hours depending on catalog size). The resulting `parame
 
 #### Step 2 — Dynamic benchmark (`time_dependent_scripts/run_benchmarks.py`)
 
-Evaluates bEPIC on a 740-event catalog, but with the ETAS prior updated in real time. Events are processed in **chronological order** so each location estimate sees only past seismicity.
+Evaluates bEPIC on the same benchmark catalog, but with the ETAS prior updated in real time. Events are processed in **chronological order** so each location estimate sees only past seismicity.
 
 Key flags:
 
@@ -261,7 +264,7 @@ The event loop works as follows:
 2. bEPIC locates the event using the updated prior
 3. `after_event_fn(event_id)` — appends the **USGS reference location** (not the bEPIC estimate) to the ETAS catalog so future priors reflect ground truth
 
-Results go to `results/output/time_dependent/max_trigs_{N}/etas_dynamic_benchmark_results.csv`.
+Results go to `results/california/output/time_dependent/max_trigs_{N}/etas_dynamic_benchmark_results.csv` (nested one level deeper under a tag folder identifying the ETAS inversion settings used, so different settings don't overwrite each other).
 
 
 A standalone single-event test block is also included — it builds a fresh ETAS prior for a configurable target event (`MTJ_EVENT_ID`) with a configurable lookback window of pre-event catalog entries, useful for diagnosing the prior for a specific event without running the full benchmark.
@@ -286,7 +289,7 @@ The static prior is bilinearly resampled onto the ETAS grid before blending. `AL
 
 #### Step 1 — Mixed-prior benchmark (`mixed_prior_scripts/run_benchmarks.py`)
 
-Runs the same 700+ event catalog as the other workflows, but the five blended priors all share one `EtasPriorUpdater` and must run serially (causal ETAS state).
+Runs the same benchmark catalog as the other workflows, but the five blended priors all share one `EtasPriorUpdater` and must run serially (causal ETAS state).
 
 Key flags:
 
@@ -300,13 +303,19 @@ DEBUG_PLOT_PRIOR       = False # plot raw ETAS grid before each update
 
 The event loop evaluates the ETAS prior once per event, blends it with each of the five static priors, runs bEPIC five times, then appends the USGS reference location to the ETAS catalog before moving to the next event.
 
-Results go to `results/output/mixed/max_trigs_{N}/{prior}_etas_mixed_benchmark_results.csv` (five files, one per TI prior). The same figure set as the other workflows is produced under `results/figures/mixed/max_trigs_{N}/`.
+Results go to `results/california/output/mixed/max_trigs_{N}/{prior}_etas_mixed_benchmark_results.csv` (five files, one per TI prior). The same figure set as the other workflows is produced under `results/california/figures/mixed/max_trigs_{N}/`.
 
 #### Step 2 — Mixed case studies (`mixed_prior_scripts/case_studies.py`)
 
 Downloads a USGS catalog, builds `.run` files, then runs the blended-prior benchmark over the aftershock sequence. Case-study events (not the USGS reference catalog) are fed to the ETAS updater incrementally. Includes a standalone single-event section that builds fresh blended priors for a configurable focus event and plots location trajectories for all five mixed priors.
 
-Set `ACTIVE_CASE_STUDY` to one of the same three sequences (`Ridgecrest`, `Ferndale`, `ElMayor`). Results appear in `results/case_studies/{name}/output/mixed/` and figures in `results/case_studies/{name}/figures/mixed/`.
+Set `ACTIVE_CASE_STUDY` to one of the same sequences (`Ridgecrest`, `Ferndale`, `ElMayor`, `MTJ_2024_M7`). Results appear in `results/case_studies/{name}/output/mixed/` and figures in `results/case_studies/{name}/figures/mixed/`.
+
+---
+
+### Cascadia region
+
+The Pacific Northwest (Cascadia) region is supported alongside California, using the same three workflows above. Its preparation and benchmark scripts have the same names with `_cascadia` appended (e.g. `preparation_scripts/build_priors_cascadia.py`, `time_independent_scripts/run_cascadia.py`, `time_dependent_scripts/run_cascadia.py`), and its own config module, `benchmark/config_cascadia.py`. Data and results are kept separate under `data/cascadia/` and `results/cascadia/`.
 
 ---
 
@@ -317,7 +326,7 @@ cd seismic_benchmark
 pytest
 ```
 
-66 tests covering the pure-math and structural logic in the `benchmark` package — no network access or data files required. Requires `bEPIC` and `priors` to be installed.
+Tests cover the pure-math and structural logic in the `benchmark` package — no network access or data files required. Requires `bEPIC` and `priors` to be installed.
 
 ---
 
@@ -327,14 +336,17 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 
 | Column | Description |
 |--------|-------------|
-| `event_id` | Integer event ID (matches `.run` filename stem) |
-| `version` | Trigger version (increments as each new station triggers) |
+| `event_id` | Event ID — matches the `.run` filename stem (an integer for the main California catalog, a USGS/ANSS string ID for case studies and Cascadia) |
+| `version` / `n_trigs` | Trigger version / number of stations triggered so far |
 | `posterior_lat`, `posterior_lon` | bEPIC posterior location |
 | `best_misfit` | Best travel-time misfit |
 | `best_like` | Best likelihood value |
 | `best_prior` | Best prior value at posterior location |
 | `frac_misfit` | Fractional travel-time error |
-| `location_error_km` | Distance to USGS catalog location (added post-hoc) |
+| `map_err_km` | Distance from the posterior location to the USGS catalog location |
+| `posterior_confidence_level` | Calibration metric — the smallest credible region (0-1) that just contains the true USGS location. Values clustered near 0.5 indicate a well-calibrated posterior. |
+
+A few more diagnostic columns (e.g. separate likelihood-only and prior-only versions of the columns above, and posterior coverage at fixed radii) are also written but are mainly used by the comparison plots in `plot_scripts/`.
 
 ---
 
@@ -351,6 +363,8 @@ Each `{prior}_benchmark_results.csv` contains one row per (event, trigger versio
 - Moved plotting scripts into plot_scripts/. These scripts examine both time_independent, time_dependent, and mixed benchmarking together, hence the logic for a separate script and folder.
 - Separated the benchmarking scripts into 3 folders: time_independent_scripts, time_dependent_scripts, and mixed_prior_scripts. There is a lot of overlap between them. The reason for the separation is that time_dependent inherently must run differently - it is sequential, with the output each event affecting the prior for the next event.
 - Included metric of posterior coverage (how much of the posterior probability mass is within fixed distances of 10, 25, 50, and 100 km of the true USGS location), usgs_credible level (what confidene contour of the posterior distribution of the final location does the true USGS location fall on? lower is better), and location error (great circle distance in km).
+- Replaced the `Smooth_seismicity` prior with `KDE_Seismicity`, built directly from a downloaded USGS catalog instead of a separately-sourced file.
+- Added a second region, Cascadia, alongside the original California benchmark, and a new case study (`MTJ_2024_M7`). `data/` and `results/` are now split into `california/` and `cascadia/` subfolders to keep the two regions separate.
 
 
 ---

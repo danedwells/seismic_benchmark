@@ -27,72 +27,85 @@ from datetime import datetime, timezone
 from math import radians, sin, cos, pi
 
 from priors import SeismicPrior
-from benchmark.background import load_background_seismicity
 from benchmark import config
-from benchmark import priors as utils
+from benchmark import config_cascadia
 
 import matplotlib.pyplot as plt
+from benchmark.background import load_background_seismicity
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-data_dir    = SeismicPrior.data_dir
-cache_paths = {
-    name: os.path.join(data_dir, fname) if fname is not None else None
-    for name, fname in config.PRIOR_FILENAMES.items()
-}
+data_dir = SeismicPrior.data_dir
 
-# Build all static priors - no variation based on time or anything
-
-utils.build_and_cache_priors(cache_paths, data_dir, config.PRIOR_CONSTRUCTION_PARAMS)
-
+# Static priors (Gear1/NSHM/Helmstetter/Smooth_seismicity/Uniform) are NOT
+# built here — config.PRIOR_CONSTRUCTION_PARAMS['bounds'] already spans to
+# 51N, so those five priors already cover Cascadia and are shared via
+# SeismicPrior.data_dir; see preparation_scripts/build_priors.py. This
+# script only builds the Cascadia-specific KDE_Seismicity prior below.
 
 
 #%% Do the kde seismicity here
-# Build the Smoothed KDE seismicity maps - need to end before the applicable study.
-print("Building smooth seismicity maps with KDE for 4 use case")
+# Build the Smoothed KDE seismicity map for Cascadia.
+print("Building smooth seismicity map with KDE for Cascadia")
 
 
 PROJECT_ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Long-baseline Cascadia background catalog (1980–2026, M>=2.5) — the same
+# catalog build_initial_prior_cascadia.py uses as ETAS auxiliary context.
+# KDE_CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'etas_inversion',
+#                                  'input', 'cascadia_reference_catalog.csv')
 KDE_CATALOG_PATH = os.path.join(PROJECT_ROOT, 'data', 'kde_catalogs', 'kde_base_seismicity.parquet')
+
 _kde_construction = {
-    **config.PRIOR_CONSTRUCTION_PARAMS,
-    'kde_seismicity_params': config.KDE_SEISMICITY_PARAMS,
+    'bounds':                config_cascadia.REFERENCE_CATALOG_CONFIG['bounds'],
+    'out_of_bounds_fill':    {'KDE_Seismicity': 0.0001},
+    'target_resolution_deg': {'KDE_Seismicity': None},
+    'kde_seismicity_params': config_cascadia.KDE_SEISMICITY_PARAMS,
 }
 
-# All known contexts: name → cutoff date (exclusive upper bound for seismicity).
-# The benchmark cutoff is the first event in the reference catalog 
-# is a safe conservative value; adjust if you know the exact first event time).
+# Cascadia has only one context (no per-case-study cutoffs like the CA script).
 CONTEXTS = {
-    'Cascadia':  '2022-01-01T00:00:00'
+    'cascadia': config_cascadia.BENCHMARK_CATALOG_CONFIG['starttime']
 }
 
-# Extracted from a function 
-BUILD_CONTEXTS = list(CONTEXTS.keys())   # all four; edit to build a subset
-context_name = BUILD_CONTEXTS[4]
+BUILD_CONTEXTS = list(CONTEXTS.keys())
+context_name = BUILD_CONTEXTS[0]
 cutoff = CONTEXTS[context_name]
 construction_params = _kde_construction
 force_rebuild=True
-force_redownload=False
-kde_start = config.KDE_START_DATE
 kde_catalog_path = KDE_CATALOG_PATH
 
 
 if construction_params is None:
     construction_params = {}
 
-bounds     = construction_params.get('bounds', (-129, -112, 30, 51))
+bounds     = construction_params.get('bounds', (-131, -115, 40.5, 50.5))
 oob_fills  = construction_params.get('out_of_bounds_fill', {})
 target_res = construction_params.get('target_resolution_deg', {})
 
 tt3_path = os.path.join(data_dir, f'kde_seismicity_{context_name}.tt3')
 cutoff_date = cutoff
 
-os.makedirs(os.path.dirname(kde_catalog_path), exist_ok=True)
+if not os.path.exists(kde_catalog_path):
+    raise FileNotFoundError(
+        f"Cascadia background catalog not found: {kde_catalog_path}\n"
+        "Run preparation_scripts/build_initial_prior_cascadia.py first — "
+        "it downloads and caches this catalog."
+    )
 
-start_year  = pd.Timestamp(kde_start).year
-end_year    = pd.Timestamp('today').year
 kde_min_mag = 3.0
 print(f"KDE Min Mag: {kde_min_mag}")
+
+# If using .csv:
+# catalog = pd.read_csv(kde_catalog_path)
+
+construction_params = _kde_construction
+force_rebuild=True
+force_redownload=False
+kde_start = config.KDE_START_DATE
+kde_catalog_path = KDE_CATALOG_PATH
+start_year  = pd.Timestamp(kde_start).year
+end_year    = pd.Timestamp('today').year
 
 catalog = load_background_seismicity(
     cache_path    = kde_catalog_path,
@@ -102,6 +115,7 @@ catalog = load_background_seismicity(
     min_mag       = kde_min_mag,
     force_refresh = force_redownload,
 )
+catalog['time'] = pd.to_datetime(catalog['time'], format='ISO8601', utc=True)
 
 # Filter to strictly before the context cutoff
 cutoff_ts = pd.Timestamp(cutoff_date)
@@ -117,6 +131,13 @@ if len(catalog) == 0:
         f"No events in KDE catalog before {cutoff_ts.date()} "
         f"(context: '{context_name}')."
     )
+
+
+#%%
+
+fig,ax = plt.subplots(figsize=(8,6))
+ax.scatter(catalog['longitude'], catalog['latitude'])
+plt.show()
 
 
 #%%
@@ -259,7 +280,7 @@ print(f"KDE_Seismicity ({context_name}): {len(catalog):,} events → "
 
 
 # Map extent: (lon_min, lon_max, lat_min, lat_max).  None = auto from prior grid.
-EXTENT = (-129, -112, 30, 51)
+EXTENT = config_cascadia.REFERENCE_CATALOG_CONFIG['bounds']
 
 def _plot_prior(prior, label, extent):
     proj     = ccrs.PlateCarree()
@@ -284,6 +305,7 @@ def _plot_prior(prior, label, extent):
         ax.set_title(f'{label}\n{scale}', fontsize=9)
     plt.tight_layout()
     plt.show()
+    fig.savefig(os.path.join(SeismicPrior.data_dir,f'kde_seismicity_{context_name}_map.png'))
 
 
 plot_extent = EXTENT if EXTENT is not None else (
@@ -311,3 +333,4 @@ else:
 
 
 # %%
+

@@ -18,19 +18,27 @@ check to use actual data availability rather than a proxy inventory.
 
 Output
 ------
-data/reference/station_availability_cache.parquet
+data/california/reference/station_availability_cache.parquet  (main benchmark)
+data/case_studies/{name}/station_availability_cache.parquet   (case study)
   Columns: event_id (str), station (str), network (str),
            longitude (float64), latitude (float64)
 
 Usage
 -----
     cd seismic_benchmark
-    python preparation_scripts/build_station_availability.py
+    python preparation_scripts/build_station_availability.py             # main CA benchmark
+    AVAIL_TARGET=MTJ_2024_M7 python preparation_scripts/build_station_availability.py
+
+AVAIL_TARGET selects the catalog: 'california' (default, the main ~700-event
+benchmark) or any key in benchmark.config.CASE_STUDIES (Ridgecrest, Ferndale,
+ElMayor, MTJ_2024_M7). Cascadia is not a case study and has its own catalog
+format — see build_station_availability_cascadia.py for that region.
 
 The script is resumable: events already in the cache are skipped.
 Reduce MAX_WORKERS or increase INTER_EVENT_SLEEP_S if IRIS rate-limits you.
 """
 
+import os
 import time
 import warnings
 from pathlib import Path
@@ -40,24 +48,37 @@ import pandas as pd
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
+from benchmark.config import CASE_STUDIES
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 HERE         = Path(__file__).parent.parent   # seismic_benchmark/
 
-# Main benchmark
-RUN_DIR      = HERE / 'data' / 'run_files'
-CATALOG_PATH = HERE / 'data' / 'reference' / 'bEPIC_testing_catalog.txt'
-OUTPUT_PATH  = HERE / 'data' / 'reference' / 'station_availability_cache.parquet'
+# 'california' (main benchmark) or a key from benchmark.config.CASE_STUDIES
+# (e.g. 'MTJ_2024_M7'). Override with the AVAIL_TARGET env var.
+TARGET = os.environ.get('AVAIL_TARGET', 'california')
+TARGET = "MTJ_2024_M7"
 
-# CASE_STUDY = 'ElMayor'
 
-# RUN_DIR      = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'run_files'
-# #CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2019_catalog.parquet'
-# CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'El_Mayor-Cucapah_2010_catalog.parquet'
-# #CATALOG_PATH     = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / f'{CASE_STUDY}_2022_catalog.parquet'
-# OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
+
+if TARGET == 'california':
+    RUN_DIR      = HERE / 'data' / 'california' / 'run_files'
+    CATALOG_PATH = HERE / 'data' / 'california' / 'reference' / 'bEPIC_testing_catalog.txt'
+    OUTPUT_PATH  = HERE / 'data' / 'california' / 'reference' / 'station_availability_cache.parquet'
+elif TARGET in CASE_STUDIES:
+    # Matches the *_catalog.parquet filename download_case_study_catalog()
+    # writes in benchmark/usgs.py: cs['name'] with spaces replaced by '_'.
+    _catalog_name = CASE_STUDIES[TARGET]['name'].replace(' ', '_')
+    RUN_DIR      = HERE / 'data' / 'case_studies' / TARGET / 'run_files'
+    CATALOG_PATH = HERE / 'data' / 'case_studies' / TARGET / f'{_catalog_name}_catalog.parquet'
+    OUTPUT_PATH  = HERE / 'data' / 'case_studies' / TARGET / 'station_availability_cache.parquet'
+else:
+    raise ValueError(
+        f"Unknown AVAIL_TARGET '{TARGET}'. Use 'california' or one of: "
+        f"{', '.join(CASE_STUDIES)}"
+    )
 
 # ShakeAlert contributing networks (western US)
 # TODO - from benchmark catalog - replace with full list
@@ -209,6 +230,11 @@ def _flush(chunks, existing_df, path):
 # ---------------------------------------------------------------------------
 FLUSH_EVERY = 1
 def main():
+    print(f"Target: {TARGET}")
+    print(f"  run_dir: {RUN_DIR}")
+    print(f"  catalog: {CATALOG_PATH}")
+    print(f"  output:  {OUTPUT_PATH}\n")
+
     client = Client(FDSN_CLIENT)
 
     # Resumability: skip events already in the cache
@@ -221,8 +247,8 @@ def main():
         done_ids = set()
 
     # Get catalogs of events - need station availability per event
-    catalog   = load_reference_catalog(CATALOG_PATH)
-    #catalog = load_case_study_catalog(CATALOG_PATH)
+    catalog = (load_reference_catalog(CATALOG_PATH) if TARGET == 'california'
+               else load_case_study_catalog(CATALOG_PATH))
     run_files = sorted(RUN_DIR.glob('*.run'))
     pending   = [f.stem for f in run_files if f.stem not in done_ids]
     print(f"{len(pending)} events to process ({len(run_files)} total).\n")

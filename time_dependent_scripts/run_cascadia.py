@@ -420,180 +420,180 @@ fig = plot_qq_prior_comparison(
 )
 plt.show()
 
-#%%
-# ---------------------------------------------------------------------------
-# Standalone single-event prior/posterior test
-# ---------------------------------------------------------------------------
-# Builds a fresh ETAS prior for MTJ_EVENT_ID from scratch — no dependency on
-# the run_all loop or any saved .tt3 file.  Useful for interactive testing.
-#
-# Prior catalog:
-#   - hist_catalog (2000–2018) — always fully included via from_inversion_json
-#   - bEPIC testing catalog events preceding MTJ_EVENT_ID within
-#     TIME_PRIOR_BUFFER_DAYS (USGS reference locations, not bEPIC estimates)
-#     Set TIME_PRIOR_BUFFER_DAYS = None to include all pre-event entries.
+# #%%
+# # ---------------------------------------------------------------------------
+# # Standalone single-event prior/posterior test
+# # ---------------------------------------------------------------------------
+# # Builds a fresh ETAS prior for MTJ_EVENT_ID from scratch — no dependency on
+# # the run_all loop or any saved .tt3 file.  Useful for interactive testing.
+# #
+# # Prior catalog:
+# #   - hist_catalog (2000–2018) — always fully included via from_inversion_json
+# #   - bEPIC testing catalog events preceding MTJ_EVENT_ID within
+# #     TIME_PRIOR_BUFFER_DAYS (USGS reference locations, not bEPIC estimates)
+# #     Set TIME_PRIOR_BUFFER_DAYS = None to include all pre-event entries.
 
-MTJ_VERSION            = None    # None = last available trigger version
-TIME_PRIOR_BUFFER_DAYS = 1     # lookback window for bEPIC catalog events
+# MTJ_VERSION            = None    # None = last available trigger version
+# TIME_PRIOR_BUFFER_DAYS = 1     # lookback window for bEPIC catalog events
 
-_focus_run_path = os.path.join(RUN_DIR, f'{MTJ_EVENT_ID}.run')
+# _focus_run_path = os.path.join(RUN_DIR, f'{MTJ_EVENT_ID}.run')
 
-if not os.path.exists(_focus_run_path):
-    print(f'[standalone] .run file not found: {_focus_run_path}')
-elif not os.path.exists(INVERSION_JSON):
-    print(f'[standalone] inversion JSON not found: {INVERSION_JSON}')
-else:
-    # -- Get focus event time and reference location from USGS lookup ------
-    if MTJ_EVENT_ID not in _usgs_ref_lookup.index:
-        print(f'[standalone] event {MTJ_EVENT_ID} not found in reference catalog.')
-    else:
-        # Get the event time
-        _focus_t = pd.Timestamp(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'time'])
+# if not os.path.exists(_focus_run_path):
+#     print(f'[standalone] .run file not found: {_focus_run_path}')
+# elif not os.path.exists(INVERSION_JSON):
+#     print(f'[standalone] inversion JSON not found: {INVERSION_JSON}')
+# else:
+#     # -- Get focus event time and reference location from USGS lookup ------
+#     if MTJ_EVENT_ID not in _usgs_ref_lookup.index:
+#         print(f'[standalone] event {MTJ_EVENT_ID} not found in reference catalog.')
+#     else:
+#         # Get the event time
+#         _focus_t = pd.Timestamp(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'time'])
 
-        # Get USGS lat/lon
-        _ref_lat = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'latitude'])
-        _ref_lon = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'longitude'])
-        print(f'[standalone] focus event {MTJ_EVENT_ID}  t = {_focus_t}')
+#         # Get USGS lat/lon
+#         _ref_lat = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'latitude'])
+#         _ref_lon = float(_usgs_ref_lookup.loc[MTJ_EVENT_ID, 'longitude'])
+#         print(f'[standalone] focus event {MTJ_EVENT_ID}  t = {_focus_t}')
 
-        # -- Load historical catalog and build a fresh updater ---------------
-        # Reuse hist_catalog if available (set in the main loop block above);
-        # fall back to re-reading from disk when running the standalone section alone.
-        try:
-            _hist = hist_catalog
-        except NameError:
-            _hist = pd.read_csv(HISTORICAL_CATALOG, index_col=0, dtype={'url': str, 'alert': str})
-            _hist['time'] = pd.to_datetime(_hist['time'], format='ISO8601', utc=True).dt.tz_convert(None)
+#         # -- Load historical catalog and build a fresh updater ---------------
+#         # Reuse hist_catalog if available (set in the main loop block above);
+#         # fall back to re-reading from disk when running the standalone section alone.
+#         try:
+#             _hist = hist_catalog
+#         except NameError:
+#             _hist = pd.read_csv(HISTORICAL_CATALOG, index_col=0, dtype={'url': str, 'alert': str})
+#             _hist['time'] = pd.to_datetime(_hist['time'], format='ISO8601', utc=True).dt.tz_convert(None)
 
-        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
-        _updater = EtasPriorUpdater.from_inversion_json(
-            json_path  = INVERSION_JSON,
-            catalog_df = _hist,
-            **config.ETAS_UPDATER_CONFIG,
-        )
+#         benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
+#         _updater = EtasPriorUpdater.from_inversion_json(
+#             json_path  = INVERSION_JSON,
+#             catalog_df = _hist,
+#             **config.ETAS_UPDATER_CONFIG,
+#         )
 
-        # -- Append bEPIC catalog events preceding the focus event -----------
-        _window_start = (
-            _focus_t - pd.Timedelta(days=TIME_PRIOR_BUFFER_DAYS)
-            if TIME_PRIOR_BUFFER_DAYS is not None else pd.Timestamp.min
-        )
-        _mask = (
-            (_usgs_ref_lookup['time'] < _focus_t) &
-            (_usgs_ref_lookup['time'] >= _window_start) &
-            (_usgs_ref_lookup.index != MTJ_EVENT_ID)
-        )
-        _pre = _usgs_ref_lookup.loc[_mask, ['time', 'latitude', 'longitude', 'magnitude']]
-        if not _pre.empty:
-            _updater.append_events(_pre)
-            print(f'[standalone] appended {len(_pre)} pre-event bEPIC catalog events.')
+#         # -- Append bEPIC catalog events preceding the focus event -----------
+#         _window_start = (
+#             _focus_t - pd.Timedelta(days=TIME_PRIOR_BUFFER_DAYS)
+#             if TIME_PRIOR_BUFFER_DAYS is not None else pd.Timestamp.min
+#         )
+#         _mask = (
+#             (_usgs_ref_lookup['time'] < _focus_t) &
+#             (_usgs_ref_lookup['time'] >= _window_start) &
+#             (_usgs_ref_lookup.index != MTJ_EVENT_ID)
+#         )
+#         _pre = _usgs_ref_lookup.loc[_mask, ['time', 'latitude', 'longitude', 'magnitude']]
+#         if not _pre.empty:
+#             _updater.append_events(_pre)
+#             print(f'[standalone] appended {len(_pre)} pre-event bEPIC catalog events.')
 
-        # -- Compute ETAS conditional intensity prior at focus event time ----
-        _standalone_prior = _updater.update(_focus_t)
-        if PRIOR_ALPHA != 1.0:
-            _standalone_prior.grid  = _standalone_prior.grid ** PRIOR_ALPHA
-            _standalone_prior.grid /= _standalone_prior.grid.sum()
-        print(f'[standalone] prior computed  (catalog size: {_updater.n_catalog_events}, '
-              f'alpha={PRIOR_ALPHA})')
+#         # -- Compute ETAS conditional intensity prior at focus event time ----
+#         _standalone_prior = _updater.update(_focus_t)
+#         if PRIOR_ALPHA != 1.0:
+#             _standalone_prior.grid  = _standalone_prior.grid ** PRIOR_ALPHA
+#             _standalone_prior.grid /= _standalone_prior.grid.sum()
+#         print(f'[standalone] prior computed  (catalog size: {_updater.n_catalog_events}, '
+#               f'alpha={PRIOR_ALPHA})')
 
-        _standalone_prior_path = os.path.join(OUTPUT_DIR, f'standalone_prior_{MTJ_EVENT_ID}.tt3')
-        _standalone_prior.to_tt3(_standalone_prior_path)
+#         _standalone_prior_path = os.path.join(OUTPUT_DIR, f'standalone_prior_{MTJ_EVENT_ID}.tt3')
+#         _standalone_prior.to_tt3(_standalone_prior_path)
 
-        # -- Run bEPIC on just this event ------------------------------------
-        _params = make_epic_params(_standalone_prior, True, config.BENCHMARK_PARAMS)
+#         # -- Run bEPIC on just this event ------------------------------------
+#         _params = make_epic_params(_standalone_prior, True, config.BENCHMARK_PARAMS)
 
-        _single_runner = BenchmarkRunner(
-            prior                = _standalone_prior,
-            params               = _params,
-            run_dir              = RUN_DIR,
-            station_availability = station_availability,
-        )
-        _single_runner.run_event(str(MTJ_EVENT_ID))
-        print(f'[standalone] bEPIC location complete.')
+#         _single_runner = BenchmarkRunner(
+#             prior                = _standalone_prior,
+#             params               = _params,
+#             run_dir              = RUN_DIR,
+#             station_availability = station_availability,
+#         )
+#         _single_runner.run_event(str(MTJ_EVENT_ID))
+#         print(f'[standalone] bEPIC location complete.')
 
-        # -- Write standalone results CSV to a per-event dir so the full-loop
-        #    etas_dynamic_benchmark_results.csv in OUTPUT_DIR is not overwritten.
-        _standalone_out_dir = os.path.join(OUTPUT_DIR, f'standalone_{MTJ_EVENT_ID}')
-        os.makedirs(_standalone_out_dir, exist_ok=True)
-        _standalone_rows = [
-            {
-                'event_id':      eid,
-                'version':       ver,
-                'posterior_lat': t.posterior_lat,
-                'posterior_lon': t.posterior_lon,
-                'best_misfit':   t.best_misfit,
-                'best_like':     t.best_like,
-                'best_prior':    t.best_prior,
-                'frac_misfit':   t.frac_misfit,
-            }
-            for (eid, ver), t in _single_runner.results.items()
-        ]
-        _standalone_csv = os.path.join(_standalone_out_dir, 'etas_dynamic_benchmark_results.csv')
-        (pd.DataFrame(_standalone_rows)
-           .sort_values(['event_id', 'version'])
-           .to_csv(_standalone_csv, index=False))
-        print(f'[standalone] results written → {_standalone_csv}')
+#         # -- Write standalone results CSV to a per-event dir so the full-loop
+#         #    etas_dynamic_benchmark_results.csv in OUTPUT_DIR is not overwritten.
+#         _standalone_out_dir = os.path.join(OUTPUT_DIR, f'standalone_{MTJ_EVENT_ID}')
+#         os.makedirs(_standalone_out_dir, exist_ok=True)
+#         _standalone_rows = [
+#             {
+#                 'event_id':      eid,
+#                 'version':       ver,
+#                 'posterior_lat': t.posterior_lat,
+#                 'posterior_lon': t.posterior_lon,
+#                 'best_misfit':   t.best_misfit,
+#                 'best_like':     t.best_like,
+#                 'best_prior':    t.best_prior,
+#                 'frac_misfit':   t.frac_misfit,
+#             }
+#             for (eid, ver), t in _single_runner.results.items()
+#         ]
+#         _standalone_csv = os.path.join(_standalone_out_dir, 'etas_dynamic_benchmark_results.csv')
+#         (pd.DataFrame(_standalone_rows)
+#            .sort_values(['event_id', 'version'])
+#            .to_csv(_standalone_csv, index=False))
+#         print(f'[standalone] results written → {_standalone_csv}')
 
-        # -- Grid + coverage (single bEPIC run, reused for both) ---------------
-        from benchmark.runner import run_single_event_get_grid
-        _params_kw = {
-            'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-            'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-            'max_trigs':                 MAX_TRIGS,
-            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-            'station_availability': station_availability,
-            'dtt_weight': DTT_WEIGHT,
-            'edt_sigma_s': EDT_SIGMA_S,
-            'sigma_s': SIGMA_S,
-        }
+#         # -- Grid + coverage (single bEPIC run, reused for both) ---------------
+#         from benchmark.runner import run_single_event_get_grid
+#         _params_kw = {
+#             'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
+#             'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
+#             'max_trigs':                 MAX_TRIGS,
+#             'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
+#             'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
+#             'station_availability': station_availability,
+#             'dtt_weight': DTT_WEIGHT,
+#             'edt_sigma_s': EDT_SIGMA_S,
+#             'sigma_s': SIGMA_S,
+#         }
 
-        # Get the posterior (_t_cov), out_df (_odf_cov), and version (# triggers) (_actual_v)
-        _t_cov, _odf_cov, _actual_v = run_single_event_get_grid(
-            _focus_run_path, _standalone_prior, True, _params_kw,
-            focus_version=MTJ_VERSION,
-        )
+#         # Get the posterior (_t_cov), out_df (_odf_cov), and version (# triggers) (_actual_v)
+#         _t_cov, _odf_cov, _actual_v = run_single_event_get_grid(
+#             _focus_run_path, _standalone_prior, True, _params_kw,
+#             focus_version=MTJ_VERSION,
+#         )
 
-        _standalone_cache = {'ETAS_dynamic': _standalone_prior_path}
-        _precomputed = {
-            'ETAS_dynamic': (_t_cov, _odf_cov, _actual_v,
-                             _standalone_prior, _standalone_prior_path),
-        }
-        _buffer_label = f'{TIME_PRIOR_BUFFER_DAYS}d lookback' if TIME_PRIOR_BUFFER_DAYS else 'full history'
-        deg_buf = 0.5
-        # extent = [-125, -124,40,40.6]
-        extent = [_ref_lon - deg_buf, _ref_lon + deg_buf, _ref_lat - deg_buf, _ref_lat + deg_buf]
-        # -- Posterior grid (prior background + posterior contours) ----------
-        fig = plot_posterior_grid(
-            focus_run_path = _focus_run_path,
-            cache_paths    = _standalone_cache,
-            prior_order    = ['ETAS_dynamic'],
-            params_kw      = _params_kw,
-            prior_results  = _precomputed,
-            ref_lat        = _ref_lat,
-            ref_lon        = _ref_lon,
-            extent         = extent,
-            focus_version  = MTJ_VERSION,
-            title          = f'ETAS prior/posterior — event {MTJ_EVENT_ID} ({_buffer_label})',
-            save_path      = os.path.join(FIGURES_DIR, f'standalone_posterior_{MTJ_EVENT_ID}.png'),
-        )
-        plt.show()
+#         _standalone_cache = {'ETAS_dynamic': _standalone_prior_path}
+#         _precomputed = {
+#             'ETAS_dynamic': (_t_cov, _odf_cov, _actual_v,
+#                              _standalone_prior, _standalone_prior_path),
+#         }
+#         _buffer_label = f'{TIME_PRIOR_BUFFER_DAYS}d lookback' if TIME_PRIOR_BUFFER_DAYS else 'full history'
+#         deg_buf = 0.5
+#         # extent = [-125, -124,40,40.6]
+#         extent = [_ref_lon - deg_buf, _ref_lon + deg_buf, _ref_lat - deg_buf, _ref_lat + deg_buf]
+#         # -- Posterior grid (prior background + posterior contours) ----------
+#         fig = plot_posterior_grid(
+#             focus_run_path = _focus_run_path,
+#             cache_paths    = _standalone_cache,
+#             prior_order    = ['ETAS_dynamic'],
+#             params_kw      = _params_kw,
+#             prior_results  = _precomputed,
+#             ref_lat        = _ref_lat,
+#             ref_lon        = _ref_lon,
+#             extent         = extent,
+#             focus_version  = MTJ_VERSION,
+#             title          = f'ETAS prior/posterior — event {MTJ_EVENT_ID} ({_buffer_label})',
+#             save_path      = os.path.join(FIGURES_DIR, f'standalone_posterior_{MTJ_EVENT_ID}.png'),
+#         )
+#         plt.show()
 
-        # -- Location trajectory ---------------------------------------------
-        fig = plot_location_trajectory(
-            event_id     = MTJ_EVENT_ID,
-            output_dir   = _standalone_out_dir,
-            prior_order  = ['ETAS_dynamic'],
-            run_dir      = RUN_DIR,
-            min_triggers = 4,
-            ref_lat      = _ref_lat,
-            ref_lon      = _ref_lon,
-            cache_paths  = _standalone_cache,
-            extent_pad_deg = 0.1,
-            title        = f'bEPIC location trajectory — event {MTJ_EVENT_ID} ({_buffer_label})',
-            save_path    = os.path.join(FIGURES_DIR, f'standalone_trajectory_{MTJ_EVENT_ID}.png'),
-        )
-        plt.show()
+#         # -- Location trajectory ---------------------------------------------
+#         fig = plot_location_trajectory(
+#             event_id     = MTJ_EVENT_ID,
+#             output_dir   = _standalone_out_dir,
+#             prior_order  = ['ETAS_dynamic'],
+#             run_dir      = RUN_DIR,
+#             min_triggers = 4,
+#             ref_lat      = _ref_lat,
+#             ref_lon      = _ref_lon,
+#             cache_paths  = _standalone_cache,
+#             extent_pad_deg = 0.1,
+#             title        = f'bEPIC location trajectory — event {MTJ_EVENT_ID} ({_buffer_label})',
+#             save_path    = os.path.join(FIGURES_DIR, f'standalone_trajectory_{MTJ_EVENT_ID}.png'),
+#         )
+#         plt.show()
 
-#%%
+# #%%
 
 # ######################################
 # # Compute posterior statistics

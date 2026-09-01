@@ -46,7 +46,7 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = None #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+ACTIVE_CASE_STUDY = "MTJ_2024_M7" #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -58,40 +58,94 @@ CASE_STUDIES = {
 # ---------------------------------------------------------------------------
 # Resolve output paths based on mode
 # ---------------------------------------------------------------------------
-MAX_TRIGS   = config.BENCHMARK_PARAMS['max_trigs']
-EDT_SIGMA_S = config.BENCHMARK_PARAMS['edt_sigma_s']
-SIGMA_S     = config.BENCHMARK_PARAMS['sigma_s']
-SIGMA_S     = 0.35
-EDT_TAG     = f'edt_{EDT_SIGMA_S}'
-S_TAG       = f'sig_{SIGMA_S}'
+# The time_independent_scripts/{run_benchmarks,case_studies}.py and
+# time_dependent_scripts/{run_benchmarks,case_studies}.py producers do NOT
+# share one VARY_SIG/sigma_s convention — each has its own default, so the
+# static and dynamic output dirs must be resolved independently rather than
+# through one shared _PARAM_TAG (that was the bug: this script previously
+# always assumed a sig_{SIGMA_S} subfolder using a value, 0.22, that doesn't
+# match any producer's actual default, and it never matched the "neither
+# VARY_EDT nor VARY_SIG set" case those scripts fall back to untagged).
+#
+#   time_independent (static)  — sigma_s = config.BENCHMARK_PARAMS['sigma_s']
+#                                 (0.35 by default); VARY_SIG defaults to '1'
+#                                 (True), so it's tagged sig_0.35 by default.
+#   time_dependent   (dynamic) — case studies override sigma_s via the
+#                                 BENCHMARK_SIGMA_S env var (default 0.22);
+#                                 the main benchmark uses the plain config
+#                                 default. VARY_SIG defaults to '0' (False)
+#                                 in both, so by default there is NO sig_*/
+#                                 edt_* subfolder at all — just max_trigs_{N}.
+#
+# Set VARY_EDT/VARY_SIG the same way you did for whichever run_benchmarks.py
+# / case_studies.py you're comparing, so the tag this script looks for
+# matches the tag that run actually wrote.
+MAX_TRIGS       = config.BENCHMARK_PARAMS['max_trigs']
+EDT_SIGMA_S     = config.BENCHMARK_PARAMS['edt_sigma_s']
 
-# Matches the VARY_EDT/VARY_SIG convention used by case_studies.py and
-# run_benchmarks.py — set the env vars before running this script (or edit
-# the defaults below) to pick which sweep dimension's output directory to load.
-_VARY_EDT = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG = os.environ.get('VARY_SIG', '0') == '1'
+# WARNING — this whole SIGMA_S/VARY_SIG mirroring scheme is fragile: it has
+# drifted out of sync with the producer scripts twice already (this file
+# previously hardcoded 0.22 for both static+dynamic; the producers have
+# since been hand-edited to hardcode SIGMA_S = 0.35, and
+# time_dependent_scripts/case_studies.py's VARY_SIG default changed from
+# '0' to '1'). If results silently look stale/wrong again, first check
+# each producer script's current SIGMA_S/VARY_SIG default against what's
+# hardcoded below, and check the mtime of the CSV being read against the
+# mtime of whatever bEPIC/runner code you last changed — a plot script can
+# only ever be as fresh as the last time the underlying benchmark was rerun.
+#
+#   time_independent_scripts/{run_benchmarks,case_studies}.py — SIGMA_S
+#     hardcoded to 0.35; VARY_SIG defaults to '1' (tagged sig_0.35).
+#   time_dependent_scripts/case_studies.py (case study)       — SIGMA_S
+#     hardcoded to 0.35; VARY_SIG defaults to '1' (tagged sig_0.35).
+#   time_dependent_scripts/run_benchmarks.py (main benchmark) — SIGMA_S is
+#     the plain config default (0.35); VARY_SIG defaults to '0' (untagged —
+#     just max_trigs_{N}, no sig_*/edt_* subfolder).
+STATIC_SIGMA_S  = 0.35
+DYNAMIC_SIGMA_S = 0.35 if ACTIVE_CASE_STUDY is not None else config.BENCHMARK_PARAMS['sigma_s']
 
-if _VARY_EDT and _VARY_SIG:
+EDT_TAG         = f'edt_{EDT_SIGMA_S}'
+STATIC_S_TAG    = f'sig_{STATIC_SIGMA_S}'
+DYNAMIC_S_TAG   = f'sig_{DYNAMIC_SIGMA_S}'
+
+_VARY_EDT         = os.environ.get('VARY_EDT', '0') == '1'
+_VARY_SIG_STATIC  = os.environ.get('VARY_SIG', '1') == '1'  # matches time_independent_scripts default
+_VARY_SIG_DYNAMIC = (os.environ.get('VARY_SIG', '1') == '1' if ACTIVE_CASE_STUDY is not None
+                      else os.environ.get('VARY_SIG', '0') == '1')  # case study vs. main-benchmark default differ
+
+if _VARY_EDT and (_VARY_SIG_STATIC or _VARY_SIG_DYNAMIC):
     raise Exception("Cannot vary both EDT and Sigma at the same time")
-_PARAM_TAG = EDT_TAG if _VARY_EDT else S_TAG
+
+# None = no tag subfolder (the "neither" branch each producer falls back to).
+_STATIC_PARAM_TAG  = EDT_TAG if _VARY_EDT else (STATIC_S_TAG  if _VARY_SIG_STATIC  else None)
+_DYNAMIC_PARAM_TAG = EDT_TAG if _VARY_EDT else (DYNAMIC_S_TAG if _VARY_SIG_DYNAMIC else None)
+_STATIC_PARTS  = [p for p in (_STATIC_PARAM_TAG,)  if p is not None]
+_DYNAMIC_PARTS = [p for p in (_DYNAMIC_PARAM_TAG,) if p is not None]
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
-                                       'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+                                       'time_independent', *_STATIC_PARTS, f'max_trigs_{MAX_TRIGS}')
     # Base dir only — run_benchmarks.py appends config.etas_run_tag() as an
     # extra subfolder beneath max_trigs_{N} per ETAS config (see ETAS_RUNS below).
+    # NOTE: time_dependent_scripts/run_benchmarks.py's untagged ("neither")
+    # branch also appends a `_spatialfactor_{K}` suffix to max_trigs_{N} that
+    # isn't reproduced here — if you're comparing against a main-benchmark
+    # dynamic run with VARY_EDT/VARY_SIG both unset, check that run's
+    # OUTPUT_DIR and adjust f'max_trigs_{MAX_TRIGS}' below to match.
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
-                                       'time_dependent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'etas_comparison', _PARAM_TAG)
+                                       'time_dependent', *_DYNAMIC_PARTS, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures',
+                                       'etas_comparison', _STATIC_PARAM_TAG or 'default')
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
                                       ACTIVE_CASE_STUDY)
-    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent',
+                                      *_STATIC_PARTS, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
-                                      _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'etas_comparison', _PARAM_TAG)
+                                      *_DYNAMIC_PARTS, f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'etas_comparison', _STATIC_PARAM_TAG or 'default')
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -112,48 +166,48 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 # ORIGINAL — bw_sq sweep at fixed spatial_factor. Commented out to instead
 # compare the spatial_factor sweep below; uncomment to restore.
-# ETAS_RUNS = [
-#     # 1st
-#     dict(config.ETAS_INVERSION_CONFIG,
-#          free_background=True,
-#          free_productivity=False,
-#          mc=3.0,
-#          m_ref=3.0,
-#          bw_sq=1),
-#     # 2n
-#     dict(config.ETAS_INVERSION_CONFIG,
-#          free_background=True,
-#          free_productivity=False,
-#          mc=3.0,
-#          m_ref=3.0,
-#          bw_sq=4),
-#     # 3rd
-#     dict(config.ETAS_INVERSION_CONFIG,
-#          free_background=True,
-#          free_productivity=False,
-#          mc=3.0,
-#          m_ref=3.0,
-#          bw_sq=16),
-#     # 4th
-#     dict(config.ETAS_INVERSION_CONFIG,
-#          free_background=True,
-#          free_productivity=False,
-#          mc=3.0,
-#          m_ref=3.0,
-#          bw_sq=32),
-# ]
+ETAS_RUNS = [
+    # 1st
+    dict(config.ETAS_INVERSION_CONFIG,
+         free_background=True,
+         free_productivity=False,
+         mc=3.0,
+         m_ref=3.0,
+         bw_sq=4),
+    # # 2n
+    # dict(config.ETAS_INVERSION_CONFIG,
+    #      free_background=True,
+    #      free_productivity=False,
+    #      mc=3.0,
+    #      m_ref=3.0,
+    #      bw_sq=4),
+    # # 3rd
+    # dict(config.ETAS_INVERSION_CONFIG,
+    #      free_background=True,
+    #      free_productivity=False,
+    #      mc=3.0,
+    #      m_ref=3.0,
+    #      bw_sq=16),
+    # # 4th
+    # dict(config.ETAS_INVERSION_CONFIG,
+    #      free_background=True,
+    #      free_productivity=False,
+    #      mc=3.0,
+    #      m_ref=3.0,
+    #      bw_sq=32),
+]
 
 # NEW — spatial_factor sweep (2, 4, 8) at fixed bw_sq=4. Results live under
 # results/output/time_dependent/max_trigs_{N}_spatialfactor_{K}/ rather than
 # OUTPUT_DIR_DYNAMIC (spatial_factor isn't part of etas_run_tag()), so paths
 # are built directly below instead of going through ETAS_RUNS.
-SPATIAL_FACTORS = [2, 4, 8]
-_SPATIAL_RUN_CFG = dict(config.ETAS_INVERSION_CONFIG,
-                         free_background=True,
-                         free_productivity=False,
-                         mc=3.0,
-                         m_ref=3.0,
-                         bw_sq=4)
+# SPATIAL_FACTORS = [2, 4, 8]
+# _SPATIAL_RUN_CFG = dict(config.ETAS_INVERSION_CONFIG,
+#                          free_background=True,
+#                          free_productivity=False,
+#                          mc=3.0,
+#                          m_ref=3.0,
+#                          bw_sq=4)
 
 # ---------------------------------------------------------------------------
 # Prior specs: two ETAS-agnostic baselines + four ETAS inversion configs
@@ -171,36 +225,36 @@ PRIOR_SPECS = [
      'group': 'static'}
     for name in ('KDE_Seismicity', 'Uniform')
 ] + [
-    # ORIGINAL — one entry per ETAS_RUNS config, under OUTPUT_DIR_DYNAMIC.
-    # Commented out alongside ETAS_RUNS above; uncomment both to restore.
-    # {'name':  f'ETAS ({config.etas_run_label(run_cfg)})',
-    #  'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run_cfg),
-    #                         'etas_dynamic_benchmark_results.csv'),
-    #  'ls':    '-',
-    #  'lw':    2.5,
-    #  'group': 'static'}
-    # for run_cfg in ETAS_RUNS
-] + [
-    # NEW — no-spatial-factor baseline, bw_sq=4, under OUTPUT_DIR_DYNAMIC
-    # (sig_0.35/max_trigs_10) rather than a max_trigs_{N}_spatialfactor_{K} dir.
-    {'name':  'ETAS (no spatial factor)',
-     'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(_SPATIAL_RUN_CFG),
+    #ORIGINAL — one entry per ETAS_RUNS config, under OUTPUT_DIR_DYNAMIC.
+    #Commented out alongside ETAS_RUNS above; uncomment both to restore.
+    {'name':  f'ETAS ({config.etas_run_label(run_cfg)})',
+     'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run_cfg),
                             'etas_dynamic_benchmark_results.csv'),
      'ls':    '-',
      'lw':    2.5,
      'group': 'static'}
-] + [
-    # NEW — spatial_factor sweep (2, 4, 8), bw_sq=4 fixed.
-    {'name':  f'ETAS (spatial_factor={sf})',
-     'csv':   os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_dependent',
-                            f'max_trigs_{MAX_TRIGS}_spatialfactor_{sf}',
-                            config.etas_run_tag(_SPATIAL_RUN_CFG),
-                            'etas_dynamic_benchmark_results.csv'),
-     'ls':    '-',
-     'lw':    2.5,
-     'group': 'static'}
-    for sf in SPATIAL_FACTORS
-]
+    for run_cfg in ETAS_RUNS
+] #+ [
+#     # NEW — no-spatial-factor baseline, bw_sq=4, under OUTPUT_DIR_DYNAMIC
+#     # (sig_0.35/max_trigs_10) rather than a max_trigs_{N}_spatialfactor_{K} dir.
+#     {'name':  'ETAS (no spatial factor)',
+#      'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(_SPATIAL_RUN_CFG),
+#                             'etas_dynamic_benchmark_results.csv'),
+#      'ls':    '-',
+#      'lw':    2.5,
+#      'group': 'static'}
+# ] + [
+#     # NEW — spatial_factor sweep (2, 4, 8), bw_sq=4 fixed.
+#     {'name':  f'ETAS (spatial_factor={sf})',
+#      'csv':   os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_dependent',
+#                             f'max_trigs_{MAX_TRIGS}_spatialfactor_{sf}',
+#                             config.etas_run_tag(_SPATIAL_RUN_CFG),
+#                             'etas_dynamic_benchmark_results.csv'),
+#      'ls':    '-',
+#      'lw':    2.5,
+#      'group': 'static'}
+#     for sf in SPATIAL_FACTORS
+# ]
 
 # Choose location type - Expectatoin ('exp') or Maximum posterior ('map')
 location_type = 'map' # exp, map, like, or like_exp
@@ -465,11 +519,10 @@ axes = [ax1, ax2, ax3, ax4, ax5, ax6]
 spec_ref = _spec_by_name[REFERENCE_PRIOR]
 ref_stats = load_final_values(spec_ref['csv'], column_err, n_trigs = trigger_number)
 
-for i,ax in enumerate(axes):
-    spec = PRIOR_SPECS[i]
-
-
-
+# zip (not enumerate + PRIOR_SPECS[i]) so this doesn't IndexError when fewer
+# than 6 PRIOR_SPECS are active (e.g. most of ETAS_RUNS commented out) —
+# unused axes are hidden below rather than assumed to exist 1:1 with axes.
+for ax, spec in zip(axes, PRIOR_SPECS):
     # Get stats
     stats = load_final_values(spec['csv'], column_err, n_trigs=trigger_number)
     # Plot ref
@@ -495,12 +548,17 @@ for i,ax in enumerate(axes):
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
 
     # Label the ref in one plot only
-    if i == 0:
+    if ax is axes[0]:
         ax.legend()
 
+# Hide any axes beyond len(PRIOR_SPECS) — the 2x3 layout is fixed regardless
+# of how many ETAS_RUNS entries are active.
+for ax in axes[len(PRIOR_SPECS):]:
+    ax.set_visible(False)
+
 # Enforce consistent y-axis across all panels
-y_max = max(ax.get_ylim()[1] for ax in axes)
-for ax in axes:
+y_max = max(ax.get_ylim()[1] for ax in axes[:len(PRIOR_SPECS)])
+for ax in axes[:len(PRIOR_SPECS)]:
     ax.set_ylim(0, y_max)
 
 for ax in [ax1,ax2,ax3]:
@@ -597,76 +655,17 @@ else:
     # Set to [lon_min, lon_max, lat_min, lat_max] to zoom into a sub-region
     # instead of the auto-computed extent above; applied identically to every
     # panel. None keeps the auto-computed extent.
-    CUSTOM_EXTENT = [-127.5, -116, 30, 42]
+    CUSTOM_EXTENT = [-126.5, -122, 37, 42]
     if CUSTOM_EXTENT is not None:
         extent = CUSTOM_EXTENT
 
-    # Pre-load .tt3 priors for background shading.
-    # Skips ETAS (dynamic) and Uniform — neither has a .tt3 in PRIOR_FILENAMES.
-    # KDE_Seismicity uses a context-specific filename resolved here.
-    # COMMENTED OUT — background seismicity shading removed from Figure 9 per request.
-    # _context = ACTIVE_CASE_STUDY if ACTIVE_CASE_STUDY is not None else 'benchmark'
-    # _kde_override = {'KDE_Seismicity': f'kde_seismicity_{_context}.tt3'}
-    #
-    # prior_grids = {}
-    # for spec in map_specs:
-    #     fn = _kde_override.get(spec['name']) or config.PRIOR_FILENAMES.get(spec['name'])
-    #     if fn is None:
-    #         continue
-    #     path = os.path.join(SeismicPrior.data_dir, fn)
-    #     if not os.path.exists(path):
-    #         continue
-    #     prior_grids[spec['name']] = SeismicPrior.from_tt3(path)
     prior_grids = {}
 
-    # Pre-aggregate triggered and active station positions across all events shown.
-    # Triggered = first version per event that reached exactly trigger_number stations.
-    # Active (untriggered) = availability-cache stations not in the triggered set.
-    # COMMENTED OUT — seismic station markers removed from Figure 9 per request.
-    # _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
-    #              if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'run_files'))
-    # _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
-    #                               'station_availability_cache.parquet')
-    #                 if ACTIVE_CASE_STUDY else
-    #                 os.path.join(PROJECT_ROOT, 'data', 'reference',
-    #                              'station_availability_cache.parquet'))
-    # _avail_df9 = pd.read_parquet(_avail_path9) if os.path.exists(_avail_path9) else None
-    #
-    # _all_eids9 = set().union(*[set(sub9['event_id'].astype(str)) for _, sub9 in map_data.values()])
-    #
-    # _trig_frames9 = []
-    # for _eid9 in sorted(_all_eids9):
-    #     _rp9 = os.path.join(_run_dir9, f'{_eid9}.run')
-    #     if not os.path.exists(_rp9):
-    #         continue
-    #     _rdf9 = pd.read_csv(_rp9)
-    #     _rdf9.columns = [c.replace(' ', '_') for c in _rdf9.columns]
-    #     _vcounts9 = _rdf9.groupby('version').size()
-    #     _tgt9 = _vcounts9[_vcounts9 == trigger_number].index
-    #     if len(_tgt9) == 0:
-    #         continue
-    #     _trig_frames9.append(
-    #         _rdf9[_rdf9['version'] == _tgt9[0]][['station', 'network', 'longitude', 'latitude']]
-    #     )
-    # _trig_stas9 = (pd.concat(_trig_frames9).drop_duplicates(subset=['station', 'network'])
-    #                if _trig_frames9 else
-    #                pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude']))
-    #
-    # if _avail_df9 is not None:
-    #     _av9 = (_avail_df9[_avail_df9['event_id'].astype(str).isin(_all_eids9)]
-    #             [['station', 'network', 'longitude', 'latitude']]
-    #             .drop_duplicates(subset=['station', 'network']))
-    #     _untrig_stas9 = _av9.merge(
-    #         _trig_stas9[['station', 'network']], on=['station', 'network'],
-    #         how='left', indicator=True
-    #     ).query('_merge == "left_only"').drop(columns='_merge')
-    # else:
-    #     _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
     _trig_stas9   = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
     _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
 
     proj = ccrs.PlateCarree()
-    fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
+    fig_map, axes_map = plt.subplots(1, 3, figsize=(15, 10), dpi=150,
                                      subplot_kw={'projection': proj})
     axes_map_flat = axes_map.flatten()
 
@@ -677,25 +676,6 @@ else:
         ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
         ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
-
-        # COMMENTED OUT — background seismicity (prior density) shading removed
-        # from Figure 9 per request.
-        # if name in prior_grids:
-        #     p    = prior_grids[name]
-        #     buf2 = 0.5
-        #     lon_mask = (p.lons >= extent[0] - buf2) & (p.lons <= extent[1] + buf2)
-        #     lat_mask = (p.lats >= extent[2] - buf2) & (p.lats <= extent[3] + buf2)
-        #     if lon_mask.any() and lat_mask.any():
-        #         sub_grid   = p.grid[np.ix_(lat_mask, lon_mask)].astype(float)
-        #         sub_lons2d, sub_lats2d = np.meshgrid(p.lons[lon_mask], p.lats[lat_mask])
-        #         pos = sub_grid[sub_grid > 0]
-        #         if len(pos) > 0:
-        #             vmin = float(np.percentile(pos, 5))
-        #             vmax = float(np.percentile(pos, 99))
-        #             if 0 < vmin < vmax and np.isfinite(vmin) and np.isfinite(vmax):
-        #                 ax.pcolormesh(sub_lons2d, sub_lats2d, sub_grid, transform=proj,
-        #                               cmap='YlOrBr', shading='auto', alpha=0.35,
-        #                               norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
 
         if ref_catalog is not None and not sub.empty:
             sub['event_id'] = sub['event_id'].astype(str)
@@ -718,18 +698,6 @@ else:
                               color=BIN_COLORS[_bi], alpha=0.5, width=0.005,
                               headwidth=6, headlength=6, headaxislength=5.5,
                               transform=proj, zorder=4)
-
-        # Seismometers: triggered (orange ▼) and untriggered-but-active (gray ▼),
-        # aggregated as unique station positions across all events in the map.
-        # COMMENTED OUT — seismic station markers removed from Figure 9 per request.
-        # if not _untrig_stas9.empty:
-        #     ax.scatter(_untrig_stas9['longitude'].values, _untrig_stas9['latitude'].values,
-        #                s=10, color='lightgray', marker='v', edgecolors='gray',
-        #                linewidths=0.3, transform=proj, zorder=3)
-        # if not _trig_stas9.empty:
-        #     ax.scatter(_trig_stas9['longitude'].values, _trig_stas9['latitude'].values,
-        #                s=15, color='orange', marker='v', edgecolors='darkorange',
-        #                linewidths=0.3, transform=proj, zorder=3)
 
         for i, (lo, hi) in enumerate(zip(ERROR_BINS[:-1], ERROR_BINS[1:])):
             mask = (sub[column_err] >= lo) & (sub[column_err] < hi)
@@ -763,10 +731,10 @@ else:
         if _col != 0:
             ax.tick_params(labelleft=False)
 
-    for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
-        ax.set_xlabel('Longitude', fontsize=10)
-    for ax in [axes_map_flat[0], axes_map_flat[3]]:
-        ax.set_ylabel('Latitude', fontsize=10)
+    #for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
+    #    ax.set_xlabel('Longitude', fontsize=10)
+    #for ax in [axes_map_flat[0], axes_map_flat[3]]:
+    #    ax.set_ylabel('Latitude', fontsize=10)
 
     legend_handles = [
         plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],
@@ -1205,7 +1173,7 @@ if _comp_data:
 from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
 
-QQ_TRIGS = 5
+QQ_TRIGS = 4
 _qq_prior_names = [s['name'] for s in PRIOR_SPECS]
 _qq_csv_paths   = {s['name']: s['csv'] for s in PRIOR_SPECS}
 
