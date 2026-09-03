@@ -184,7 +184,8 @@ def runner_results_to_df(runner):
 
 
 def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
-                               focus_version=None, station_inventory=None):
+                               focus_version=None, station_inventory=None,
+                               prior_for_n_trigs=None):
     """
     Run bEPIC for one event up through *focus_version* and return
     (SearchOut, output_df, actual_version).
@@ -203,6 +204,10 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
         Version to stop at (inclusive). None = last.
     station_inventory : pandas.DataFrame or None
         Passed to make_epic_params; enables the activity mask when provided.
+    prior_for_n_trigs : callable(n_trigs) -> SeismicPrior, optional
+        If given, called once per version with the current trigger count to
+        override params.prior for that version. None (default) leaves the
+        prior fixed at the value passed in above, for every version.
     """
     df_run = pd.read_csv(run_path)
     df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
@@ -229,6 +234,9 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
         df_v = (df_run[df_run['version'] == version]
                 .sort_values('order')
                 .head(params.MAX_EVENT_TRIGS))
+
+        if prior_for_n_trigs is not None:
+            params.prior = prior_for_n_trigs(len(df_v))
 
         event.trigs   = []
         event.version = int(version)
@@ -407,19 +415,25 @@ class BenchmarkRunner:
             m[f'coverage_{r}km'] = cov[r]
         self.metrics[(event_id, version)] = m
 
-    def run_event(self, event_id):
+    def run_event(self, event_id, prior_for_n_trigs=None):
         """
         Run all versions for a single event.
 
         Parameters
         ----------
         event_id : int
+        prior_for_n_trigs : callable(n_trigs) -> SeismicPrior, optional
+            If given, called once per version (with that version's trigger
+            count) to override self.params.prior for that version, instead
+            of the single fixed self.prior used for the whole event. None
+            (default) is byte-identical to the pre-existing behavior.
         """
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
-        
+
         # Get rid of spaces in column names
         df_run   = self._normalize_columns(pd.read_csv(run_path))
-        self.params.prior = self.prior
+        if prior_for_n_trigs is None:
+            self.params.prior = self.prior
 
         # Station availability inventory is passed to BenchmarkRunner at __init__()
         if self._station_availability is not None:
@@ -457,6 +471,9 @@ class BenchmarkRunner:
             if len(df_v) == prev_n_trigs:
                 continue
             prev_n_trigs = len(df_v)
+
+            if prior_for_n_trigs is not None:
+                self.params.prior = prior_for_n_trigs(prev_n_trigs)
 
             # Append this version's triggers to the event object
             event.trigs = []
@@ -508,7 +525,7 @@ class BenchmarkRunner:
         return float(df['trigger time'].iloc[0])
 
     def run_all(self, event_ids, etas_update_fn=None, update_interval_s=3600,
-                after_event_fn=None):
+                after_event_fn=None, n_trigs_schedule_fn=None):
         """
         Loop over events in order, optionally updating the prior on a
         fixed time schedule.
@@ -529,6 +546,12 @@ class BenchmarkRunner:
             is located.  Intended for appending the just-located event to a
             time-dependent model (e.g. EtasPriorUpdater) so that the next
             prior update sees it.
+        n_trigs_schedule_fn : callable(base_prior) -> callable(n_trigs), optional
+            Called once per event with the current self.prior (freshly
+            updated this event, or throttle-stale, matching etas_update_fn's
+            schedule). Its result is passed to run_event as prior_for_n_trigs,
+            so the prior actually used can vary by trigger count within the
+            event. None (default) leaves run_event's prior fixed per event.
         """
         last_update_time = None
 
@@ -542,7 +565,9 @@ class BenchmarkRunner:
                     self.update_prior(new_prior)
                     last_update_time = event_time
 
-            self.run_event(event_id)
+            prior_for_n_trigs = (n_trigs_schedule_fn(self.prior)
+                                  if n_trigs_schedule_fn is not None else None)
+            self.run_event(event_id, prior_for_n_trigs=prior_for_n_trigs)
 
             if after_event_fn is not None:
                 after_event_fn(event_id)

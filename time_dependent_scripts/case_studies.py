@@ -78,8 +78,10 @@ config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 
 # ── CONFIGURE ─────────────────────────────────────────────────────────────────
 
+DEFAULT_CASE_STUDY = "Ridgecrest"
+#DEFAULT_CASE_STUDY = "ElMayor"
 #DEFAULT_CASE_STUDY = "Ferndale"
-DEFAULT_CASE_STUDY = "MTJ_2024_M7"
+#DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')

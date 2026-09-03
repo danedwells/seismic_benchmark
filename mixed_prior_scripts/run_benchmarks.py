@@ -14,12 +14,10 @@
 #   results/output/mixed/max_trigs_{N}/{prior}_etas_mixed_benchmark_results.csv
 # =============================================================================
 import os
-import copy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from scipy.interpolate import RegularGridInterpolator
 
 from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
@@ -29,6 +27,7 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_qq_prior_comparison)
 from benchmark import runner as benchmark_runner
 from benchmark import config
+from benchmark.priors import blend_priors
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
                               make_epic_params, load_station_availability_cache)
 
@@ -106,62 +105,8 @@ _usgs_ref_lookup = (
 
 #%%
 # ---------------------------------------------------------------------------
-# Blending utility
+# Blending utility (imported from benchmark.priors — see benchmark/priors.py)
 # ---------------------------------------------------------------------------
-
-def blend_priors(ti_prior, etas_prior, alpha=0.5, prior_alpha=1):
-    """
-    Blend ti_prior onto the ETAS grid and return a new SeismicPrior:
-
-        combined = alpha * etas_tempered + (1 - alpha) * ti_resampled
-
-    ti_prior    — SeismicPrior (static) or None for a Uniform base prior.
-    etas_prior  — SeismicPrior (time-dependent); defines the output grid.
-    alpha       — weight on the ETAS component in [0, 1].
-    prior_alpha — power-law exponent applied to the ETAS grid before blending.
-                  Values < 1 compress dynamic range (reduce cluster dominance).
-                  1 = no change.
-
-    The TI prior is bilinearly interpolated onto the ETAS lon/lat grid before
-    mixing so both components are on the same support.  When ti_prior is None
-    a flat (uniform) grid is used as the base, making the result equivalent
-    to a linearly tempered ETAS prior.
-    """
-    etas_grid = etas_prior.grid.copy()
-    if prior_alpha != 1.0:
-        etas_grid  = etas_grid ** prior_alpha
-        etas_grid /= etas_grid.sum()
-
-    if ti_prior is None:
-        # Uniform base: equal probability on every ETAS grid cell
-        ti_grid = np.ones_like(etas_grid)
-    else:
-        interp = RegularGridInterpolator(
-            (ti_prior.lats, ti_prior.lons),
-            ti_prior.grid,
-            method='linear',
-            bounds_error=False,
-            fill_value=0.0,
-        )
-        lat_mesh, lon_mesh = np.meshgrid(etas_prior.lats, etas_prior.lons, indexing='ij')
-        ti_grid = interp(
-            np.column_stack([lat_mesh.ravel(), lon_mesh.ravel()])
-        ).reshape(len(etas_prior.lats), len(etas_prior.lons))
-        ti_grid = np.clip(ti_grid, 0.0, None)
-        ti_grid = np.nan_to_num(ti_grid, nan=0.0)
-
-    ti_sum = ti_grid.sum()
-    if ti_sum > 0:
-        ti_grid /= ti_sum
-    else:
-        ti_grid = np.ones_like(etas_grid) / etas_grid.size
-
-    combined      = alpha * etas_grid + (1.0 - alpha) * ti_grid
-    combined     /= combined.sum()
-
-    mixed      = copy.deepcopy(etas_prior)
-    mixed.grid = combined
-    return mixed
 
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_benchmark.tt3')
 

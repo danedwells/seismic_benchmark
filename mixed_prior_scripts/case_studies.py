@@ -23,12 +23,10 @@
 # =============================================================================
 
 import os
-import copy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from scipy.interpolate import RegularGridInterpolator
 
 from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
@@ -39,8 +37,9 @@ from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
+from benchmark.priors import blend_priors
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              make_epic_params)
+                              make_epic_params, load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -64,7 +63,7 @@ CASE_STUDIES = config.CASE_STUDIES
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
 
-ACTIVE_CASE_STUDY = 'Ferndale'
+ACTIVE_CASE_STUDY = 'MTJ_2024_M7'
 
 # Background seismicity catalog (plotting only)
 SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
@@ -74,6 +73,7 @@ INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_C
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion', 'input',
                                    f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 
 # Blending weights: ALPHA on the ETAS component, (1-ALPHA) on the static prior.
 # Higher alpha = ETAS prior more important
@@ -88,7 +88,75 @@ ETAS_UPDATE_INTERVAL_S = 0
 # Power-law tempering applied to the raw ETAS grid before blending.
 # Values < 1 compress dynamic range (reduce aftershock cluster dominance).
 # 1 = no change.
-PRIOR_ALPHA = 1
+PRIOR_ALPHA = 1.2
+
+# ---------------------------------------------------------------------------
+# N-dependent prior schedule (per-trigger-count ALPHA/PRIOR_ALPHA taper)
+# ---------------------------------------------------------------------------
+# Master switch. False (default) = ALPHA/PRIOR_ALPHA above are used unchanged
+# for every trigger count, exactly as before this feature existed.
+USE_N_TRIGS_SCHEDULE = True
+
+# 'tempering_only' — alpha stays pinned at 1.0 (no TI-prior contribution,
+#                     ever); only prior_alpha (ETAS tempering) tapers with N.
+#                     All 5 TI-prior runners converge to the identical
+#                     tempered-ETAS-alone prior — a clean baseline.
+# 'full_blend'      — alpha *also* tapers with N, so each runner's TI 
+#                     (time-independent/static) prior
+#                     gains influence as N grows, on top of the tempering.
+#SCHED_MODE = 'full_blend'
+SCHED_MODE = 'tempering_only'
+
+# Taper shape: full ETAS sharpness (alpha=1, prior_alpha=1) through
+# SCHED_FLAT_THROUGH_N triggers, then a linear ramp down to the configured
+# minimums by SCHED_TAPER_END_N triggers. Starting points from this
+# session's constant-PRIOR_ALPHA sweep — meant to be re-swept.
+SCHED_FLAT_THROUGH_N  = 4
+SCHED_TAPER_END_N     = 10
+SCHED_MIN_PRIOR_ALPHA = 0.5 # Minimum etas alpha
+SCHED_MIN_ALPHA       = 0.5 # minimum weight assigned to ETAS (corresponds to 0.5 weight for static)
+
+SCHED_TAG = ('off' if not USE_N_TRIGS_SCHEDULE else SCHED_MODE)
+
+
+def _linear_taper(n_trigs, min_value):
+    """1.0 for n_trigs <= SCHED_FLAT_THROUGH_N, ramping linearly to
+    min_value by SCHED_TAPER_END_N, then flat at min_value beyond that."""
+    if n_trigs <= SCHED_FLAT_THROUGH_N:
+        return 1.0
+    if n_trigs >= SCHED_TAPER_END_N:
+        return min_value
+    frac = (n_trigs - SCHED_FLAT_THROUGH_N) / (SCHED_TAPER_END_N - SCHED_FLAT_THROUGH_N)
+    return 1.0 + frac * (min_value - 1.0)
+
+
+def prior_alpha_schedule(n_trigs):
+    """ETAS tempering exponent as a function of trigger count. Active in
+    both SCHED_MODE variants whenever USE_N_TRIGS_SCHEDULE is True."""
+    return _linear_taper(n_trigs, SCHED_MIN_PRIOR_ALPHA)
+
+
+def alpha_schedule(n_trigs):
+    """ETAS blend weight as a function of trigger count. Pinned at 1.0
+    (no TI-prior contribution) in 'tempering_only' mode; tapers like
+    prior_alpha_schedule in 'full_blend' mode."""
+    if SCHED_MODE == 'tempering_only':
+        return 1.0
+    return _linear_taper(n_trigs, SCHED_MIN_ALPHA)
+
+
+def build_n_trigs_prior_fn(ti_prior, base_etas_prior):
+    """Factory passed as BenchmarkRunner.run_all's n_trigs_schedule_fn (or
+    called directly per-event here). Returns callable(n_trigs) -> SeismicPrior
+    that blends ti_prior with base_etas_prior at schedule-derived alpha/
+    prior_alpha for that trigger count."""
+    def _prior_for_n_trigs(n_trigs):
+        return blend_priors(
+            ti_prior, base_etas_prior,
+            alpha       = alpha_schedule(n_trigs),
+            prior_alpha = prior_alpha_schedule(n_trigs),
+        )
+    return _prior_for_n_trigs
 
 # Focus event for the standalone posterior / trajectory figures.
 _MS_ = False  # set True to use mainshock events instead of representative aftershocks
@@ -100,9 +168,9 @@ MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'output', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+                               'output', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG, f'sched_{SCHED_TAG}')
 CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
-                               'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)
+                               'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG, f'sched_{SCHED_TAG}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -129,56 +197,8 @@ print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
 #%%
 # ---------------------------------------------------------------------------
-# Blending utility
+# Blending utility (imported from benchmark.priors — see benchmark/priors.py)
 # ---------------------------------------------------------------------------
-
-def blend_priors(ti_prior, etas_prior, alpha=0.5, prior_alpha=1):
-    """
-    Blend ti_prior onto the ETAS grid and return a new SeismicPrior:
-
-        combined = alpha * etas_tempered + (1 - alpha) * ti_resampled
-
-    ti_prior    — SeismicPrior (static) or None for a Uniform base prior.
-    etas_prior  — SeismicPrior (time-dependent); defines the output grid.
-    alpha       — weight on the ETAS component in [0, 1].
-    prior_alpha — power-law exponent applied to the ETAS grid before blending.
-                  Values < 1 compress dynamic range (reduce cluster dominance).
-                  1 = no change.
-    """
-    etas_grid = etas_prior.grid.copy()
-    if prior_alpha != 1.0:
-        etas_grid  = etas_grid ** prior_alpha
-        etas_grid /= etas_grid.sum()
-
-    if ti_prior is None:
-        ti_grid = np.ones_like(etas_grid)
-    else:
-        interp = RegularGridInterpolator(
-            (ti_prior.lats, ti_prior.lons),
-            ti_prior.grid,
-            method='linear',
-            bounds_error=False,
-            fill_value=0.0,
-        )
-        lat_mesh, lon_mesh = np.meshgrid(etas_prior.lats, etas_prior.lons, indexing='ij')
-        ti_grid = interp(
-            np.column_stack([lat_mesh.ravel(), lon_mesh.ravel()])
-        ).reshape(len(etas_prior.lats), len(etas_prior.lons))
-        ti_grid = np.clip(ti_grid, 0.0, None)
-        ti_grid = np.nan_to_num(ti_grid, nan=0.0)
-
-    ti_sum = ti_grid.sum()
-    if ti_sum > 0:
-        ti_grid /= ti_sum
-    else:
-        ti_grid = np.ones_like(etas_grid) / etas_grid.size
-
-    combined      = alpha * etas_grid + (1.0 - alpha) * ti_grid
-    combined     /= combined.sum()
-
-    mixed      = copy.deepcopy(etas_prior)
-    mixed.grid = combined
-    return mixed
 
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_CASE_STUDY}.tt3')
 
@@ -282,7 +302,15 @@ cs_ref_df = catalog_df.rename(columns={
 # Events run serially in chronological order.  The shared ETAS updater is
 # advanced once per event; each of the 5 TI priors is blended with the
 # current ETAS prior before running bEPIC.
-station_inventory = None
+_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
+
+_avail = (load_station_availability_cache(AVAIL_CACHE)
+          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
+if _avail:
+    print("Station availability cache loaded")
+elif _DISABLE_ACTIVITY_MASK:
+    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
+
 
 if RUN_MIXED:
 
@@ -293,20 +321,30 @@ if RUN_MIXED:
 
     runners = {}
     for name, ti_prior in ti_priors.items():
-        initial_mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-        params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS,
-                                         station_inventory=station_inventory)
+        # Initial-state placeholder prior: for the N-trigs schedule this is
+        # immediately superseded per-version by prior_for_n_trigs below.
+        initial_mixed = (
+            blend_priors(ti_prior, _current_etas, alpha_schedule(1), prior_alpha_schedule(1))
+            if USE_N_TRIGS_SCHEDULE else
+            blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+        )
+        params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
         runners[name] = BenchmarkRunner(
-            prior      = initial_mixed,
-            params     = params,
-            run_dir    = CS_RUN_DIR,
-            catalog_df = cs_ref_df,
+            prior                = initial_mixed,
+            params               = params,
+            run_dir              = CS_RUN_DIR,
+            catalog_df           = cs_ref_df,
+            station_availability = _avail,
         )
 
     _last_etas_update_unix = _t0.timestamp()
 
-    print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
-          f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
+    if USE_N_TRIGS_SCHEDULE:
+        print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
+              f"({len(runners)} TI priors × ETAS, N-trigs schedule mode={SCHED_MODE})…\n")
+    else:
+        print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
+              f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
 
     for i, event_id in enumerate(event_ids):
         event_time_unix = _trigger_time(event_id)
@@ -320,23 +358,29 @@ if RUN_MIXED:
             print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
                   f"— catalog: {updater.n_catalog_events} events")
 
-            if DEBUG_PLOT_PRIOR:
-                _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
-                _pcm = _ax.pcolormesh(
-                    _current_etas.lons, _current_etas.lats,
-                    np.log10(_current_etas.grid + 1e-12),
-                    cmap='viridis', shading='auto',
-                )
-                plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ (ETAS only)')
-                _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=9)
-                _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
-                plt.tight_layout(); plt.pause(0.01); plt.close(_fig)
+            # if DEBUG_PLOT_PRIOR:
+            #     _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
+            #     _pcm = _ax.pcolormesh(
+            #         _current_etas.lons, _current_etas.lats,
+            #         np.log10(_current_etas.grid + 1e-12),
+            #         cmap='viridis', shading='auto',
+            #     )
+            #     plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ (ETAS only)')
+            #     _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=9)
+            #     _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
+            #     plt.tight_layout(); plt.pause(0.01); plt.close(_fig)
 
         # Run bEPIC for each blended prior
         for name, ti_prior in ti_priors.items():
-            mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-            runners[name].update_prior(mixed)
-            runners[name].run_event(event_id)
+            if USE_N_TRIGS_SCHEDULE:
+                runners[name].run_event(
+                    event_id,
+                    prior_for_n_trigs=build_n_trigs_prior_fn(ti_prior, _current_etas),
+                )
+            else:
+                mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+                runners[name].update_prior(mixed)
+                runners[name].run_event(event_id)
 
         # Feed case-study event location back to ETAS (once per event, causal)
         if event_id in cs_event_lookup.index:
@@ -394,7 +438,7 @@ fig = plot_location_grid(
     output_dir  = CS_OUTPUT_DIR,
     prior_order = PRIOR_ORDER,
     extent      = cs_extent,
-    ref_catalog = ref_df,
+    ref_catalog = cs_ref_df,
     events_df   = catalog_df[['longitude', 'latitude']],
     bg          = bg_region,
     cache_paths = mixed_cache_paths,
@@ -510,7 +554,7 @@ if not os.path.exists(focus_run_path):
 elif not os.path.exists(INVERSION_JSON):
     print(f'[single-event] inversion JSON not found: {INVERSION_JSON}')
 else:
-    _focus_ref = ref_df[ref_df['event_id'] == FOCUS_EVENT_ID]
+    _focus_ref = cs_ref_df[cs_ref_df['event_id'] == FOCUS_EVENT_ID]
     _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
     _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
 
@@ -572,14 +616,25 @@ else:
         _standalone_prior_order = PRIOR_ORDER
         for name, ti_prior in ti_priors.items():
             mixed_name   = f'{name}_etas_mixed'
-            mixed_prior  = blend_priors(ti_prior, _standalone_etas, ALPHA, PRIOR_ALPHA)
-            _s_params    = make_epic_params(mixed_prior, True, config.BENCHMARK_PARAMS)
-            _s_runner    = BenchmarkRunner(
-                prior   = mixed_prior,
-                params  = _s_params,
-                run_dir = CS_RUN_DIR,
+            initial_mixed = (
+                blend_priors(ti_prior, _standalone_etas, alpha_schedule(1), prior_alpha_schedule(1))
+                if USE_N_TRIGS_SCHEDULE else
+                blend_priors(ti_prior, _standalone_etas, ALPHA, PRIOR_ALPHA)
             )
-            _s_runner.run_event(FOCUS_EVENT_ID)
+            _s_params    = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
+            _s_runner    = BenchmarkRunner(
+                prior                = initial_mixed,
+                params               = _s_params,
+                run_dir              = CS_RUN_DIR,
+                station_availability = _avail,
+            )
+            if USE_N_TRIGS_SCHEDULE:
+                _s_runner.run_event(
+                    FOCUS_EVENT_ID,
+                    prior_for_n_trigs=build_n_trigs_prior_fn(ti_prior, _standalone_etas),
+                )
+            else:
+                _s_runner.run_event(FOCUS_EVENT_ID)
             _standalone_csv = os.path.join(
                 _standalone_out_dir, f'{mixed_name.lower()}_benchmark_results.csv'
             )

@@ -10,7 +10,7 @@ of the full static-prior comparison already covered by plot_comparison.py.
 
 Set ACTIVE_CASE_STUDY to None to compare over the main benchmark catalog, or
 to one of the keys in CASE_STUDIES (e.g. 'Ridgecrest') to compare over that
-aftershock sequence. Edit ETAS_RUNS below to choose which four ETAS configs
+aftershock sequence. Edit COMPARISON_RUNS below to choose which runs
 to compare — each must already have been run via time_dependent_scripts/
 run_benchmarks.py (or case_studies.py), which write results into a
 config.etas_run_tag()-named subfolder so different configs don't clobber
@@ -47,6 +47,9 @@ from benchmark.plots import plot_score_scatter
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
 ACTIVE_CASE_STUDY = "MTJ_2024_M7" #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+#ACTIVE_CASE_STUDY = "Ferndale"
+#ACTIVE_CASE_STUDY = "ElMayor"
+#ACTIVE_CASE_STUDY = "Ridgecrest"
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -101,8 +104,8 @@ EDT_SIGMA_S     = config.BENCHMARK_PARAMS['edt_sigma_s']
 #   time_dependent_scripts/run_benchmarks.py (main benchmark) — SIGMA_S is
 #     the plain config default (0.35); VARY_SIG defaults to '0' (untagged —
 #     just max_trigs_{N}, no sig_*/edt_* subfolder).
-STATIC_SIGMA_S  = 0.35
-DYNAMIC_SIGMA_S = 0.35 if ACTIVE_CASE_STUDY is not None else config.BENCHMARK_PARAMS['sigma_s']
+STATIC_SIGMA_S  = 0.22
+DYNAMIC_SIGMA_S = 0.22 if ACTIVE_CASE_STUDY is not None else config.BENCHMARK_PARAMS['sigma_s']
 
 EDT_TAG         = f'edt_{EDT_SIGMA_S}'
 STATIC_S_TAG    = f'sig_{STATIC_SIGMA_S}'
@@ -126,7 +129,7 @@ if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_independent', *_STATIC_PARTS, f'max_trigs_{MAX_TRIGS}')
     # Base dir only — run_benchmarks.py appends config.etas_run_tag() as an
-    # extra subfolder beneath max_trigs_{N} per ETAS config (see ETAS_RUNS below).
+    # extra subfolder beneath max_trigs_{N} per ETAS config (see COMPARISON_RUNS below).
     # NOTE: time_dependent_scripts/run_benchmarks.py's untagged ("neither")
     # branch also appends a `_spatialfactor_{K}` suffix to max_trigs_{N} that
     # isn't reproduced here — if you're comparing against a main-benchmark
@@ -134,6 +137,11 @@ if ACTIVE_CASE_STUDY is None:
     # OUTPUT_DIR and adjust f'max_trigs_{MAX_TRIGS}' below to match.
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
                                        'time_dependent', *_DYNAMIC_PARTS, f'max_trigs_{MAX_TRIGS}')
+    # mixed_prior_scripts/run_benchmarks.py (main benchmark) has no sched_*
+    # subfolder — only mixed_prior_scripts/case_studies.py got the N-trigs
+    # schedule feature. ALPHA_TAG is appended per-run in _resolve_comparison_csv.
+    OUTPUT_DIR_MIXED   = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
+                                       'mixed', f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures',
                                        'etas_comparison', _STATIC_PARAM_TAG or 'default')
     PLOT_TITLE_SUFFIX  = 'main benchmark'
@@ -145,62 +153,88 @@ else:
                                       *_STATIC_PARTS, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
                                       *_DYNAMIC_PARTS, f'max_trigs_{MAX_TRIGS}')
+    # mixed_prior_scripts/case_studies.py writes to
+    # OUTPUT_DIR_MIXED/{alpha_tag}/sched_{sched_tag}/{ti_prior}_etas_mixed_benchmark_results.csv
+    OUTPUT_DIR_MIXED   = os.path.join(_cs_base, 'output',  'mixed', f'max_trigs_{MAX_TRIGS}')
     FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'etas_comparison', _STATIC_PARAM_TAG or 'default')
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# ETAS inversion configs to compare — each must already have been run via
-# time_dependent_scripts/run_benchmarks.py (or case_studies.py for a case
-# study), which write results.csv into a config.etas_run_tag()-named
-# subfolder beneath OUTPUT_DIR_DYNAMIC. Every flag that feeds etas_run_tag()
-# — free_background, free_productivity, mc, m_ref — is spelled out
-# explicitly for each run below (not inherited from ETAS_INVERSION_CONFIG),
-# so each of the four comparisons is fully self-contained and won't silently
-# drift if ETAS_INVERSION_CONFIG is edited for some other workflow.
-#   mc: 'positive' or 'var' — rolling per-event completeness (uses m_ref as
-#       the fixed floor that mode still requires)
-#   mc: a fixed float, e.g. 3.0 — fixed magnitude of completeness
-#       (m_ref then unused — etas_2 ignores it for a fixed mc)
+# Runs to compare — each entry is either a time_dependent_scripts run (pure
+# ETAS, no TI-prior blend) or a mixed_prior_scripts run (TI prior blended
+# with ETAS, optionally through the N-trigs schedule). Each must already
+# have been produced by the corresponding producer script; _resolve_comparison_csv
+# below builds the exact path each producer actually writes to, so this list
+# is the single place that says exactly which runs are being compared.
+#
+# time_dependent entry:
+#   dict(source='time_dependent', label=<str>, run_cfg=<dict>)
+#     run_cfg must spell out every flag that feeds config.etas_run_tag() —
+#     free_background, free_productivity, mc, m_ref — explicitly (not
+#     inherited from ETAS_INVERSION_CONFIG), so each comparison is
+#     self-contained and won't silently drift if ETAS_INVERSION_CONFIG is
+#     edited for some other workflow.
+#       mc: 'positive' or 'var' — rolling per-event completeness (uses
+#           m_ref as the fixed floor that mode still requires)
+#       mc: a fixed float, e.g. 3.0 — fixed magnitude of completeness
+#           (m_ref then unused — etas_2 ignores it for a fixed mc)
+#   → reads OUTPUT_DIR_DYNAMIC/{etas_run_tag}/etas_dynamic_benchmark_results.csv
+#
+# mixed entry:
+#   dict(source='mixed', label=<str>, ti_prior=<'Gear1'|'NSHM'|'Helmstetter'
+#        |'KDE_Seismicity'|'Uniform'>, alpha_tag=<str>, sched_tag=<str>)
+#     alpha_tag matches mixed_prior_scripts/case_studies.py's ALPHA_TAG
+#     (f'alpha_{ALPHA:.2f}', e.g. 'alpha_0.50'); sched_tag matches its
+#     SCHED_TAG ('off', 'tempering_only', or 'full_blend').
+#   → reads OUTPUT_DIR_MIXED/{alpha_tag}/sched_{sched_tag}/{ti_prior.lower()}_etas_mixed_benchmark_results.csv
 # ---------------------------------------------------------------------------
-# ORIGINAL — bw_sq sweep at fixed spatial_factor. Commented out to instead
-# compare the spatial_factor sweep below; uncomment to restore.
-ETAS_RUNS = [
-    # 1st
-    dict(config.ETAS_INVERSION_CONFIG,
-         free_background=True,
-         free_productivity=False,
-         mc=3.0,
-         m_ref=3.0,
-         bw_sq=4),
-    # # 2n
-    # dict(config.ETAS_INVERSION_CONFIG,
-    #      free_background=True,
-    #      free_productivity=False,
-    #      mc=3.0,
-    #      m_ref=3.0,
-    #      bw_sq=4),
-    # # 3rd
-    # dict(config.ETAS_INVERSION_CONFIG,
-    #      free_background=True,
-    #      free_productivity=False,
-    #      mc=3.0,
-    #      m_ref=3.0,
-    #      bw_sq=16),
-    # # 4th
-    # dict(config.ETAS_INVERSION_CONFIG,
-    #      free_background=True,
-    #      free_productivity=False,
-    #      mc=3.0,
-    #      m_ref=3.0,
-    #      bw_sq=32),
+COMPARISON_RUNS = [
+    dict(source='time_dependent',
+         label='ETAS (bw_sq=4)',
+         run_cfg=dict(config.ETAS_INVERSION_CONFIG,
+                      free_background=True,
+                      free_productivity=False,
+                      mc=3.0,
+                      m_ref=3.0,
+                      bw_sq=4)),
+
+    dict(source='mixed',
+         label='KDE_Seismicity+ETAS (tempering only)',
+         ti_prior='KDE_Seismicity',
+         alpha_tag='alpha_0.50',
+         sched_tag='tempering_only'),
+
+    dict(source='mixed',
+         label='KDE_Seismicity+ETAS (full blend)',
+         ti_prior='KDE_Seismicity',
+         alpha_tag='alpha_0.50',
+         sched_tag='full_blend'),
+
+    # # More examples — uncomment/add as needed:
+    # dict(source='mixed', label='Gear1+ETAS (full blend)',
+    #      ti_prior='Gear1', alpha_tag='alpha_0.50', sched_tag='full_blend'),
+    # dict(source='mixed', label='KDE_Seismicity+ETAS (fixed alpha, no schedule)',
+    #      ti_prior='KDE_Seismicity', alpha_tag='alpha_0.50', sched_tag='off'),
 ]
+
+
+def _resolve_comparison_csv(run):
+    """Build the exact CSV path the producer script for run['source'] wrote to."""
+    if run['source'] == 'time_dependent':
+        return os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run['run_cfg']),
+                             'etas_dynamic_benchmark_results.csv')
+    elif run['source'] == 'mixed':
+        return os.path.join(OUTPUT_DIR_MIXED, run['alpha_tag'], f"sched_{run['sched_tag']}",
+                             f"{run['ti_prior'].lower()}_etas_mixed_benchmark_results.csv")
+    else:
+        raise ValueError(f"Unknown COMPARISON_RUNS source: {run['source']!r}")
 
 # NEW — spatial_factor sweep (2, 4, 8) at fixed bw_sq=4. Results live under
 # results/output/time_dependent/max_trigs_{N}_spatialfactor_{K}/ rather than
 # OUTPUT_DIR_DYNAMIC (spatial_factor isn't part of etas_run_tag()), so paths
-# are built directly below instead of going through ETAS_RUNS.
+# are built directly below instead of going through COMPARISON_RUNS.
 # SPATIAL_FACTORS = [2, 4, 8]
 # _SPATIAL_RUN_CFG = dict(config.ETAS_INVERSION_CONFIG,
 #                          free_background=True,
@@ -225,15 +259,14 @@ PRIOR_SPECS = [
      'group': 'static'}
     for name in ('KDE_Seismicity', 'Uniform')
 ] + [
-    #ORIGINAL — one entry per ETAS_RUNS config, under OUTPUT_DIR_DYNAMIC.
-    #Commented out alongside ETAS_RUNS above; uncomment both to restore.
-    {'name':  f'ETAS ({config.etas_run_label(run_cfg)})',
-     'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(run_cfg),
-                            'etas_dynamic_benchmark_results.csv'),
+    # One entry per COMPARISON_RUNS entry (time_dependent or mixed source —
+    # see _resolve_comparison_csv above for how each path is built).
+    {'name':  run['label'],
+     'csv':   _resolve_comparison_csv(run),
      'ls':    '-',
      'lw':    2.5,
      'group': 'static'}
-    for run_cfg in ETAS_RUNS
+    for run in COMPARISON_RUNS
 ] #+ [
 #     # NEW — no-spatial-factor baseline, bw_sq=4, under OUTPUT_DIR_DYNAMIC
 #     # (sig_0.35/max_trigs_10) rather than a max_trigs_{N}_spatialfactor_{K} dir.
@@ -520,7 +553,7 @@ spec_ref = _spec_by_name[REFERENCE_PRIOR]
 ref_stats = load_final_values(spec_ref['csv'], column_err, n_trigs = trigger_number)
 
 # zip (not enumerate + PRIOR_SPECS[i]) so this doesn't IndexError when fewer
-# than 6 PRIOR_SPECS are active (e.g. most of ETAS_RUNS commented out) —
+# than 6 PRIOR_SPECS are active (e.g. most of COMPARISON_RUNS commented out) —
 # unused axes are hidden below rather than assumed to exist 1:1 with axes.
 for ax, spec in zip(axes, PRIOR_SPECS):
     # Get stats
@@ -529,7 +562,7 @@ for ax, spec in zip(axes, PRIOR_SPECS):
     if ref_stats is not None:
         ax.hist(ref_stats, bins = bins, rwidth=0.9, color='b', label=[f'{REFERENCE_PRIOR}  (ref)'], alpha=0.4)
     # Plot stats — None when spec['csv'] hasn't been run yet (e.g. an ETAS
-    # config from ETAS_RUNS not yet benchmarked); skip rather than crash.
+    # config from COMPARISON_RUNS not yet benchmarked); skip rather than crash.
     if stats is not None:
         ax.hist(stats, bins = bins, rwidth=0.9, color='r', alpha=0.6)
     ax.set_xscale('log')
@@ -552,7 +585,7 @@ for ax, spec in zip(axes, PRIOR_SPECS):
         ax.legend()
 
 # Hide any axes beyond len(PRIOR_SPECS) — the 2x3 layout is fixed regardless
-# of how many ETAS_RUNS entries are active.
+# of how many COMPARISON_RUNS entries are active.
 for ax in axes[len(PRIOR_SPECS):]:
     ax.set_visible(False)
 
@@ -655,7 +688,8 @@ else:
     # Set to [lon_min, lon_max, lat_min, lat_max] to zoom into a sub-region
     # instead of the auto-computed extent above; applied identically to every
     # panel. None keeps the auto-computed extent.
-    CUSTOM_EXTENT = [-126.5, -122, 37, 42]
+    #CUSTOM_EXTENT = [-126.5, -122, 37, 42]
+    CUSTOM_EXTENT = None
     if CUSTOM_EXTENT is not None:
         extent = CUSTOM_EXTENT
 
@@ -665,7 +699,7 @@ else:
     _untrig_stas9 = pd.DataFrame(columns=['station', 'network', 'longitude', 'latitude'])
 
     proj = ccrs.PlateCarree()
-    fig_map, axes_map = plt.subplots(1, 3, figsize=(15, 10), dpi=150,
+    fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
                                      subplot_kw={'projection': proj})
     axes_map_flat = axes_map.flatten()
 
@@ -674,7 +708,7 @@ else:
         ax.set_extent(extent, crs=proj)
         ax.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
         ax.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
-        ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
+        #ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='#aaaaaa', zorder=1)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
 
         if ref_catalog is not None and not sub.empty:
@@ -731,10 +765,10 @@ else:
         if _col != 0:
             ax.tick_params(labelleft=False)
 
-    #for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
-    #    ax.set_xlabel('Longitude', fontsize=10)
-    #for ax in [axes_map_flat[0], axes_map_flat[3]]:
-    #    ax.set_ylabel('Latitude', fontsize=10)
+    for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
+       ax.set_xlabel('Longitude', fontsize=10)
+    for ax in [axes_map_flat[0], axes_map_flat[3]]:
+       ax.set_ylabel('Latitude', fontsize=10)
 
     legend_handles = [
         plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],

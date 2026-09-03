@@ -47,7 +47,7 @@ cache_paths = {
 CASE_STUDIES = config.CASE_STUDIES
 # --- Select active case study --- (override with CASE_STUDY env var)
 
-DEFAULT_CASE_STUDY = "MTJ_2024_M7"
+DEFAULT_CASE_STUDY = "Ferndale"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
@@ -61,7 +61,7 @@ EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 
 # manual override
-SIGMA_S = 0.35
+SIGMA_S = 0.22
 config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
 # end manual override
 

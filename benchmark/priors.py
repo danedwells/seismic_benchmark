@@ -1,7 +1,58 @@
 import os
+import copy
 import numpy as np
 import pandas as pd
 from priors import SeismicPrior
+from scipy.interpolate import RegularGridInterpolator
+
+
+def blend_priors(ti_prior, etas_prior, alpha=0.5, prior_alpha=1):
+    """
+    Blend ti_prior onto the ETAS grid and return a new SeismicPrior:
+
+        combined = alpha * etas_tempered + (1 - alpha) * ti_resampled
+
+    ti_prior    — SeismicPrior (static) or None for a Uniform base prior.
+    etas_prior  — SeismicPrior (time-dependent); defines the output grid.
+    alpha       — weight on the ETAS component in [0, 1].
+    prior_alpha — power-law exponent applied to the ETAS grid before blending.
+                  Values < 1 compress dynamic range (reduce cluster dominance).
+                  1 = no change.
+    """
+    etas_grid = etas_prior.grid.copy()
+    if prior_alpha != 1.0:
+        etas_grid  = etas_grid ** prior_alpha
+        etas_grid /= etas_grid.sum()
+
+    if ti_prior is None:
+        ti_grid = np.ones_like(etas_grid)
+    else:
+        interp = RegularGridInterpolator(
+            (ti_prior.lats, ti_prior.lons),
+            ti_prior.grid,
+            method='linear',
+            bounds_error=False,
+            fill_value=0.0,
+        )
+        lat_mesh, lon_mesh = np.meshgrid(etas_prior.lats, etas_prior.lons, indexing='ij')
+        ti_grid = interp(
+            np.column_stack([lat_mesh.ravel(), lon_mesh.ravel()])
+        ).reshape(len(etas_prior.lats), len(etas_prior.lons))
+        ti_grid = np.clip(ti_grid, 0.0, None)
+        ti_grid = np.nan_to_num(ti_grid, nan=0.0)
+
+    ti_sum = ti_grid.sum()
+    if ti_sum > 0:
+        ti_grid /= ti_sum
+    else:
+        ti_grid = np.ones_like(etas_grid) / etas_grid.size
+
+    combined  = alpha * etas_grid + (1.0 - alpha) * ti_grid
+    combined /= combined.sum()
+
+    mixed      = copy.deepcopy(etas_prior)
+    mixed.grid = combined
+    return mixed
 
 
 def build_and_cache_priors(cache_paths, data_dir, construction_params=None):
