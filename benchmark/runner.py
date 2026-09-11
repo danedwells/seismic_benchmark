@@ -595,7 +595,7 @@ def load_reference_catalog_usgs(catalog_path):
     })
 
 
-def run_prior(args):
+def run_prior(params,prior_name, catalog_df, run_dir, out_dir):
     """
     Module-level worker for ProcessPoolExecutor.
 
@@ -618,38 +618,16 @@ def run_prior(args):
     -------
     prior_name : str
     """
-    from priors import SeismicPrior
-
-    prior_name = args['prior_name']
-    cache_path = args['cache_path']
-
-    if cache_path is None:
-        # filler prior - won't use.
-        p = SeismicPrior.from_tt3(args['nshm_path'])
-        use_prior = False
-    else:
-        p = SeismicPrior.from_tt3(cache_path)
-        use_prior = True
-
-    params = make_epic_params(p, use_prior, args,
-                              station_inventory=args.get('station_inventory'))
-
-    catalog_df = args.get('catalog_df')
-    if catalog_df is None:
-        catalog_path = args.get('catalog_path')
-        if catalog_path and os.path.exists(catalog_path):
-            if catalog_path.lower().endswith(('.parquet', '.csv')):
-                catalog_df = load_reference_catalog_usgs(catalog_path)
-            else:
-                catalog_df = load_reference_catalog(catalog_path)
+    prior = params.prior
+    station_availability = params.station_inventory
 
     # Initiate the runner
-    runner = BenchmarkRunner(prior=p, params=params, run_dir=args['run_dir'],
+    runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir,
                              catalog_df=catalog_df,
-                             station_availability=args.get('station_availability'))
+                             station_availability=station_availability)
     
 
-    stems = [f.stem for f in Path(args['run_dir']).glob('*.run')]
+    stems = [f.stem for f in Path(run_dir).glob('*.run')]
     # Some event ids are int()
     try:
         event_ids = sorted(int(s) for s in stems)
@@ -660,31 +638,8 @@ def run_prior(args):
     # Run the event
     runner.run_all(event_ids)
 
-    os.makedirs(args['output_dir'], exist_ok=True)
-    out_path = os.path.join(args['output_dir'], f"{prior_name.lower()}_benchmark_results.csv")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{prior_name.lower()}_benchmark_results.csv")
     runner_results_to_df(runner).to_csv(out_path, index=False)
     return prior_name
 
-
-def run_all_priors_parallel(worker_fn, job_args):
-    """
-    Dispatch a list of per-prior job dicts to a ProcessPoolExecutor and
-    print pass/fail for each prior as it completes.
-
-    Parameters
-    ----------
-    worker_fn : callable
-        Module-level worker (e.g. run_prior).  Must accept a single dict
-        with at least a 'prior_name' key.
-    job_args : list of dict
-        One dict per prior, each with the keys expected by worker_fn.
-    """
-    with ProcessPoolExecutor() as executor:
-        futures = {executor.submit(worker_fn, a): a['prior_name'] for a in job_args}
-        for f in as_completed(futures):
-            name = futures[f]
-            exc  = f.exception()
-            if exc:
-                print(f"{name} FAILED: {exc}")
-            else:
-                print(f"{name} done")

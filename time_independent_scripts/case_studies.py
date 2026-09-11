@@ -25,7 +25,6 @@ from pathlib import Path
 from priors import SeismicPrior
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
-                             plot_posterior_grid, plot_location_trajectory,
                              plot_overview_map, plot_location_grid,
                              plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
@@ -51,49 +50,20 @@ DEFAULT_CASE_STUDY = "Ferndale"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
-
 AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
-# Per-case-study directories
+# Params 
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
-EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
-
-# manual override
 SIGMA_S = 0.22
 config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
-# end manual override
 
-DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
-EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-S_TAG          = f'sig_{SIGMA_S}'
-
-_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
-
-# Quick-test toggle: DISABLE_ACTIVITY_MASK=1 skips loading the per-event
-# station availability cache, so params.station_inventory stays None and
-# bEPIC's activity-fraction mask (EPIC_locate_prelim.py's
-# "Per-grid-point activity mask" block) never engages. Results land in a
-# '_nomask'-suffixed subfolder so they don't clobber the normal run.
-_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
-_MASK_SUFFIX = '_nomask' if _DISABLE_ACTIVITY_MASK else ''
-
+# Directories
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
-
-if _VARY_EDT == True & _VARY_SIG == True:
-    raise Exception("Cannot vary both EDT and Sigma at the same time")
-elif _VARY_EDT == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
-elif _VARY_SIG == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
-else:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}')
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -104,19 +74,17 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_
 # ---------------------------------------------------------------------------
 # Main workflow
 # ---------------------------------------------------------------------------
-RUN_ALL_PRIORS = True   # run all static priors in parallel
 
 catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
 print(f"{len(catalog_df)} events in {cs['name']} catalog.")
 print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
-#%%
 # ------------------------------------------------------------------------------
 # ── 1. Run bEPIC across priors ────────────────────────────────────────────
 # ------------------------------------------------------------------------------
 
 # Build reference catalog before job_args so it can be passed to each worker.
-_cs_ref_df = catalog_df.rename(columns={
+cs_ref_df = catalog_df.rename(columns={
     'id':        'event_id',
     'latitude':  'usgs_lat',
     'longitude': 'usgs_lon',
@@ -124,35 +92,24 @@ _cs_ref_df = catalog_df.rename(columns={
 
 # Get the station availability inventory from (preparation_scripts/build_station_availability.py)
 _avail = (load_station_availability_cache(AVAIL_CACHE)
-          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
+          if os.path.exists(AVAIL_CACHE) else None)
 if _avail:
     print("Station availability cache loaded")
-elif _DISABLE_ACTIVITY_MASK:
-    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
-job_args = [
-    {
-        'prior_name': name,
-        'cache_path': path,
-        'nshm_path':  cache_paths['NSHM'],
-        'run_dir':    CS_RUN_DIR,
-        'output_dir': CS_OUTPUT_DIR,
-        'grid_size':  config.BENCHMARK_PARAMS['grid_size'],
-        'grid_km':    config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':  MAX_TRIGS,
-        'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-        'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-        'catalog_df': _cs_ref_df,
-        'station_availability': _avail,
-        'dtt_weight': DTT_WEIGHT,
-        'edt_sigma_s': EDT_SIGMA_S,
-        'sigma_s': SIGMA_S,
-    }
-    for name, path in cache_paths.items()
-]
 
-
-if RUN_ALL_PRIORS:
-    benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
+#%%
+# ---------------------------------------------------------
+# Construct parameters and run
+#----------------------------------------------------------
+priors_to_run = ['GEAR1']#, 'NSHM', 'KDE_Seismicity', 'Helmstetter', 'Uniform']
+for name,path in cache_paths.items():
+    if path is not None and name in priors_to_run:
+        prior = SeismicPrior.from_tt3(path)
+        use_prior = True
+    elif path is None and name == 'Uniform':
+        path = cache_paths['NSHM']
+    params = make_epic_params(prior, use_prior, config.BENCHMARK_PARAMS, station_inventory=_avail)
+ 
+    benchmark_runner.run_prior(params, name, cs_ref_df, CS_RUN_DIR,CS_OUTPUT_DIR)
 
 #%%
 # ---------------------------------------------------------------------------
@@ -196,7 +153,7 @@ fig = plot_location_grid(
     output_dir  = CS_OUTPUT_DIR,
     prior_order = PRIOR_ORDER,
     extent      = cs_extent,
-    ref_catalog = _cs_ref_df,
+    ref_catalog = cs_ref_df,
     events_df   = catalog_df[['longitude', 'latitude']],
     bg          = bg_region,
     cache_paths = cache_paths,

@@ -207,15 +207,6 @@ ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
     'grid_spacing':     0.05,
     'out_of_bounds_fill': 1E-9,  # fill for cells outside the ETAS polygon
-
-    # Opt-in spatially-varying background/productivity fields (see
-    # EtasPriorUpdater.from_inversion_json docstring in priors/time_dependent.py).
-    # Both default False = identical behaviour to before these existed.
-    # use_spatial_background requires ETAS_INVERSION_CONFIG['free_background']
-    # (already True above); use_spatial_productivity additionally requires
-    # free_productivity=True and store_results(..., store_spatial_fields=True)
-    # at inversion time — neither is currently the case for this benchmark's
-    # stored parameters_benchmark.json, so leave both False until re-inverted.
     'use_spatial_background':   True,
     'use_spatial_productivity': False,
     'max_lookback_days': 365,

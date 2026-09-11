@@ -18,15 +18,14 @@ from priors import SeismicPrior
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_overview_map,
-                             plot_location_grid, plot_posterior_grid,
-                             plot_location_trajectory,
+                             plot_location_grid, 
                              plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
-from benchmark.metrics import posterior_confidence_level, posterior_coverage
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark import config_cascadia
-from benchmark.runner import  load_station_availability_cache, get_unique_stations
+from benchmark.runner import (load_station_availability_cache, get_unique_stations,
+                             make_epic_params)
 
 
 # ---------------------------------------------------------------------------
@@ -45,25 +44,10 @@ STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference'
 RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'run_files')
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
-DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
-EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-S_TAG          = f'sig_{SIGMA_S}'
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 
-_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
-
-if _VARY_EDT == True & _VARY_SIG == True:
-    raise Exception("Cannot vary both EDT and Sigma at the same time")
-elif _VARY_EDT == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_independent', EDT_TAG, f'max_trigs_{MAX_TRIGS}')
-elif _VARY_SIG == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_independent', S_TAG, f'max_trigs_{MAX_TRIGS}')
-else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -78,10 +62,17 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'cascadia_test_catalog.csv')
 catalog_df = benchmark_runner.load_reference_catalog_usgs(catalog_path) if os.path.exists(catalog_path) else None
 
+# Build reference catalog before job_args so it can be passed to each worker.
+ref_df = catalog_df.rename(columns={
+    'id':        'event_id',
+    'latitude':  'usgs_lat',
+    'longitude': 'usgs_lon',
+})[['event_id', 'usgs_lat', 'usgs_lon']]
+
 # Cascadia-specific KDE_Seismicity cache, built by preparation_scripts/build_priors_cascadia.py.
 cache_paths['KDE_Seismicity'] = os.path.join(data_dir, 'kde_seismicity_cascadia.tt3')
 
-station_availability = (
+_avail = (
     load_station_availability_cache(STATION_AVAIL_CACHE)
     if os.path.exists(STATION_AVAIL_CACHE) else None
 )
@@ -91,44 +82,29 @@ station_availability = (
 # Main workflow
 # ---------------------------------------------------------------------------
 
-RUN_ALL_PRIORS  = True  # run all selected priors in parallel
-
-# Gear1/NSHM/Helmstetter are not being evaluated for Cascadia yet — kept in
-# cache_paths (NSHM doubles as the geometry fallback for Uniform below) and
-# in config.PRIOR_FILENAMES, just excluded from PRIORS_TO_RUN so they're
-# skipped rather than removed. Add them back here to re-enable.
-PRIORS_TO_RUN = ['Uniform', 'KDE_Seismicity']
-
 # ── 1. Create reference locations ─────────────────────────────────────────
 ref_dir = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference')
 
-job_args = [
-    {
-        'prior_name':                name,
-        'cache_path':                path,
-        'nshm_path':                 cache_paths['NSHM'],  # geometry fallback for Uniform
-        'run_dir':                   RUN_DIR,
-        'output_dir':                OUTPUT_DIR,
-        'catalog_path':              catalog_path,
-        'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-        'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-        'max_trigs':                 config.BENCHMARK_PARAMS['max_trigs'],
-        'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-        'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-        'station_availability':      station_availability,
-        'dtt_weight': DTT_WEIGHT,
-        'edt_sigma_s': EDT_SIGMA_S,
-        'sigma_s': SIGMA_S,
-    }
-    for name, path in cache_paths.items()
-    if name in PRIORS_TO_RUN
-]
+# ---------------------------------------------------------
+# Construct parameters and run
+#----------------------------------------------------------
+priors_to_run = ['Gear1']#, 'NSHM', 'KDE_Seismicity', 'Helmstetter', 'Uniform']
+for name,path in cache_paths.items():
+    if path is not None and name in priors_to_run:
+        prior = SeismicPrior.from_tt3(path)
+        use_prior = True
+    elif path is None and name == 'Uniform':
+        path = cache_paths['NSHM']
+    params = make_epic_params(prior, use_prior, config.BENCHMARK_PARAMS, station_inventory=_avail)
+ 
+    benchmark_runner.run_prior(params, name, ref_df, RUN_DIR,OUTPUT_DIR)
 
-if RUN_ALL_PRIORS:
-    benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
+#%%
+# ---------------------------------------------------------------------------
+# Figures
+# ---------------------------------------------------------------------------
 
 stations_df = get_unique_stations(RUN_DIR)
-
 bg = load_background_seismicity(
     cache_path  = SEIS_CACHE,
     bounds      = config_cascadia.REFERENCE_CATALOG_CONFIG['bounds'],
@@ -137,10 +113,6 @@ bg = load_background_seismicity(
     min_mag     = 2.0,
 )
 
-#%%
-# ---------------------------------------------------------------------------
-# Figures
-# ---------------------------------------------------------------------------
 
 PRIOR_ORDER = PRIORS_TO_RUN
 

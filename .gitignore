@@ -2,8 +2,7 @@
 results/
 
 # Input data — large files, not committed
-data/case_studies
-data/run_files
+data/
 
 # Python cache
 __pycache__/
