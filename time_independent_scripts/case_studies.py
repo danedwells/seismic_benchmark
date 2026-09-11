@@ -150,13 +150,6 @@ job_args = [
     for name, path in cache_paths.items()
 ]
 
-# Ad-hoc single-prior debugging: BENCHMARK_ONLY_PRIOR=Gear1 restricts the run
-# to one prior (e.g. to isolate an intermittent failure) without editing this
-# file. Leave unset to run all priors as usual.
-# _ONLY_PRIOR = "NSHM" # os.environ.get('BENCHMARK_ONLY_PRIOR')
-# if _ONLY_PRIOR:
-#     job_args = [a for a in job_args if a['prior_name'] == _ONLY_PRIOR]
-#     print(f"BENCHMARK_ONLY_PRIOR set — restricting run to: {_ONLY_PRIOR}")
 
 if RUN_ALL_PRIORS:
     benchmark_runner.run_all_priors_parallel(benchmark_runner.run_prior, job_args)
@@ -287,70 +280,5 @@ fig = plot_qq_prior_comparison(
 )
 plt.show()
 
-# %%
-# =============================================================================
-# Single-event posterior grid figure (2×3 panel, one panel per prior)
-# =============================================================================
-# FOCUS_EVENT_ID : str   — ANSS event ID whose .run file exists in CS_RUN_DIR.
-#                          Automatically selected from FOCUS_EVENTS below based
-#                          on ACTIVE_CASE_STUDY.  Override by setting
-#                          FOCUS_EVENT_ID manually after this cell.
-# FOCUS_VERSION  : int or None — trigger version to plot; None = last available.
-#
-# To add or change representative events, edit config.FOCUS_EVENTS in benchmark/config.py.
-# Use examine_catalog.py (case-study section) to browse the catalog and pick IDs.
-# =============================================================================
-
-_MS_ = False  # set True to use mainshock events instead of representative aftershocks
-FOCUS_EVENT_ID = config.FOCUS_EVENTS_MAINSHOCK[ACTIVE_CASE_STUDY] if _MS_ else config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]
-FOCUS_VERSION  = None
-
-focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
-
-if not os.path.exists(focus_run_path):
-    print(f"[single-event figure] .run file not found: {focus_run_path}")
-    print("  → set FOCUS_EVENT_ID to a built event, or run BUILD_RUN_FILES first.")
-else:
-    _focus_ref = _cs_ref_df[_cs_ref_df['event_id'] == FOCUS_EVENT_ID]
-    _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
-    _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
-
-    fig = plot_posterior_grid(
-        focus_run_path = focus_run_path,
-        cache_paths    = cache_paths,
-        prior_order    = PRIOR_ORDER,
-        params_kw      = {
-            'grid_size': config.BENCHMARK_PARAMS['grid_size'],
-            'grid_km':   config.BENCHMARK_PARAMS['grid_km'],
-            'max_trigs': config.BENCHMARK_PARAMS['max_trigs'],
-            'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-            'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-            'catalog_df': _cs_ref_df,
-            'station_availability': _avail,
-            'dtt_weight': DTT_WEIGHT,
-            'edt_sigma_s': EDT_SIGMA_S,
-            'sigma_s': SIGMA_S,
-        },
-        ref_lat        = _ref_lat,
-        ref_lon        = _ref_lon,
-        focus_version  = FOCUS_VERSION,
-        title          = f'bEPIC posterior grid — {cs["name"]} — event {FOCUS_EVENT_ID}',
-        save_path      = os.path.join(CS_FIGURES_DIR, f'posterior_grid_{FOCUS_EVENT_ID}.png'),
-    )
-    plt.show()
-
-    fig = plot_location_trajectory(
-        event_id     = FOCUS_EVENT_ID,
-        output_dir   = CS_OUTPUT_DIR,
-        prior_order  = PRIOR_ORDER,
-        run_dir      = CS_RUN_DIR,
-        min_triggers = 4,
-        ref_lat      = _ref_lat,
-        ref_lon      = _ref_lon,
-        cache_paths  = cache_paths,
-        title        = f'bEPIC location trajectory — {cs["name"]} — event {FOCUS_EVENT_ID}',
-        save_path    = os.path.join(CS_FIGURES_DIR, f'trajectory_{FOCUS_EVENT_ID}.png'),
-    )
-    plt.show()
 
 # %%

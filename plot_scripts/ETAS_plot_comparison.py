@@ -46,10 +46,10 @@ from benchmark.plots import plot_score_scatter
 # ---------------------------------------------------------------------------
 # Configure: set to None for the main benchmark, or a case-study name
 # ---------------------------------------------------------------------------
-ACTIVE_CASE_STUDY = "MTJ_2024_M7" #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
+#ACTIVE_CASE_STUDY = "MTJ_2024_M7" #"Ridgecrest" # e.g. 'Ridgecrest', 'Ferndale', 'ElMayor' or None
 #ACTIVE_CASE_STUDY = "Ferndale"
 #ACTIVE_CASE_STUDY = "ElMayor"
-#ACTIVE_CASE_STUDY = "Ridgecrest"
+ACTIVE_CASE_STUDY = "Ridgecrest"
 
 CASE_STUDIES = {
     'Ridgecrest': {'name': 'Ridgecrest 2019'},
@@ -200,17 +200,17 @@ COMPARISON_RUNS = [
                       m_ref=3.0,
                       bw_sq=4)),
 
-    dict(source='mixed',
-         label='KDE_Seismicity+ETAS (tempering only)',
-         ti_prior='KDE_Seismicity',
-         alpha_tag='alpha_0.50',
-         sched_tag='tempering_only'),
+    # dict(source='mixed',
+    #      label='KDE_Seismicity+ETAS (tempering only)',
+    #      ti_prior='KDE_Seismicity',
+    #      alpha_tag='alpha_0.50',
+    #      sched_tag='tempering_only'),
 
-    dict(source='mixed',
-         label='KDE_Seismicity+ETAS (full blend)',
-         ti_prior='KDE_Seismicity',
-         alpha_tag='alpha_0.50',
-         sched_tag='full_blend'),
+    # dict(source='mixed',
+    #      label='KDE_Seismicity+ETAS (full blend)',
+    #      ti_prior='KDE_Seismicity',
+    #      alpha_tag='alpha_0.50',
+    #      sched_tag='full_blend'),
 
     # # More examples — uncomment/add as needed:
     # dict(source='mixed', label='Gear1+ETAS (full blend)',
@@ -267,27 +267,7 @@ PRIOR_SPECS = [
      'lw':    2.5,
      'group': 'static'}
     for run in COMPARISON_RUNS
-] #+ [
-#     # NEW — no-spatial-factor baseline, bw_sq=4, under OUTPUT_DIR_DYNAMIC
-#     # (sig_0.35/max_trigs_10) rather than a max_trigs_{N}_spatialfactor_{K} dir.
-#     {'name':  'ETAS (no spatial factor)',
-#      'csv':   os.path.join(OUTPUT_DIR_DYNAMIC, config.etas_run_tag(_SPATIAL_RUN_CFG),
-#                             'etas_dynamic_benchmark_results.csv'),
-#      'ls':    '-',
-#      'lw':    2.5,
-#      'group': 'static'}
-# ] + [
-#     # NEW — spatial_factor sweep (2, 4, 8), bw_sq=4 fixed.
-#     {'name':  f'ETAS (spatial_factor={sf})',
-#      'csv':   os.path.join(PROJECT_ROOT, 'results', 'california', 'output', 'time_dependent',
-#                             f'max_trigs_{MAX_TRIGS}_spatialfactor_{sf}',
-#                             config.etas_run_tag(_SPATIAL_RUN_CFG),
-#                             'etas_dynamic_benchmark_results.csv'),
-#      'ls':    '-',
-#      'lw':    2.5,
-#      'group': 'static'}
-#     for sf in SPATIAL_FACTORS
-# ]
+] 
 
 # Choose location type - Expectatoin ('exp') or Maximum posterior ('map')
 location_type = 'map' # exp, map, like, or like_exp
@@ -522,7 +502,7 @@ plt.show()
 # ---------------------------------------------------------------------------
 import re
 
-trigger_number = 4
+trigger_number = 3
 
 # Reference (blue) distribution shown in every panel. Must match a 'name' in
 # PRIOR_SPECS, e.g. 'Uniform', 'KDE_Seismicity', 'Gear1', 'NSHM', 'Helmstetter',
@@ -582,7 +562,7 @@ for ax, spec in zip(axes, PRIOR_SPECS):
 
     # Label the ref in one plot only
     if ax is axes[0]:
-        ax.legend()
+        ax.legend(loc='upper left')
 
 # Hide any axes beyond len(PRIOR_SPECS) — the 2x3 layout is fixed regardless
 # of how many COMPARISON_RUNS entries are active.

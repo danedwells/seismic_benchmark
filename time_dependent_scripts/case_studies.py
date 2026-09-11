@@ -243,10 +243,12 @@ if RUN_DYNAMIC_PRIORS:
         .sort_values('time')
         .reset_index(drop=True)
     )
+
     # Build a lookup: ANSS event_id → catalog row (for after_event_fn)
     cs_event_lookup = cs_etas_catalog.set_index('id')
     print(f"  {len(cs_etas_catalog)} case-study events above m_ref={m_ref} "
           f"will be fed to ETAS incrementally.")
+
 
     # -- Define callbacks ----------------------------------------------------
 
@@ -258,28 +260,8 @@ if RUN_DYNAMIC_PRIORS:
             prior.grid /= prior.grid.sum()
         print(f"  [ETAS] prior updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
               f"— catalog size: {updater.n_catalog_events}")
-        if DEBUG_PLOT_PRIOR:
-            _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
-            _pcm = _ax.pcolormesh(prior.lons, prior.lats,
-                                  np.log10(prior.grid + 1e-12),
-                                  cmap='viridis', shading='auto')
-            plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ')
-            _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}  '
-                          f'(n_cat={updater.n_catalog_events})', fontsize=9)
-            _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
-            plt.tight_layout(); plt.pause(0.01); plt.close(_fig)
         return prior
-
-    # def after_event_fn(event_id, event_time_unix: float) -> None:
-    #     """
-    #     Called by BenchmarkRunner immediately after each event is located.
-    #     Appends the just-located event to the rolling ETAS catalog so the
-    #     next prior update reflects it.
-    #     """
-    #     if event_id in cs_event_lookup.index:
-    #         row = cs_event_lookup.loc[[event_id],
-    #                                   ['time', 'latitude', 'longitude', 'magnitude']]
-    #         updater.append_events(row)
+    
 
     def after_event_fn(event_id):
         """
@@ -460,179 +442,5 @@ fig = plot_qq_prior_comparison(
     save_path   = os.path.join(CS_FIGURES_DIR, 'qq_prior_comparison.png'),
 )
 plt.show()
-
-# %%
-# =============================================================================
-# Single-event posterior grid and location trajectory
-# =============================================================================
-# Builds a fresh ETAS prior for FOCUS_EVENT_ID from the historical catalog plus
-# all case-study events that occurred before it.  No dependency on a saved .tt3
-# or on having run the full benchmark loop first.
-#
-# TIME_PRIOR_BUFFER_DAYS : int or None
-#     Lookback window for appending pre-event case-study catalog entries.
-#     None = include all pre-event entries.
-# =============================================================================
-
-TIME_PRIOR_BUFFER_DAYS = 1   # lookback window for pre-event case-study events
-
-_params_kw = {
-    'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-    'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-    'max_trigs':                 MAX_TRIGS,
-    'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-    'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-    'station_availability': _avail,
-    'dtt_weight': DTT_WEIGHT,
-    'edt_sigma_s': EDT_SIGMA_S,
-    'sigma_s': SIGMA_S,
-
-}
-
-# The curated FOCUS_EVENT_ID (config.FOCUS_EVENTS[ACTIVE_CASE_STUDY]) doesn't
-# always have a .run file for every case study / prep state — fall back to a
-# random event from CS_RUN_DIR rather than just skipping this section.
-if not os.path.exists(focus_run_path):
-    print(f'[single-event] configured FOCUS_EVENT_ID {FOCUS_EVENT_ID} has no .run file: {focus_run_path}')
-    _fallback_run_files = sorted(Path(CS_RUN_DIR).glob('*.run'))
-    if _fallback_run_files:
-        FOCUS_EVENT_ID = random.choice(_fallback_run_files).stem
-        focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
-        print(f'  → picked a random event instead: {FOCUS_EVENT_ID}')
-    else:
-        print(f'  → no .run files found in {CS_RUN_DIR} either; run BUILD_RUN_FILES first.')
-
-if not os.path.exists(focus_run_path):
-    print(f'[single-event] .run file not found: {focus_run_path}')
-    print('  → set FOCUS_EVENT_ID to a built event, or run BUILD_RUN_FILES first.')
-elif not os.path.exists(INVERSION_JSON):
-    print(f'[single-event] inversion JSON not found: {INVERSION_JSON}')
-else:
-    _focus_ref = cs_ref_df[cs_ref_df['event_id'] == FOCUS_EVENT_ID]
-    _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
-    _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
-
-    _focus_cat = catalog_df[catalog_df['id'] == FOCUS_EVENT_ID]
-    if _focus_cat.empty:
-        print(f'[single-event] event {FOCUS_EVENT_ID} not found in catalog.')
-    else:
-        _focus_t = pd.Timestamp(_focus_cat['time'].iloc[0]).replace(tzinfo=None)
-        print(f'[single-event] focus event {FOCUS_EVENT_ID}  t = {_focus_t}')
-
-        # -- Build fresh updater from historical catalog ----------------------
-        try:
-            _hist = hist_catalog
-        except NameError:
-            _hist = pd.read_csv(
-                HISTORICAL_CATALOG,
-                index_col=0,
-                parse_dates=['time'],
-                dtype={'url': str, 'alert': str},
-            )
-
-        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
-        _updater = EtasPriorUpdater.from_inversion_json(
-            json_path  = INVERSION_JSON,
-            catalog_df = _hist,
-            **config.ETAS_UPDATER_CONFIG,
-        )
-
-        # -- Append pre-event case-study catalog entries ----------------------
-        m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
-        _cs_cat = (
-            catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
-            .rename(columns={'mag': 'magnitude'})
-            .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
-            .query(f'magnitude >= {m_ref}')
-            .sort_values('time')
-            .reset_index(drop=True)
-        )
-        _window_start = (
-            _focus_t - pd.Timedelta(days=TIME_PRIOR_BUFFER_DAYS)
-            if TIME_PRIOR_BUFFER_DAYS is not None else pd.Timestamp.min
-        )
-        _pre = _cs_cat[
-            (_cs_cat['time'] < _focus_t) &
-            (_cs_cat['time'] >= _window_start) &
-            (_cs_cat['id'] != FOCUS_EVENT_ID)
-        ][['time', 'latitude', 'longitude', 'magnitude']]
-        if not _pre.empty:
-            _updater.append_events(_pre)
-            print(f'[single-event] appended {len(_pre)} pre-event case-study events.')
-
-        # -- Compute ETAS prior at focus event time ---------------------------
-        _standalone_prior = _updater.update(_focus_t)
-        if PRIOR_ALPHA != 1.0:
-            _standalone_prior.grid  = _standalone_prior.grid ** PRIOR_ALPHA
-            _standalone_prior.grid /= _standalone_prior.grid.sum()
-        print(f'[single-event] prior computed  (catalog size: {_updater.n_catalog_events})')
-
-        _standalone_prior_path = os.path.join(CS_OUTPUT_DIR, f'standalone_prior_{FOCUS_EVENT_ID}.tt3')
-        _standalone_prior.to_tt3(_standalone_prior_path)
-
-        # -- Run bEPIC on just this event (for trajectory CSV) ---------------
-        _s_params = make_epic_params(_standalone_prior, True, config.BENCHMARK_PARAMS)
-        _single_runner = BenchmarkRunner(
-            prior   = _standalone_prior,
-            params  = _s_params,
-            run_dir = CS_RUN_DIR,
-        )
-        _single_runner.run_event(FOCUS_EVENT_ID)
-
-        _standalone_out_dir = os.path.join(CS_OUTPUT_DIR, f'standalone_{FOCUS_EVENT_ID}')
-        os.makedirs(_standalone_out_dir, exist_ok=True)
-        _standalone_csv = os.path.join(_standalone_out_dir, 'etas_dynamic_benchmark_results.csv')
-        runner_results_to_df(_single_runner).to_csv(_standalone_csv, index=False)
-        print(f'[single-event] results written → {_standalone_csv}')
-
-        # -- Run bEPIC again to get the posterior grid object ----------------
-        _t_cov, _odf_cov, _actual_v = run_single_event_get_grid(
-            focus_run_path, _standalone_prior, True, _params_kw,
-            focus_version=FOCUS_VERSION,
-        )
-
-        _standalone_cache = {'ETAS_dynamic': _standalone_prior_path}
-        _precomputed = {
-            'ETAS_dynamic': (_t_cov, _odf_cov, _actual_v,
-                             _standalone_prior, _standalone_prior_path),
-        }
-        _buffer_label = (f'{TIME_PRIOR_BUFFER_DAYS}d lookback'
-                         if TIME_PRIOR_BUFFER_DAYS else 'full history')
-        deg_buf = 0.5
-        _extent = [_ref_lon - deg_buf, _ref_lon + deg_buf,
-                   _ref_lat - deg_buf, _ref_lat + deg_buf]
-
-        # -- Posterior grid (prior background + posterior contours) ----------
-        fig = plot_posterior_grid(
-            focus_run_path = focus_run_path,
-            cache_paths    = _standalone_cache,
-            prior_order    = ['ETAS_dynamic'],
-            params_kw      = _params_kw,
-            prior_results  = _precomputed,
-            ref_lat        = _ref_lat,
-            ref_lon        = _ref_lon,
-            extent         = _extent,
-            focus_version  = FOCUS_VERSION,
-            title          = f'ETAS prior/posterior — {cs["name"]} — event {FOCUS_EVENT_ID} ({_buffer_label})',
-            save_path      = os.path.join(CS_FIGURES_DIR, f'standalone_posterior_{FOCUS_EVENT_ID}.png'),
-        )
-        plt.show()
-
-        # -- Location trajectory ---------------------------------------------
-        fig = plot_location_trajectory(
-            event_id       = FOCUS_EVENT_ID,
-            output_dir     = _standalone_out_dir,
-            prior_order    = ['ETAS_dynamic'],
-            run_dir        = CS_RUN_DIR,
-            min_triggers   = 4,
-            ref_lat        = _ref_lat,
-            ref_lon        = _ref_lon,
-            cache_paths    = _standalone_cache,
-            extent         = _extent,
-            extent_pad_deg = 0.1,
-            title          = f'bEPIC location trajectory — {cs["name"]} — event {FOCUS_EVENT_ID} ({_buffer_label})',
-            save_path      = os.path.join(CS_FIGURES_DIR, f'standalone_trajectory_{FOCUS_EVENT_ID}.png'),
-        )
-        plt.show()
 
 # %%
