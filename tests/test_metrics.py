@@ -5,6 +5,8 @@ All functions here are pure numpy/pandas math — no bEPIC calls, no network,
 no disk I/O.  These should always pass in any environment where the package
 is installed.
 """
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,11 +16,19 @@ from benchmark.metrics import (
     location_error_km,
     posterior_confidence_level,
     prior_confidence_level,
+    like_confidence_level,
     _haversine_km,
     posterior_coverage,
     COVERAGE_RADII_KM,
     log_score,
     brier_score,
+    energy_score,
+    likelihood_value_at_location,
+    likelihood_value_at_location_unnormalized,
+    posterior_value_at_location,
+    load_final_values,
+    load_final_rows,
+    load_per_version_stats,
 )
 
 
@@ -320,5 +330,211 @@ def test_brier_score_uniform_two_cells():
     df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -120.0],
                        'post': [1.0, 1.0], 'prior': [0.5, 0.5]})
     assert brier_score(df, 37.0, -120.0) == pytest.approx(0.5, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# like_confidence_level
+# ---------------------------------------------------------------------------
+
+def _make_grid_with_like(n=100, seed=42):
+    df = _make_grid(n=n, seed=seed)
+    rng = np.random.default_rng(seed + 1)
+    df['like'] = rng.random(n)
+    return df
+
+
+def test_like_confidence_level_in_unit_interval():
+    cred = like_confidence_level(_make_grid_with_like(), 37.0, -120.0)
+    assert 0.0 <= cred <= 1.0
+
+
+def test_like_confidence_level_at_like_peak_is_minimum():
+    df = _make_grid_with_like()
+    peak_idx = df['like'].idxmax()
+    cred_at_peak = like_confidence_level(df, df.loc[peak_idx, 'lat'], df.loc[peak_idx, 'lon'])
+    for idx in df.nsmallest(5, 'like').index:
+        cred_other = like_confidence_level(df, df.loc[idx, 'lat'], df.loc[idx, 'lon'])
+        assert cred_at_peak <= cred_other + 1e-9
+
+
+def test_like_confidence_level_single_cell():
+    df = pd.DataFrame({'lat': [37.0], 'lon': [-120.0], 'like': [1.0]})
+    assert like_confidence_level(df, 37.0, -120.0) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# likelihood_value_at_location / likelihood_value_at_location_unnormalized
+# ---------------------------------------------------------------------------
+
+def test_likelihood_value_at_location_matches_normalized_cell():
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -119.0],
+                       'like': [3.0, 1.0]})
+    val = likelihood_value_at_location(df, 37.0, -120.0)
+    assert val == pytest.approx(3.0 / 4.0)
+
+
+def test_likelihood_value_at_location_unnormalized_is_raw():
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -119.0],
+                       'like': [3.0, 1.0]})
+    val = likelihood_value_at_location_unnormalized(df, 37.0, -120.0)
+    assert val == pytest.approx(3.0)
+
+
+def test_likelihood_value_at_location_in_unit_interval():
+    val = likelihood_value_at_location(_make_grid_with_like(), 37.0, -120.0)
+    assert 0.0 <= val <= 1.0
+
+
+def test_likelihood_value_picks_nearest_cell():
+    """Reference exactly on the second cell should read that cell's value,
+    regardless of how far the first cell is."""
+    df = pd.DataFrame({'lat': [0.0, 37.0], 'lon': [0.0, -120.0],
+                       'like': [1.0, 9.0]})
+    val = likelihood_value_at_location(df, 37.0, -120.0)
+    assert val == pytest.approx(9.0 / 10.0)
+
+
+# ---------------------------------------------------------------------------
+# posterior_value_at_location
+# ---------------------------------------------------------------------------
+
+def test_posterior_value_at_location_matches_normalized_cell():
+    df = pd.DataFrame({'lat': [37.0, 38.0], 'lon': [-120.0, -119.0],
+                       'post': [1.0, 3.0]})
+    val = posterior_value_at_location(df, 38.0, -119.0)
+    assert val == pytest.approx(3.0 / 4.0)
+
+
+def test_posterior_value_at_location_equals_exp_log_score():
+    """posterior_value_at_location is documented as equivalent to
+    exp(log_score(...)) — same p_true term, exposed directly."""
+    df = _make_grid()
+    val = posterior_value_at_location(df, 37.0, -120.0)
+    ls  = log_score(df, 37.0, -120.0)
+    assert val == pytest.approx(np.exp(ls), rel=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# energy_score
+# ---------------------------------------------------------------------------
+
+def test_energy_score_all_mass_at_truth_is_near_zero():
+    """A single-cell posterior exactly at the reference: term1=0 and term2=0
+    (all samples are the same point), so ES should be ~0."""
+    df = _single_cell_grid()
+    es = energy_score(df, 37.0, -120.0, n_samples=100, rng=np.random.default_rng(0))
+    assert es == pytest.approx(0.0, abs=1e-6)
+
+
+def test_energy_score_nonnegative_for_typical_grid():
+    """ES = term1 - term2 isn't nonnegative in general, but for a diffuse
+    posterior far from a concentrated point mass it should be strictly
+    positive here since term1 (mean distance to ref) dominates."""
+    es = energy_score(_make_grid(), 60.0, 10.0, n_samples=200, rng=np.random.default_rng(1))
+    assert es > 0
+
+
+def test_energy_score_deterministic_with_seeded_rng():
+    df = _make_grid()
+    es1 = energy_score(df, 37.0, -120.0, n_samples=200, rng=np.random.default_rng(123))
+    es2 = energy_score(df, 37.0, -120.0, n_samples=200, rng=np.random.default_rng(123))
+    assert es1 == pytest.approx(es2)
+
+
+def test_energy_score_uses_default_rng_when_none():
+    """rng=None must not raise -- a fresh default_rng() is created internally."""
+    es = energy_score(_make_grid(), 37.0, -120.0, n_samples=50, rng=None)
+    assert np.isfinite(es)
+
+
+# ---------------------------------------------------------------------------
+# load_final_values / load_final_rows / load_per_version_stats
+# ---------------------------------------------------------------------------
+
+def _write_benchmark_csv(path):
+    """Two events, three trigger-count versions each, one metric column."""
+    rows = []
+    for eid in (1, 2):
+        for n_trigs, err in zip((1, 2, 3), (50.0, 20.0, 5.0 + eid)):
+            rows.append({'event_id': eid, 'version': n_trigs - 1,
+                        'n_trigs': n_trigs, 'map_err_km': err})
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+def test_load_final_values_missing_file_returns_none(tmp_path):
+    assert load_final_values(str(tmp_path / 'nope.csv'), 'map_err_km') is None
+
+
+def test_load_final_values_missing_column_returns_none(tmp_path):
+    csv_path = tmp_path / 'bench.csv'
+    pd.DataFrame({'event_id': [1], 'version': [0]}).to_csv(csv_path, index=False)
+    assert load_final_values(str(csv_path), 'map_err_km') is None
+
+
+def test_load_final_values_default_takes_last_version_per_event(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    vals = load_final_values(str(csv_path), 'map_err_km')
+    assert sorted(vals) == pytest.approx(sorted([6.0, 7.0]))  # last (n_trigs=3) row per event
+
+
+def test_load_final_values_specific_n_trigs(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    vals = load_final_values(str(csv_path), 'map_err_km', n_trigs=1)
+    assert sorted(vals) == pytest.approx([50.0, 50.0])
+
+
+def test_load_final_values_n_trigs_exceeds_max_raises(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    with pytest.raises(ValueError):
+        load_final_values(str(csv_path), 'map_err_km', n_trigs=99)
+
+
+def test_load_final_values_warns_below_min_events(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    with pytest.warns(UserWarning):
+        load_final_values(str(csv_path), 'map_err_km', n_trigs=1, min_events_warn=5)
+
+
+def test_load_final_rows_missing_file_returns_none(tmp_path):
+    assert load_final_rows(str(tmp_path / 'nope.csv')) is None
+
+
+def test_load_final_rows_one_row_per_event(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    df = load_final_rows(str(csv_path))
+    assert len(df) == 2
+    assert set(df['event_id']) == {1, 2}
+
+
+def test_load_final_rows_specific_n_trigs_filters_rows(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    df = load_final_rows(str(csv_path), n_trigs=2)
+    assert len(df) == 2
+    assert set(df['n_trigs']) == {2}
+
+
+def test_load_per_version_stats_missing_file_returns_none(tmp_path):
+    assert load_per_version_stats(str(tmp_path / 'nope.csv'), 'map_err_km') is None
+
+
+def test_load_per_version_stats_missing_column_returns_none(tmp_path):
+    csv_path = tmp_path / 'bench.csv'
+    pd.DataFrame({'event_id': [1], 'version': [0]}).to_csv(csv_path, index=False)
+    assert load_per_version_stats(str(csv_path), 'map_err_km') is None
+
+
+def test_load_per_version_stats_filters_by_min_events(tmp_path):
+    """min_events=5 with only 2 events per n_trigs -> every row filtered out."""
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    stats = load_per_version_stats(str(csv_path), 'map_err_km', min_events=5)
+    assert len(stats) == 0
+
+
+def test_load_per_version_stats_keeps_rows_meeting_min_events(tmp_path):
+    csv_path = _write_benchmark_csv(tmp_path / 'bench.csv')
+    stats = load_per_version_stats(str(csv_path), 'map_err_km', min_events=2)
+    assert set(stats['n_trigs']) == {1, 2, 3}
+    assert set(stats['count']) == {2}
 
 
