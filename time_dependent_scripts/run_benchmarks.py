@@ -13,7 +13,7 @@ from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
                              plot_location_grid, plot_posterior_grid,
-                             plot_overview_map, plot_location_trajectory,
+                             plot_overview_map, 
                              plot_qq_calibration, plot_qq_calibration_prior,
                              plot_qq_prior_comparison)
 from benchmark import runner as benchmark_runner
@@ -23,18 +23,6 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
                               load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
-# ETAS inversion variant selection
-# ---------------------------------------------------------------------------
-# bw_sq = squared Gaussian KDE bandwidth of the ETAS free-background term.
-# Set it here (or via BW_SQ=... in the shell) to sweep bw_sq without editing
-# config.py.  MUST come before the Paths block below: both INVERSION_JSON and
-# ETAS_TAG are derived from ETAS_INVERSION_CONFIG at import time.
-#
-# NOTE: etas_2 only reads bw_sq inside `if self.free_background:`
-# (inversion.py:1815), and EtasPriorUpdater only reads it when
-# use_spatial_background=True.  With ETAS_INVERSION_CONFIG['free_background']
-# = False, every bw_sq yields identical inverted parameters and identical
-# benchmark results.
 #BW_SQ = float(os.environ.get('BW_SQ', config.ETAS_INVERSION_CONFIG['bw_sq']))
 # Manual override
 BW_SQ = 4
@@ -43,7 +31,6 @@ config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 #manual override of spatial kernel size
 # put an integeor or None
 spatial_factor = None # multiply inverted d (spatial decay size) by this factor
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -63,29 +50,9 @@ MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
 SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
-EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-S_TAG          = f'sig_{SIGMA_S}'
 
-# Tags the ETAS inversion flags (free_background/free_productivity/mc/m_ref)
-# these results were run against, so different inversion configs land in
-# their own subfolder instead of overwriting each other's benchmark results
-# — same idea as etas_output_id() for the inversion outputs themselves.
-ETAS_TAG       = config.etas_run_tag()
-
-_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '0') == '1'
-
-if _VARY_EDT == True & _VARY_SIG == True:
-    raise Exception("Cannot vary both EDT and Sigma at the same time")
-elif _VARY_EDT == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-elif _VARY_SIG == True:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}', ETAS_TAG)
-else:
-    OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}_spatialfactor_{spatial_factor}', ETAS_TAG)
+OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -118,10 +85,8 @@ _usgs_ref_lookup = (
 # ---------------------------------------------------------------------------
 # Main workflow
 # ---------------------------------------------------------------------------
-
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run time-dependent ETAS prior (serial, event-by-event)
-DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # How often to re-evaluate the ETAS prior (in seconds of event time).
 # 0  → update before every event  (most accurate, slowest)

@@ -38,7 +38,6 @@ from pathlib import Path
 from priors import SeismicPrior, EtasPriorUpdater
 from benchmark.background import load_background_seismicity
 from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
-                              plot_posterior_grid, plot_location_trajectory,
                               plot_overview_map, plot_location_grid,
                               plot_qq_calibration, plot_qq_calibration_prior,
                               plot_qq_prior_comparison)
@@ -50,7 +49,6 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_
                               run_single_event_get_grid, make_epic_params,
                               load_station_availability_cache)
 
-from bEPIC import EPIC_locate_prelim
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -113,40 +111,12 @@ SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 SIGMA_S = 0.22
 config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
-EDT_TAG        = f'edt_{EDT_SIGMA_S}'
-S_TAG          = f'sig_{SIGMA_S}'
-
-# Tags the ETAS inversion flags (free_background/free_productivity/mc/m_ref)
-# these results were run against, so different inversion configs land in
-# their own subfolder instead of overwriting each other's benchmark results
-# — same idea as etas_output_id() for the inversion outputs themselves.
-ETAS_TAG       = config.etas_run_tag()
-
-_VARY_EDT      = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG      = os.environ.get('VARY_SIG', '1') == '1'
-
-# Quick-test toggle: DISABLE_ACTIVITY_MASK=1 skips loading the per-event
-# station availability cache, so params.station_inventory stays None and
-# bEPIC's activity-fraction mask (EPIC_locate_prelim.py's
-# "Per-grid-point activity mask" block) never engages. Results land in a
-# '_nomask'-suffixed subfolder so they don't clobber the normal run.
-_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
-_MASK_SUFFIX = '_nomask' if _DISABLE_ACTIVITY_MASK else ''
 
 CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 
-if _VARY_EDT == True & _VARY_SIG == True:
-    raise Exception("Cannot vary both EDT and Sigma at the same time")
-elif _VARY_EDT == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', EDT_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
-elif _VARY_SIG == True:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', S_TAG, f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
-else:
-    CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
-    CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}{_MASK_SUFFIX}', ETAS_TAG)
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)
@@ -160,18 +130,15 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run all time-dependent priors (serial, event-by-event)
-DEBUG_PLOT_PRIOR   = False  # plot ETAS lambda grid before each event
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
 # dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
 PRIOR_ALPHA = float(os.environ.get('PRIOR_ALPHA', 1))  # UNCHANGED behavior if this == 1
 
 _avail = (load_station_availability_cache(AVAIL_CACHE)
-          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
+          if os.path.exists(AVAIL_CACHE)  else None)
 if _avail:
     print("Station availability cache loaded")
-elif _DISABLE_ACTIVITY_MASK:
-    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
 
 #%%
 # ---------------------------------------------------------------------------
