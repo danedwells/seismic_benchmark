@@ -114,29 +114,14 @@ bg = load_background_seismicity(
 )
 
 
-PRIOR_ORDER = PRIORS_TO_RUN
+PRIOR_ORDER = list(config.PRIOR_FILENAMES.keys())
 
-MTJ_EXTENT = [-128.5, -122.5, 38.5, 42.5]
-mtj_lon_min, mtj_lon_max, mtj_lat_min, mtj_lat_max = MTJ_EXTENT
-
-def in_extent(df):
-    return df[
-        df['posterior_lat'].between(mtj_lat_min, mtj_lat_max) &
-        df['posterior_lon'].between(mtj_lon_min, mtj_lon_max)
-    ]
 
 catalog_events = (catalog_df[['usgs_lon', 'usgs_lat']]
                   .rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
                   if catalog_df is not None else None)
-catalog_mtj = (catalog_df[
-    catalog_df['usgs_lat'].between(mtj_lat_min, mtj_lat_max) &
-    catalog_df['usgs_lon'].between(mtj_lon_min, mtj_lon_max)
-][['usgs_lon', 'usgs_lat']].rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
-if catalog_df is not None else None)
-stations_mtj = stations_df[
-    stations_df['latitude'].between(mtj_lat_min, mtj_lat_max) &
-    stations_df['longitude'].between(mtj_lon_min, mtj_lon_max)
-]
+
+
 
 # Full Cascadia extent for the overview map (Pacific NW, not just California).
 CASCADIA_EXTENT = list(config_cascadia.REFERENCE_CATALOG_CONFIG['bounds'])
@@ -154,41 +139,10 @@ fig = plot_overview_map(
 )
 plt.show()
 
-# %%
-
-# ── MTJ grid: one prior per panel ─────────────────────────────────────────
-fig = plot_location_grid(
-    output_dir     = OUTPUT_DIR,
-    prior_order    = PRIOR_ORDER,
-    extent         = MTJ_EXTENT,
-    ref_catalog    = catalog_df,
-    events_df      = catalog_mtj,
-    stations_df    = stations_mtj,
-    bg             = bg,
-    cache_paths    = cache_paths,
-    filter_fn      = in_extent,
-    show_scale_bar = True,
-    title          = 'bEPIC MTJ locations — prior comparison',
-    save_path      = os.path.join(FIGURES_DIR, 'MTJ_grid_benchmark_locations.png'),
-)
-plt.show()
 
 # %%
 bins_frac = np.linspace(0, 0.5, 51)
 bins_km   = np.linspace(0, 100, 51)
-
-# ── MTJ fractional misfit histograms ──────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'frac_misfit',
-    bins        = bins_frac,
-    title       = 'bEPIC MTJ fractional misfit distributions — prior comparison',
-    xlabel      = 'frac_misfit (fractional TT error)',
-    save_path   = os.path.join(FIGURES_DIR, 'MTJ_grid_misfit_histograms.png'),
-    filter_fn   = in_extent,
-)
-plt.show()
 
 # ── Total fractional misfit histograms ────────────────────────────────────
 fig = plot_prior_histograms(
@@ -211,19 +165,6 @@ fig = plot_prior_histograms(
     title       = 'bEPIC location error distributions — prior comparison',
     xlabel      = 'location error (km)',
     save_path   = os.path.join(FIGURES_DIR, 'Grid_location_error_histograms.png'),
-)
-plt.show()
-
-# ── MTJ location error histograms ─────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'map_err_km',
-    bins        = bins_km,
-    title       = 'bEPIC MTJ location error distributions — prior comparison',
-    xlabel      = 'location error (km)',
-    save_path   = os.path.join(FIGURES_DIR, 'MTJ_location_error_histograms.png'),
-    filter_fn   = in_extent,
 )
 plt.show()
 
