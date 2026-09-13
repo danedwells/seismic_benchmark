@@ -28,26 +28,19 @@
 # =============================================================================
 
 import os
-import random
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
 from pathlib import Path
 
 # Custom repository imports
 from priors import SeismicPrior, EtasPriorUpdater
-from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
-                              plot_overview_map, plot_location_grid,
-                              plot_qq_calibration, plot_qq_calibration_prior,
-                              plot_qq_prior_comparison)
 
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
-from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params,
-                              load_station_availability_cache)
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df, 
+                              load_station_availability_cache,
+                              make_epic_params)
 
 
 # ---------------------------------------------------------------------------
@@ -286,128 +279,3 @@ if RUN_DYNAMIC_PRIORS:
     print(f"\nDynamic ETAS results saved to:\n  {out_path}")
 
 
-#%%
-# ---------------------------------------------------------------------------
-# Figures
-# ---------------------------------------------------------------------------
-bg = load_background_seismicity(
-    cache_path = SEIS_CACHE,
-    bounds     = (-129, -112, 30, 45),
-    start_year = 2000,
-    end_year   = 2025,
-    min_mag    = 3.5,
-)
-
-PRIOR_ORDER    = ['ETAS_dynamic']
-td_cache_paths = {'ETAS_dynamic': None}
-
-min_lon, max_lon, min_lat, max_lat = cs['bounds']
-min_lon -= 1; max_lon += 1; min_lat -= 1; max_lat += 1
-cs_extent = [min_lon - 0.5, max_lon + 0.5, min_lat - 0.5, max_lat + 0.5]
-
-bg_region = (bg[
-    bg['longitude'].between(min_lon - 1, max_lon + 1) &
-    bg['latitude'].between(min_lat - 1, max_lat + 1)
-] if bg is not None else None)
-
-# ── Overview map ──────────────────────────────────────────────────────────────
-fig = plot_overview_map(
-    output_dir  = CS_OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = cs_extent,
-    events_df   = catalog_df[['longitude', 'latitude']],
-    bg          = bg_region,
-    title       = f'bEPIC locations — {cs["name"]}',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'comparison_locations.png'),
-)
-plt.show()
-
-# ── Prior comparison grid ─────────────────────────────────────────────────────
-fig = plot_location_grid(
-    output_dir  = CS_OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = cs_extent,
-    ref_catalog = cs_ref_df,
-    events_df   = catalog_df[['longitude', 'latitude']],
-    bg          = bg_region,
-    cache_paths = td_cache_paths,
-    title       = f'bEPIC locations — {cs["name"]} — prior comparison',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'grid_locations.png'),
-)
-plt.show()
-
-#%%
-# ── Location error histograms ─────────────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'map_err_km',
-    bins        = np.linspace(0, 100, 51),
-    title       = f'bEPIC location errors — {cs["name"]}',
-    xlabel      = 'location error (km)',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'location_error_histograms.png'),
-)
-plt.show()
-
-# ── Fractional misfit histograms ──────────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'frac_misfit',
-    bins        = np.linspace(0, 0.5, 51),
-    title       = f'bEPIC fractional misfit — {cs["name"]}',
-    xlabel      = 'frac_misfit',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'misfit_histograms.png'),
-)
-plt.show()
-
-# ── posterior_confidence_level histograms ────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'posterior_confidence_level',
-    bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — posterior_confidence_level distributions',
-    xlabel      = 'posterior_confidence_level',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_confidence_level_histograms.png'),
-    color       = 'steelblue',
-)
-plt.show()
-
-# ── posterior coverage at fixed radii (2×2 panel) ─────────────────────────
-fig = plot_coverage_panel(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = f'bEPIC posterior coverage at fixed radii — {cs["name"]}',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_coverage_histograms.png'),
-)
-
-# ── Calibration Q-Q: posterior_confidence_level vs U(0,1) ────────────────────────
-fig = plot_qq_calibration(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = 'bEPIC posterior calibration — posterior_confidence_level vs U(0,1)',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration.png'),
-)
-plt.show()
-
-# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ────────────
-fig = plot_qq_calibration_prior(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = 'bEPIC prior calibration — prior_confidence_level vs U(0,1)',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration_prior.png'),
-)
-plt.show()
-
-# ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
-fig = plot_qq_prior_comparison(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'map_err_km',
-    title       = 'Q-Q prior comparison — map location error (km)',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_prior_comparison.png'),
-)
-plt.show()
-
-# %%

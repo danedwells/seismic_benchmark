@@ -3,24 +3,15 @@
 # run_cascadia.py  —  bEPIC prior benchmark for Cascadia specifically
 # Prerequisite: run preparation_scripts/build_initial_prior_cascadia.py first to build the .tt3 cache files.
 import os
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 # Custom repository imports
 from priors import SeismicPrior, EtasPriorUpdater
-from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
-                             plot_location_grid, plot_posterior_grid,
-                             plot_overview_map, plot_location_trajectory,
-                             plot_qq_calibration, plot_qq_calibration_prior,
-                             plot_qq_prior_comparison)
 from benchmark import runner as benchmark_runner
 from benchmark import config_cascadia as config
-from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
-                              run_single_event_get_grid, make_epic_params,
-                              load_station_availability_cache)
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
+                              make_epic_params, load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
 # ETAS inversion variant selection
@@ -40,7 +31,6 @@ spatial_factor = None # multiply inverted d (spatial decay size) by this factor
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEIS_CACHE          = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'background_seismicity.parquet')
 STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'station_availability_cache.parquet')
 RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'run_files')
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'cascadia','etas_inversion',
@@ -54,10 +44,8 @@ SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
-os.makedirs(FIGURES_DIR, exist_ok=True)
 
 MTJ_EVENT_ID = 'nc73821036'  # 2022-12-20 M6.4 Ferndale — event used in standalone prior/posterior test below
 MTJ_VERSION  = None          # None = last available trigger version
@@ -205,120 +193,5 @@ if RUN_DYNAMIC_PRIORS:
     runner_results_to_df(dyn_runner).to_csv(out_path, index=False)
     print(f"\nDynamic ETAS results saved to:\n  {out_path}")
 
-stations_df = get_unique_stations(RUN_DIR)
-
-# Overall background seismicity for plotting (this is a static file)
-bg = load_background_seismicity(
-    cache_path  = SEIS_CACHE,
-    bounds      = (-132, -115, 40, 50),
-    start_year  = 2000,
-    end_year    = 2025,
-    min_mag     = 3.5,
-)
-
-#%%
-# ---------------------------------------------------------------------------
-# Figures
-# ---------------------------------------------------------------------------
-
-PRIOR_ORDER    = ['ETAS_dynamic']
-td_cache_paths = {'ETAS_dynamic': None}
-catalog_events = (catalog_df[['usgs_lon', 'usgs_lat']]
-                  .rename(columns={'usgs_lon': 'longitude', 'usgs_lat': 'latitude'})
-                  if catalog_df is not None else None)
-
-
-
-# ── Overview: all priors, full region ─────────────────────────────────────
-fig = plot_overview_map(
-    output_dir  = OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = [-128.5, -113, 31, 44],
-    events_df   = catalog_events,
-    stations_df = stations_df,
-    bg          = bg,
-    title       = 'bEPIC final locations — prior comparison',
-    save_path   = os.path.join(FIGURES_DIR, 'comparison_benchmark_locations.png'),
-)
-plt.show()
-
-# %%
-bins_frac = np.linspace(0, 0.5, 51)
-bins_km   = np.linspace(0, 100, 51)
-
-
-# ── Total fractional misfit histograms ────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'frac_misfit',
-    bins        = bins_frac,
-    title       = 'bEPIC fractional misfit distributions — prior comparison',
-    xlabel      = 'frac_misfit (fractional TT error)',
-    save_path   = os.path.join(FIGURES_DIR, 'Grid_misfit_histograms.png'),
-)
-plt.show()
-
-
-# ── Location error histograms ─────────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'map_err_km',
-    bins        = bins_km,
-    title       = 'bEPIC location error distributions — prior comparison',
-    xlabel      = 'location error (km)',
-    save_path   = os.path.join(FIGURES_DIR, 'Grid_location_error_histograms.png'),
-)
-plt.show()
-
-# ── posterior_confidence_level histograms ────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'posterior_confidence_level',
-    bins        = np.linspace(0, 1, 41),
-    title       = 'bEPIC posterior calibration — posterior_confidence_level distributions',
-    xlabel      = 'posterior_confidence_level',
-    save_path   = os.path.join(FIGURES_DIR, 'posterior_confidence_level_histograms.png'),
-    color       = 'steelblue',
-)
-plt.show()
-
-# ── posterior coverage at fixed radii (2×2 panel) ─────────────────────────
-fig = plot_coverage_panel(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    title       = 'bEPIC posterior coverage at fixed radii — dynamic ETAS',
-    save_path   = os.path.join(FIGURES_DIR, 'posterior_coverage_histograms.png'),
-)
-
-# ── Calibration Q-Q: posterior_confidence_level vs U(0,1) ────────────────────────
-fig = plot_qq_calibration(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    title       = 'bEPIC posterior calibration — posterior_confidence_level vs U(0,1)',
-    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration.png'),
-)
-plt.show()
-
-# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ────────────
-fig = plot_qq_calibration_prior(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    title       = 'bEPIC prior calibration — prior_confidence_level vs U(0,1)',
-    save_path   = os.path.join(FIGURES_DIR, 'qq_calibration_prior.png'),
-)
-plt.show()
-
-# ── Prior-vs-prior Q-Q comparison: map_err_km ─────────────────────────────
-fig = plot_qq_prior_comparison(
-    prior_names = PRIOR_ORDER,
-    output_dir  = OUTPUT_DIR,
-    column      = 'map_err_km',
-    title       = 'Q-Q prior comparison — map location error (km)',
-    save_path   = os.path.join(FIGURES_DIR, 'qq_prior_comparison.png'),
-)
-plt.show()
-
+# Plotting: plot_scripts/plot_benchmark_results.py (REGION='cascadia', WORKFLOW='time_dependent')
 # %%

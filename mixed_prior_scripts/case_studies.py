@@ -23,22 +23,15 @@
 # =============================================================================
 
 import os
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 from priors import SeismicPrior, EtasPriorUpdater
-from benchmark.background import load_background_seismicity
-from benchmark.plots import (plot_prior_histograms, plot_coverage_panel,
-                             plot_location_trajectory, plot_overview_map,
-                             plot_location_grid, plot_qq_calibration,
-                             plot_qq_calibration_prior, plot_qq_prior_comparison)
 from benchmark.usgs import *
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.priors import blend_priors
-from benchmark.runner import (BenchmarkRunner, runner_results_to_df, get_unique_stations,
+from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
                               make_epic_params, load_station_availability_cache)
 
 # ---------------------------------------------------------------------------
@@ -65,8 +58,6 @@ CASE_STUDIES = config.CASE_STUDIES
 
 ACTIVE_CASE_STUDY = 'MTJ_2024_M7'
 
-# Background seismicity catalog (plotting only)
-SEIS_CACHE         = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 # ETAS inversion parameters and catalog — context-specific
 INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion',
                                    f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
@@ -183,7 +174,6 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 # ---------------------------------------------------------------------------
 
 RUN_MIXED        = True   # run the blended prior benchmark
-DEBUG_PLOT_PRIOR = False  # plot ETAS lambda grid before each event
 
 #%%
 # ---------------------------------------------------------------------------
@@ -358,18 +348,6 @@ if RUN_MIXED:
             print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
                   f"— catalog: {updater.n_catalog_events} events")
 
-            # if DEBUG_PLOT_PRIOR:
-            #     _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
-            #     _pcm = _ax.pcolormesh(
-            #         _current_etas.lons, _current_etas.lats,
-            #         np.log10(_current_etas.grid + 1e-12),
-            #         cmap='viridis', shading='auto',
-            #     )
-            #     plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ (ETAS only)')
-            #     _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=9)
-            #     _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
-            #     plt.tight_layout(); plt.pause(0.01); plt.close(_fig)
-
         # Run bEPIC for each blended prior
         for name, ti_prior in ti_priors.items():
             if USE_N_TRIGS_SCHEDULE:
@@ -396,135 +374,12 @@ if RUN_MIXED:
         runner_results_to_df(runner).to_csv(out_path, index=False)
         print(f'  {name} → {os.path.basename(out_path)}')
 
-#%%
-# ---------------------------------------------------------------------------
-# Figures
-# ---------------------------------------------------------------------------
-
-bg = load_background_seismicity(
-    cache_path = SEIS_CACHE,
-    bounds     = (-129, -112, 30, 45),
-    start_year = 2000,
-    end_year   = 2025,
-    min_mag    = 3.5,
-)
-
-PRIOR_ORDER       = [f'{name}_etas_mixed' for name in ti_priors]
-mixed_cache_paths = {pname: None for pname in PRIOR_ORDER}
-
-min_lon, max_lon, min_lat, max_lat = cs['bounds']
-min_lon -= 1; max_lon += 1; min_lat -= 1; max_lat += 1
-cs_extent = [min_lon - 0.5, max_lon + 0.5, min_lat - 0.5, max_lat + 0.5]
-
-bg_region = (bg[
-    bg['longitude'].between(min_lon - 1, max_lon + 1) &
-    bg['latitude'].between(min_lat - 1, max_lat + 1)
-] if bg is not None else None)
-
-# ── Overview map ──────────────────────────────────────────────────────────
-fig = plot_overview_map(
-    output_dir  = CS_OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = cs_extent,
-    events_df   = catalog_df[['longitude', 'latitude']],
-    bg          = bg_region,
-    title       = f'bEPIC locations — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'comparison_locations.png'),
-)
-plt.show()
-
-# ── 2×3 location grid ────────────────────────────────────────────────────
-fig = plot_location_grid(
-    output_dir  = CS_OUTPUT_DIR,
-    prior_order = PRIOR_ORDER,
-    extent      = cs_extent,
-    ref_catalog = cs_ref_df,
-    events_df   = catalog_df[['longitude', 'latitude']],
-    bg          = bg_region,
-    cache_paths = mixed_cache_paths,
-    title       = f'bEPIC locations — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'grid_locations.png'),
-)
-plt.show()
-
-#%%
-# ── Location error histograms ─────────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'map_err_km',
-    bins        = np.linspace(0, 100, 51),
-    title       = f'bEPIC location errors — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    xlabel      = 'location error (km)',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'location_error_histograms.png'),
-)
-plt.show()
-
-# ── Fractional misfit histograms ─────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'frac_misfit',
-    bins        = np.linspace(0, 0.5, 51),
-    title       = f'bEPIC fractional misfit — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    xlabel      = 'frac_misfit',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'misfit_histograms.png'),
-)
-plt.show()
-
-# ── posterior_confidence_level histograms ────────────────────────────────────────
-fig = plot_prior_histograms(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'posterior_confidence_level',
-    bins        = np.linspace(0, 1, 41),
-    title       = f'bEPIC posterior calibration — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    xlabel      = 'posterior_confidence_level',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_confidence_level_histograms.png'),
-    color       = 'steelblue',
-)
-plt.show()
-
-# ── Posterior coverage at fixed radii ────────────────────────────────────
-fig = plot_coverage_panel(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = f'bEPIC posterior coverage — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'posterior_coverage_histograms.png'),
-)
-plt.show()
-
-# ── Calibration Q-Q: posterior_confidence_level vs U(0,1) ───────────────────────
-fig = plot_qq_calibration(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = f'bEPIC posterior calibration Q-Q — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration.png'),
-)
-plt.show()
-
-# ── Prior calibration Q-Q: prior_confidence_level vs U(0,1) ──────────
-fig = plot_qq_calibration_prior(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    title       = f'bEPIC prior calibration Q-Q — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_calibration_prior.png'),
-)
-plt.show()
-
-# ── Prior-vs-prior Q-Q comparison: map_err_km ────────────────────────────
-fig = plot_qq_prior_comparison(
-    prior_names = PRIOR_ORDER,
-    output_dir  = CS_OUTPUT_DIR,
-    column      = 'map_err_km',
-    title       = f'Q-Q prior comparison — {cs["name"]} — mixed priors (alpha={ALPHA})',
-    save_path   = os.path.join(CS_FIGURES_DIR, 'qq_prior_comparison.png'),
-)
-plt.show()
-
 # %%
 # =============================================================================
-# Standalone single-event location trajectory
+# Standalone single-event run (focus event, fresh blended prior per TI prior)
+# =============================================================================
+# Plotting for both this run and the main benchmark loop above now lives in
+# plot_scripts/plot_case_study_results.py (WORKFLOW='mixed').
 # =============================================================================
 # Builds a fresh blended prior for FOCUS_EVENT_ID from the historical catalog
 # plus all case-study events that preceded it.  No dependency on having run
@@ -554,10 +409,6 @@ if not os.path.exists(focus_run_path):
 elif not os.path.exists(INVERSION_JSON):
     print(f'[single-event] inversion JSON not found: {INVERSION_JSON}')
 else:
-    _focus_ref = cs_ref_df[cs_ref_df['event_id'] == FOCUS_EVENT_ID]
-    _ref_lat   = float(_focus_ref['usgs_lat'].iloc[0]) if not _focus_ref.empty else None
-    _ref_lon   = float(_focus_ref['usgs_lon'].iloc[0]) if not _focus_ref.empty else None
-
     _focus_cat = catalog_df[catalog_df['id'] == FOCUS_EVENT_ID]
     if _focus_cat.empty:
         print(f'[single-event] event {FOCUS_EVENT_ID} not found in catalog.')
@@ -603,17 +454,10 @@ else:
         _standalone_etas = _updater.update(_focus_t)
         print(f'[single-event] ETAS prior computed (catalog size: {_updater.n_catalog_events})')
 
-        _buffer_label = (f'{TIME_PRIOR_BUFFER_DAYS}d lookback'
-                         if TIME_PRIOR_BUFFER_DAYS else 'full history')
         _standalone_out_dir = os.path.join(CS_OUTPUT_DIR, f'standalone_{FOCUS_EVENT_ID}')
         os.makedirs(_standalone_out_dir, exist_ok=True)
 
-        deg_buf = 0.5
-        _extent = [_ref_lon - deg_buf, _ref_lon + deg_buf,
-                   _ref_lat - deg_buf, _ref_lat + deg_buf]
-
         # Run bEPIC once per TI prior and collect results
-        _standalone_prior_order = PRIOR_ORDER
         for name, ti_prior in ti_priors.items():
             mixed_name   = f'{name}_etas_mixed'
             initial_mixed = (
@@ -641,24 +485,5 @@ else:
             runner_results_to_df(_s_runner).to_csv(_standalone_csv, index=False)
 
         print(f'[single-event] results written → {_standalone_out_dir}/')
-
-        # Location trajectory for all mixed priors
-        fig = plot_location_trajectory(
-            event_id       = FOCUS_EVENT_ID,
-            output_dir     = _standalone_out_dir,
-            prior_order    = _standalone_prior_order,
-            run_dir        = CS_RUN_DIR,
-            min_triggers   = 4,
-            ref_lat        = _ref_lat,
-            ref_lon        = _ref_lon,
-            cache_paths    = {pname: None for pname in _standalone_prior_order},
-            extent         = _extent,
-            extent_pad_deg = 0.1,
-            title          = (f'bEPIC location trajectory — {cs["name"]} — '
-                              f'event {FOCUS_EVENT_ID} ({_buffer_label}, alpha={ALPHA})'),
-            save_path      = os.path.join(CS_FIGURES_DIR,
-                                          f'standalone_trajectory_{FOCUS_EVENT_ID}.png'),
-        )
-        plt.show()
 
 # %%

@@ -2,7 +2,9 @@
 
 > **Work in progress.** This repository is under active development. APIs, file layouts, and workflows may change without notice. This repository is being developed with the assistance of LLM/AI tools.
 
-A benchmarking framework for evaluating the [bEPIC](https://github.com/danedwells/bEPIC) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
+A benchmarking framework for evaluating the [bEPIC](https://github.com/danedwells/bEPIC, forked from ) Bayesian earthquake early warning location algorithm across different spatial prior distributions. Given a set of real earthquake trigger sequences, it runs bEPIC iteratively as station triggers arrive and compares the resulting posterior locations against USGS ANSS catalog reference positions.
+
+Future work will make the EQ location algorithm changeable or swappable. For now, bEPIC is the only supported algorithm.
 
 Two regions are supported: **California** (the main, ~700-event benchmark catalog) and **Cascadia** (Pacific Northwest). Both share the same code and workflows below; Cascadia-specific scripts are named `..._cascadia.py` and its config lives in `benchmark/config_cascadia.py`.
 
