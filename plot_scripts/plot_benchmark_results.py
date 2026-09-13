@@ -47,6 +47,7 @@ ALPHA = 0.5
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir     = SeismicPrior.data_dir            # priors/data/
 MAX_TRIGS    = config.BENCHMARK_PARAMS['max_trigs']
+MAX_TRIGS    = 10
 
 # Per-region: run directory, background seismicity, reference catalog loader,
 # KDE_Seismicity cache filename, and the overview-map extent.

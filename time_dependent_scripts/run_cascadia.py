@@ -24,7 +24,6 @@ config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 # put an integeor or None
 spatial_factor = None # multiply inverted d (spatial decay size) by this factor
 
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -46,9 +45,6 @@ DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
-
-MTJ_EVENT_ID = 'nc73821036'  # 2022-12-20 M6.4 Ferndale — event used in standalone prior/posterior test below
-MTJ_VERSION  = None          # None = last available trigger version
 
 #%%
 # ---------------------------------------------------------------------------
@@ -75,7 +71,6 @@ _usgs_ref_lookup = (
 # ---------------------------------------------------------------------------
 # Main workflow
 # ---------------------------------------------------------------------------
-
 # --- Control flags ---
 RUN_DYNAMIC_PRIORS = True   # run time-dependent ETAS prior (serial, event-by-event)
 

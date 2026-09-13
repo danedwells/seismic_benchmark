@@ -32,7 +32,7 @@ from benchmark import config
 # ---------------------------------------------------------------------------
 # Select which run to plot
 # ---------------------------------------------------------------------------
-DEFAULT_CASE_STUDY = "Ferndale"
+DEFAULT_CASE_STUDY = "MTJ_2024_M7"
 ACTIVE_CASE_STUDY  = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 # 'time_independent' | 'time_dependent' | 'mixed'
@@ -47,7 +47,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir     = SeismicPrior.data_dir            # priors/data/
 CASE_STUDIES = config.CASE_STUDIES
 cs           = CASE_STUDIES[ACTIVE_CASE_STUDY]
-MAX_TRIGS    = config.BENCHMARK_PARAMS['max_trigs']
+MAX_TRIGS = 10
 
 CS_DATA_DIR  = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY)
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')

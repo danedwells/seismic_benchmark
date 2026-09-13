@@ -13,8 +13,7 @@ os.environ['OMP_NUM_THREADS']  = '1'
 from priors import SeismicPrior
 
 from benchmark import runner as benchmark_runner
-from benchmark import config
-from benchmark import config_cascadia
+from benchmark import config_cascadia as config
 from benchmark.runner import (load_station_availability_cache,
                              make_epic_params)
 
@@ -97,3 +96,5 @@ with ProcessPoolExecutor(max_workers=len(priors_to_run)) as ex:
         f.result()  # re-raise any worker exception
 
 
+
+# %%

@@ -22,13 +22,6 @@ to 51N, so those five priors already cover Cascadia and are shared via
 SeismicPrior.data_dir -- see preparation_scripts/build_priors.py.
 """
 
-from benchmark.config import (
-    etas_run_tag,
-    etas_run_label,
-    etas_output_id,
-    etas_catalog_tag,
-    BENCHMARK_PARAMS,
-)
 
 # ---------------------------------------------------------------------------
 # Region-scale background/reference catalog
@@ -62,6 +55,32 @@ KDE_SEISMICITY_PARAMS = {
     'min_mag':        3.0,
     'adaptive':       True,
     'adaptive_alpha': 0.5,
+}
+# Cached .tt3 filenames written into SeismicPrior.data_dir.
+# KDE_Seismicity filename varies per context; set explicitly in each script.
+PRIOR_FILENAMES = {
+    'Gear1':          'GEAR1_prior.tt3',
+    'NSHM':           'USGS_NSHM_prior.tt3',
+    'Helmstetter':    'helmstetter_prior.tt3',
+    'KDE_Seismicity': None,   # set per-script: kde_seismicity_{context}.tt3
+    'Uniform':        None,
+}
+# Parameters for the main benchmark run.
+BENCHMARK_PARAMS = {
+    'prior':                     'KDE_Seismicity',
+    'max_trigs':                 10,
+    'grid_size':                 100,
+    'grid_km':                   200,
+    'migrate_grid':              False,  # re-centre grid on posterior MAP between versions
+    'migrate_grid_min_triggers': 8,     # suppress migration until this many triggers have reported
+    'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
+    'station_inventory':         None,
+    'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
+    'sigma_s':                   0.35,     # estimated travel time uncertainty per pick
+    'edt_sigma_s':               0.02,   # estimated travel time uncertainty per pick for dff. travle time
+    'dtt_weight':                0.0,   # How much to weight the differential travel time (0 = none, 1 = all)
+    'search_depths':             [8.0],  # km; candidate source depths for bEPIC's grid search.
+                                          # [8.0] preserves the original fixed-depth behaviour.
 }
 
 # ---------------------------------------------------------------------------
