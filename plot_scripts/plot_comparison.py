@@ -69,7 +69,7 @@ if ACTIVE_CASE_STUDY is None:
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
-    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
@@ -436,7 +436,7 @@ from benchmark.runner import load_reference_catalog
 
 if ACTIVE_CASE_STUDY is not None:
     import glob as _glob
-    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',
                                            ACTIVE_CASE_STUDY, '*catalog.parquet'))
     if _cs_parquets:
         _cs_df = pd.read_parquet(_cs_parquets[0])
@@ -504,9 +504,9 @@ else:
     # Pre-aggregate triggered and active station positions across all events shown.
     # Triggered = first version per event that reached exactly trigger_number stations.
     # Active (untriggered) = availability-cache stations not in the triggered set.
-    _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+    _run_dir9 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
                  if ACTIVE_CASE_STUDY else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
-    _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+    _avail_path9 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY,
                                   'station_availability_cache.parquet')
                     if ACTIVE_CASE_STUDY else
                     os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
@@ -1054,7 +1054,7 @@ _chosen_eid15 = (str(EVENT_ID_OVERRIDE) if EVENT_ID_OVERRIDE is not None
 print(f'[Figure 15] event_id = {_chosen_eid15}')
 
 # ── Run file ─────────────────────────────────────────────────────────────────
-_run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+_run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
               if ACTIVE_CASE_STUDY
               else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
 _run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
@@ -1101,7 +1101,7 @@ else:
         _prior_g15 = {}
 
         # ── Station inventory for activity masking ───────────────────────────────
-    _avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+    _avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY,
                                 'station_availability_cache.parquet')
                     if ACTIVE_CASE_STUDY
                     else os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
@@ -1129,7 +1129,7 @@ else:
             _etas_id15  = 'benchmark' if ACTIVE_CASE_STUDY is None else ACTIVE_CASE_STUDY
             _etas_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'etas_inversion')
                            if ACTIVE_CASE_STUDY is None
-                           else os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion'))
+                           else os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion'))
             _etas_json15 = os.path.join(_etas_dir15, f'parameters_{config.etas_output_id(_etas_id15)}.json')
             if not os.path.exists(_etas_json15):
                 print(f'  [ETAS] inversion JSON not found: {_etas_json15} — skipping.')
@@ -1151,7 +1151,7 @@ else:
                           [['time', 'latitude', 'longitude', 'magnitude']])
             else:
                 import glob as _glob15
-                _cs_pq15 = _glob15.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+                _cs_pq15 = _glob15.glob(os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',
                                                       ACTIVE_CASE_STUDY, '*catalog.parquet'))
                 if _cs_pq15:
                     _pq15 = pd.read_parquet(_cs_pq15[0])

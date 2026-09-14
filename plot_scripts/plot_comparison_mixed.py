@@ -70,7 +70,7 @@ if ACTIVE_CASE_STUDY is None:
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
-    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_MIXED   = os.path.join(_cs_base, 'output', 'mixed',
                                       EDT_TAG, f'max_trigs_{MAX_TRIGS}', ALPHA_TAG)

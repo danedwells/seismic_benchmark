@@ -36,11 +36,11 @@ MAX_TRIGS         = config.BENCHMARK_PARAMS['max_trigs']
 PRIOR_ORDER       = list(config.PRIOR_FILENAMES.keys())  # includes 'Uniform'
 N_TRIGS           = 5   # per-event trigger count to plot; None = each event's last (most-triggered) row
 
-CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'output', 'time_independent')
-CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'output', 'time_dependent')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'figures', 'time_independent')
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

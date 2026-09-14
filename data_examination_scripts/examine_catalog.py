@@ -370,9 +370,9 @@ RUN_FILES_ONLY   = True           # if True, restrict to events that have a .run
 # ── Paths ─────────────────────────────────────────────────────────────────────
 import glob as _glob
 
-_CS_DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'case_studies', CASE_STUDY_NAME)
+_CS_DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', CASE_STUDY_NAME)
 _CS_RUN_DIR  = os.path.join(_CS_DATA_DIR, 'run_files')
-_FIG_DIR     = os.path.join(PROJECT_ROOT, 'results', 'case_studies', CASE_STUDY_NAME, 'figures')
+_FIG_DIR     = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', CASE_STUDY_NAME, 'figures')
 os.makedirs(_FIG_DIR, exist_ok=True)
 
 # ── Load parquet ──────────────────────────────────────────────────────────────

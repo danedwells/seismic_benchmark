@@ -1,5 +1,5 @@
 """
-benchmark/config.py
+benchmark/config_california.py
 
 Central configuration for the seismic_benchmark package's California /
 Pacific-NW benchmark. Holds: static-prior construction parameters and

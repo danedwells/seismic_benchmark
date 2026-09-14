@@ -3,16 +3,16 @@ benchmark/config_cascadia.py
 
 Region-scoped config for the Cascadia / Pacific Northwest ETAS work.
 
-This mirrors the shape of benchmark/config.py but is kept as a fully
-separate module rather than folded into it: config.py stays the
+This mirrors the shape of benchmark/config_california.py but is kept as a fully
+separate module rather than folded into it: config_california.py stays the
 single-source-of-truth for the California/main-benchmark catalog and its
 CASE_STUDIES, and nothing here changes that. Cascadia needs its own ETAS
-spatial polygon (config.py's ETAS_INVERSION_CONFIG['shape_coords'] caps at
+spatial polygon (config_california.py's ETAS_INVERSION_CONFIG['shape_coords'] caps at
 ~44N and doesn't reach Washington) and its own background/reference
-catalog, so those live here instead of overloading config.py's globals.
+catalog, so those live here instead of overloading config_california.py's globals.
 
 Purely mechanical, geography-agnostic helpers (etas_run_tag, etas_run_label,
-etas_output_id, etas_catalog_tag) are imported from config.py and reused
+etas_output_id, etas_catalog_tag) are imported from config_california.py and reused
 as-is -- they're pure functions of whatever cfg dict is passed in, so they
 work identically for this module's ETAS_INVERSION_CONFIG.
 
@@ -118,7 +118,7 @@ ETAS_INVERSION_CONFIG = {
     'm_ref': 3.0,
 
     # -- Spatial region (Pacific Northwest polygon, [lat, lon] pairs) --
-    # Wider than config.py's CA polygon -- reaches to ~51N to cover
+    # Wider than config_california.py's CA polygon -- reaches to ~51N to cover
     # Washington/the full Cascadia subduction zone.
     'shape_coords': [
         [51.0, -129.0], [51.0, -122.0], [46.0, -117.0], [42.0, -117.0],
@@ -130,7 +130,7 @@ ETAS_INVERSION_CONFIG = {
     'free_background':        True,
     'free_productivity':      False,
 
-    # -- Initial parameter guess (copied from config.py's CA guess as a
+    # -- Initial parameter guess (copied from config_california.py's CA guess as a
     #    starting point; not refit for this region yet) --
     'theta_0': {
         'log10_mu': -5.8,
@@ -153,7 +153,7 @@ ETAS_INVERSION_CONFIG = {
 # Same keys as config.ETAS_UPDATER_CONFIG: bounds, grid_spacing,
 # out_of_bounds_fill, use_spatial_background, use_spatial_productivity,
 # max_lookback_days -- passed to EtasPriorUpdater.from_inversion_json() at
-# runtime. See config.py's ETAS_UPDATER_CONFIG comment for what each means.
+# runtime. See config_california.py's ETAS_UPDATER_CONFIG comment for what each means.
 ETAS_UPDATER_CONFIG = {
     'bounds':           REFERENCE_CATALOG_CONFIG['bounds'],
     'grid_spacing':     0.05,

@@ -53,8 +53,8 @@ if TARGET_KIND == 'region':
     CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', TARGET, 'output', 'time_independent')
     FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', TARGET, 'figures', 'time_independent')
 elif TARGET_KIND == 'case_study':
-    CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies', TARGET, 'output', 'time_independent')
-    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', TARGET, 'figures', 'time_independent')
+    CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', TARGET, 'output', 'time_independent')
+    FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', TARGET, 'figures', 'time_independent')
 else:
     raise ValueError(f"Unknown TARGET_KIND '{TARGET_KIND}' — expected 'region' or 'case_study'")
 os.makedirs(FIGURES_DIR, exist_ok=True)

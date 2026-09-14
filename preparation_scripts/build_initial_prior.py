@@ -23,7 +23,7 @@
 # from aftershock-triggered events during inversion.
 #
 # All inversion parameters that are constant across contexts live in
-# benchmark/config.py (ETAS_INVERSION_CONFIG).
+# benchmark/config_california.py (ETAS_INVERSION_CONFIG).
 #
 # Usage
 # -----

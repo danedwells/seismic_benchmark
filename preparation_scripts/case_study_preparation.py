@@ -19,7 +19,7 @@ from benchmark.usgs import download_case_study_catalog, build_run_files_for_case
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-CASE_STUDIES = config.CASE_STUDIES  # defined in benchmark/config.py
+CASE_STUDIES = config.CASE_STUDIES  # defined in benchmark/config_california.py
 
 # ---------------------------------------------------------------------------
 # Control flags
@@ -33,7 +33,7 @@ REBUILD_RUN_FILES = True  # rebuild .run files even if they already exist
 for name, cs in CASE_STUDIES.items():
     print(f"\n=== {cs['name']} ===")
 
-    CS_DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'case_studies', name)
+    CS_DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', name)
     CS_RUN_DIR  = os.path.join(CS_DATA_DIR, 'run_files')
     os.makedirs(CS_RUN_DIR, exist_ok=True)
 

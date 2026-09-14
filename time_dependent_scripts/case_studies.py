@@ -56,7 +56,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
-# Case study definitions — loaded from benchmark/config.py
+# Case study definitions — loaded from benchmark/config_california.py
 # ---------------------------------------------------------------------------
 CASE_STUDIES = config.CASE_STUDIES
 
@@ -72,13 +72,13 @@ DEFAULT_CASE_STUDY = "Ridgecrest"
 ACTIVE_CASE_STUDY = os.environ.get('CASE_STUDY', DEFAULT_CASE_STUDY)
 
 SEIS_CACHE       = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
-INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'case_studies',ACTIVE_CASE_STUDY, 'etas_inversion',
+INVERSION_JSON   = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',ACTIVE_CASE_STUDY, 'etas_inversion',
                                 f'parameters_{config.etas_output_id(ACTIVE_CASE_STUDY)}.json')
-HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion', 'input',
+HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'etas_inversion', 'input',
                                   f'catalog_{config.etas_catalog_tag(ACTIVE_CASE_STUDY)}.csv')
 
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
-AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 
 # Focus event for single-event posterior grid / trajectory figures.
 # The prior used for this event is saved to disk during the run so it can be
@@ -95,11 +95,11 @@ SIGMA_S = 0.22
 config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 
-CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
+CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'california', 'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
 
-CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
-CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR):
     os.makedirs(_d, exist_ok=True)

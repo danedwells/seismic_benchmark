@@ -64,10 +64,10 @@ if TARGET_KIND == 'region':
 
 elif TARGET_KIND == 'case_study':
     cs              = config.CASE_STUDIES[TARGET]
-    CS_DATA_DIR     = os.path.join(PROJECT_ROOT, 'data', 'case_studies', TARGET)
+    CS_DATA_DIR     = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', TARGET)
     RUN_DIR         = os.path.join(CS_DATA_DIR, 'run_files')
     STATION_AVAIL   = os.path.join(CS_DATA_DIR, 'station_availability_cache.parquet')
-    BASE_OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', TARGET, 'output', 'time_independent')
+    BASE_OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', TARGET, 'output', 'time_independent')
 
     catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
     ref_df = catalog_df.rename(columns={

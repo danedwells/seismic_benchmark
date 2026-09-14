@@ -88,7 +88,7 @@ This makes the `benchmark` package importable from the entry-point scripts.
 ```
 seismic_benchmark/
 ├── benchmark/                          # Python package — import as "benchmark"
-│   ├── config.py                       # Prior filenames, bounds, benchmark/ETAS parameters (California)
+│   ├── config_california.py            # Prior filenames, bounds, benchmark/ETAS parameters (California); imported as `config`
 │   ├── config_cascadia.py              # Same, for the Cascadia region
 │   ├── runner.py                       # BenchmarkRunner class; run_prior / run_all_priors_parallel workers
 │   ├── priors.py                       # build_and_cache_priors() — constructs .tt3 files from source data
@@ -116,24 +116,24 @@ seismic_benchmark/
 ├── data_examination_scripts/           # Small standalone scripts for inspecting priors/catalogs/results
 ├── tests/                              # pytest unit tests (run with `pytest`)
 │   ├── test_metrics.py                 # metrics.py — haversine, HDR levels, credible levels, coverage
-│   ├── test_config.py                  # config.py — structure and value sanity checks
+│   ├── test_config.py                  # config_california.py — structure and value sanity checks
 │   ├── test_runner.py                  # runner.py — DataFrame assembly, column normalisation, init
 │   └── test_priors.py                  # priors.py — build_and_cache_priors error handling
 ├── data/                               # Input data — not committed to git
 │   ├── california/                     # Main benchmark region
 │   │   ├── run_files/                  # Per-event trigger sequences (*.run)
 │   │   ├── etas_inversion/             # ETAS inversion outputs (parameters, catalog)
-│   │   └── reference/                  # Reference catalog, background seismicity cache
-│   ├── cascadia/                       # Same layout, for the Cascadia region
-│   └── case_studies/                   # Per-case-study subdirs (run_files/, catalog cache)
-│       ├── Ridgecrest/
-│       ├── Ferndale/
-│       ├── ElMayor/
-│       └── MTJ_2024_M7/
+│   │   ├── reference/                  # Reference catalog, background seismicity cache
+│   │   └── case_studies/               # Per-case-study subdirs (run_files/, catalog cache)
+│   │       ├── Ridgecrest/
+│   │       ├── Ferndale/
+│   │       ├── ElMayor/
+│   │       └── MTJ_2024_M7/
+│   └── cascadia/                       # Same layout, for the Cascadia region (no case studies yet)
 ├── results/                            # Generated outputs — not committed to git
 │   ├── california/output/, california/figures/    # Same sub-layout as before (time_independent/time_dependent/mixed)
-│   ├── cascadia/output/, cascadia/figures/
-│   └── case_studies/{name}/output/, case_studies/{name}/figures/
+│   │   └── case_studies/{name}/output/, case_studies/{name}/figures/
+│   └── cascadia/output/, cascadia/figures/
 ├── pyproject.toml
 ├── README.md
 └── CLAUDE.md                           # Developer notes
@@ -158,7 +158,7 @@ These files are not included in this repository due to file size. Contact daniel
 
 Both NSHM files share the same 0.1° grid. Values are log₁₀-encoded moment rates (N·m/yr); `build_priors.py` exponentiates both, sums in linear space, then normalizes.
 
-Place source files under `SeismicPrior.data_dir` in the paths specified by `benchmark/config.py` (`PRIOR_CONSTRUCTION_PARAMS['source_paths']`).
+Place source files under `SeismicPrior.data_dir` in the paths specified by `benchmark/config_california.py` (`PRIOR_CONSTRUCTION_PARAMS['source_paths']`).
 
 ---
 
@@ -226,7 +226,7 @@ RUN_ALL_PRIORS = True   # run all static priors in parallel
 SKIP_RUN       = False  # load existing CSVs instead of running bEPIC
 ```
 
-Results appear in `results/case_studies/{name}/output/` and figures in `results/case_studies/{name}/figures/`.
+Results appear in `results/california/case_studies/{name}/output/` and figures in `results/california/case_studies/{name}/figures/`.
 
 ---
 
@@ -311,7 +311,7 @@ Results go to `results/california/output/mixed/max_trigs_{N}/{prior}_etas_mixed_
 
 Downloads a USGS catalog, builds `.run` files, then runs the blended-prior benchmark over the aftershock sequence. Case-study events (not the USGS reference catalog) are fed to the ETAS updater incrementally. Includes a standalone single-event section that builds fresh blended priors for a configurable focus event and plots location trajectories for all five mixed priors.
 
-Set `ACTIVE_CASE_STUDY` to one of the same sequences (`Ridgecrest`, `Ferndale`, `ElMayor`, `MTJ_2024_M7`). Results appear in `results/case_studies/{name}/output/mixed/` and figures in `results/case_studies/{name}/figures/mixed/`.
+Set `ACTIVE_CASE_STUDY` to one of the same sequences (`Ridgecrest`, `Ferndale`, `ElMayor`, `MTJ_2024_M7`). Results appear in `results/california/case_studies/{name}/output/mixed/` and figures in `results/california/case_studies/{name}/figures/mixed/`.
 
 ---
 

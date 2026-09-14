@@ -57,7 +57,7 @@ if ACTIVE_CASE_STUDY is None:
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
-    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
@@ -127,7 +127,7 @@ for spec in PRIOR_SPECS:
 
 if ACTIVE_CASE_STUDY is not None:
     import glob as _glob
-    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',
                                            ACTIVE_CASE_STUDY, '*_catalog.parquet'))
     if _cs_parquets:
         _cs_df = pd.read_parquet(_cs_parquets[0])
@@ -205,7 +205,7 @@ _chosen_eid15 = (str(EVENT_ID_OVERRIDE) if EVENT_ID_OVERRIDE is not None
 print(f'[Figure 15] event_id = {_chosen_eid15}')
 
 # ── Run file ─────────────────────────────────────────────────────────────────
-_run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
+_run_dir15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'run_files')
               if ACTIVE_CASE_STUDY
               else os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files'))
 _run_path15 = os.path.join(_run_dir15, f'{_chosen_eid15}.run')
@@ -249,7 +249,7 @@ except NameError:
     _prior_g15 = {}
 
 # ── Station inventory for activity masking ───────────────────────────────
-_avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY,
+_avail_path15 = (os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY,
                                'station_availability_cache.parquet')
                  if ACTIVE_CASE_STUDY
                  else os.path.join(PROJECT_ROOT, 'data', 'california', 'reference',
@@ -456,7 +456,7 @@ HERE         = Path(__file__).parent.parent   # seismic_benchmark/
 
 CASE_STUDY = 'Ridgecrest'
 
-OUTPUT_PATH  = HERE / 'data' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
+OUTPUT_PATH  = HERE / 'data' / 'california' / 'case_studies' / f'{CASE_STUDY}' / 'station_availability_cache.parquet'
 
 df = pd.read_parquet(f"{OUTPUT_PATH}")
 # should be 397 for ridgecrest
@@ -483,24 +483,24 @@ cache_paths = {
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(PROJECT_ROOT)
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
-#AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+#AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 
 # ---------------------------------------------------------------------------
-# Case study definitions — loaded from benchmark/config.py
+# Case study definitions — loaded from benchmark/config_california.py
 # ---------------------------------------------------------------------------
 CASE_STUDIES = config.CASE_STUDIES
 
 # --- Select active case study ---
 ACTIVE_CASE_STUDY = 'Ridgecrest'
-AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
+AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',f'{ACTIVE_CASE_STUDY}', 'station_availability_cache.parquet')
 cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
 
 # Per-case-study directories
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
-CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'case_studies', ACTIVE_CASE_STUDY)
+CS_DATA_DIR    = os.path.join(PROJECT_ROOT, 'data',    'california', 'case_studies', ACTIVE_CASE_STUDY)
 CS_RUN_DIR     = os.path.join(CS_DATA_DIR, 'run_files')
-CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+CS_OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+CS_FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 
 for _d in (CS_DATA_DIR, CS_RUN_DIR, CS_OUTPUT_DIR, CS_FIGURES_DIR):
     os.makedirs(_d, exist_ok=True)

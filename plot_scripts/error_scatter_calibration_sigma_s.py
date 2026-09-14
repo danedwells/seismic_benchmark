@@ -53,11 +53,11 @@ X_QUANTILE = False   # plot the raw value of X_COLUMN (default: False)
 LOG_X      = True
 LOG_Y      = True
 
-CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+CS_TI_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'output', 'time_independent')
-CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+CS_TD_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'output', 'time_dependent')
-FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                             ACTIVE_CASE_STUDY, 'figures', 'time_independent')
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

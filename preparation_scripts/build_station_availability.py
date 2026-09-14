@@ -18,8 +18,8 @@ check to use actual data availability rather than a proxy inventory.
 
 Output
 ------
-data/california/reference/station_availability_cache.parquet  (main benchmark)
-data/case_studies/{name}/station_availability_cache.parquet   (case study)
+data/california/reference/station_availability_cache.parquet               (main benchmark)
+data/california/case_studies/{name}/station_availability_cache.parquet     (case study)
   Columns: event_id (str), station (str), network (str),
            longitude (float64), latitude (float64)
 
@@ -48,7 +48,7 @@ import pandas as pd
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
-from benchmark.config import CASE_STUDIES
+from benchmark.config_california import CASE_STUDIES
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -71,9 +71,9 @@ elif TARGET in CASE_STUDIES:
     # Matches the *_catalog.parquet filename download_case_study_catalog()
     # writes in benchmark/usgs.py: cs['name'] with spaces replaced by '_'.
     _catalog_name = CASE_STUDIES[TARGET]['name'].replace(' ', '_')
-    RUN_DIR      = HERE / 'data' / 'case_studies' / TARGET / 'run_files'
-    CATALOG_PATH = HERE / 'data' / 'case_studies' / TARGET / f'{_catalog_name}_catalog.parquet'
-    OUTPUT_PATH  = HERE / 'data' / 'case_studies' / TARGET / 'station_availability_cache.parquet'
+    RUN_DIR      = HERE / 'data' / 'california' / 'case_studies' / TARGET / 'run_files'
+    CATALOG_PATH = HERE / 'data' / 'california' / 'case_studies' / TARGET / f'{_catalog_name}_catalog.parquet'
+    OUTPUT_PATH  = HERE / 'data' / 'california' / 'case_studies' / TARGET / 'station_availability_cache.parquet'
 else:
     raise ValueError(
         f"Unknown AVAIL_TARGET '{TARGET}'. Use 'california' or one of: "

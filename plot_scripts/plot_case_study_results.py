@@ -49,7 +49,7 @@ CASE_STUDIES = config.CASE_STUDIES
 cs           = CASE_STUDIES[ACTIVE_CASE_STUDY]
 MAX_TRIGS = 10
 
-CS_DATA_DIR  = os.path.join(PROJECT_ROOT, 'data', 'case_studies', ACTIVE_CASE_STUDY)
+CS_DATA_DIR  = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', ACTIVE_CASE_STUDY)
 SEIS_CACHE   = os.path.join(PROJECT_ROOT, 'data', 'california', 'reference', 'background_seismicity.parquet')
 
 cache_paths = {
@@ -64,24 +64,24 @@ cache_paths['KDE_Seismicity'] = os.path.join(data_dir, f'kde_seismicity_{ACTIVE_
 if WORKFLOW == 'time_independent':
     PRIOR_ORDER      = list(config.PRIOR_FILENAMES.keys())
     GRID_CACHE_PATHS = cache_paths
-    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
+    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_independent', f'max_trigs_{MAX_TRIGS}')
     TITLE_SUFFIX     = ''
 
 elif WORKFLOW == 'time_dependent':
     PRIOR_ORDER      = ['ETAS_dynamic']
     GRID_CACHE_PATHS = {'ETAS_dynamic': None}   # no fixed .tt3 — prior evolves per event
-    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
-    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY, 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
     TITLE_SUFFIX     = ''
 
 elif WORKFLOW == 'mixed':
     ALPHA_TAG        = f'alpha_{ALPHA:.2f}'
     PRIOR_ORDER      = [f'{name}_etas_mixed' for name in config.PRIOR_FILENAMES]
     GRID_CACHE_PATHS = {name: None for name in PRIOR_ORDER}   # blended per event — no fixed .tt3
-    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
+    CS_OUTPUT_DIR    = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY,
                                     'output', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG, f'sched_{SCHED_TAG}')
-    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'case_studies', ACTIVE_CASE_STUDY,
+    CS_FIGURES_DIR   = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies', ACTIVE_CASE_STUDY,
                                     'figures', 'mixed', f'max_trigs_{MAX_TRIGS}', ALPHA_TAG, f'sched_{SCHED_TAG}')
     TITLE_SUFFIX     = f' — mixed priors (alpha={ALPHA})'
 

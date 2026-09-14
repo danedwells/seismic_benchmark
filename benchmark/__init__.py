@@ -1,4 +1,4 @@
-from . import config
+from . import config_california as config
 from . import metrics
 from . import runner
 from . import priors

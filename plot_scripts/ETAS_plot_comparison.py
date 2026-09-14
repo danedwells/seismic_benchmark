@@ -147,7 +147,7 @@ if ACTIVE_CASE_STUDY is None:
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
-    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'case_studies',
+    _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                                       ACTIVE_CASE_STUDY)
     OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent',
                                       *_STATIC_PARTS, f'max_trigs_{MAX_TRIGS}')
@@ -617,7 +617,7 @@ from benchmark.runner import load_reference_catalog
 
 if ACTIVE_CASE_STUDY is not None:
     import glob as _glob
-    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'case_studies',
+    _cs_parquets = _glob.glob(os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies',
                                            ACTIVE_CASE_STUDY, '*catalog.parquet'))
     if _cs_parquets:
         _cs_df = pd.read_parquet(_cs_parquets[0])

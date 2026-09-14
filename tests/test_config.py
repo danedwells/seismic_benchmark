@@ -1,9 +1,9 @@
 """
-Unit tests for benchmark/config.py.
+Unit tests for benchmark/config_california.py.
 
 Sanity checks that the configuration dictionaries have the expected structure
 and contain valid values.  These tests catch accidental key deletions or
-type errors introduced while editing config.py.
+type errors introduced while editing config_california.py.
 """
 import pandas as pd
 import pytest
