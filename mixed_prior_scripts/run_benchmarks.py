@@ -14,9 +14,7 @@
 #   results/output/mixed/max_trigs_{N}/{prior}_etas_mixed_benchmark_results.csv
 # =============================================================================
 import os
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 from priors import SeismicPrior, EtasPriorUpdater
@@ -25,6 +23,7 @@ from benchmark import config
 from benchmark.priors import blend_priors
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
                               make_epic_params, load_station_availability_cache)
+from benchmark.time_dependent_helpers import run_trigger_time
 
 # ---------------------------------------------------------------------------
 # Control flags
@@ -35,21 +34,7 @@ from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
 ALPHA     = 0.5
 ALPHA_TAG = f'alpha_{ALPHA:.2f}'
 
-# How often to re-evaluate the ETAS prior (seconds of event time).
-# 0 = update before every event (most accurate, slowest).
-ETAS_UPDATE_INTERVAL_S = 0
-
-# Power-law tempering applied to the raw ETAS grid before blending.
-# Values < 1 compress dynamic range (reduce aftershock cluster dominance).
-# 1 = no change.
-PRIOR_ALPHA = 1
-
 # Set True to plot the raw ETAS grid before each update (diagnostic).
-DEBUG_PLOT_PRIOR = False
-
-RUN_MIXED = True
-SKIP_RUN  = False
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -95,8 +80,6 @@ _usgs_ref_lookup = (
     if catalog_df is not None else pd.DataFrame()
 )
 
-
-
 #%%
 # ---------------------------------------------------------------------------
 # Blending utility (imported from benchmark.priors — see benchmark/priors.py)
@@ -123,6 +106,16 @@ for name, path in cache_paths.items():
     else:
         ti_priors[name] = SeismicPrior.from_tt3(path)
         print(f'  {name}: loaded from {os.path.basename(path)}')
+
+#%%
+# ---------------------------------------------------------------------------
+# Main workflow
+# ---------------------------------------------------------------------------
+# How often to re-evaluate the ETAS prior (in seconds of event time).
+ETAS_UPDATE_INTERVAL_S = 0
+
+# Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
+PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
 
 #%%
 # ---------------------------------------------------------------------------
@@ -160,104 +153,73 @@ print(updater)
 # Sort events chronologically (causal ETAS ordering)
 # ---------------------------------------------------------------------------
 
-def _run_trigger_time(event_id):
-    path = os.path.join(RUN_DIR, f'{event_id}.run')
-    try:
-        df  = pd.read_csv(path, nrows=1)
-        col = 'trigger time' if 'trigger time' in df.columns else 'trigger_time'
-        return float(df[col].iloc[0])
-    except Exception:
-        return 0.0
-
 run_files = sorted(Path(RUN_DIR).glob('*.run'))
-event_ids = sorted([f.stem for f in run_files], key=_run_trigger_time)
+event_ids = sorted([f.stem for f in run_files], key=lambda eid: run_trigger_time(eid, RUN_DIR))
 
 #%%
 # ---------------------------------------------------------------------------
 # Mixed-prior benchmark loop
-# ---------------------------------------------------------------------------
-# Events run serially in chronological order so the shared ETAS updater
-# stays causal.  For each event:
-#   1. Evaluate ETAS prior once (if update interval has elapsed).
-#   2. Blend the fresh ETAS prior with each of the 5 TI priors.
-#   3. Run bEPIC for each blended prior.
-#   4. Append the USGS reference location to the ETAS catalog (once).
 
-if RUN_MIXED and not SKIP_RUN:
 
-    # Initialise runners with blended priors at t0
-    _t0_unix      = _run_trigger_time(event_ids[0])
-    _t0           = pd.Timestamp(_t0_unix, unit='s')
-    _current_etas = updater.update(_t0)
-    print(f"\nInitial ETAS prior evaluated at {_t0.strftime('%Y-%m-%d %H:%M:%S')}")
+# Initialise runners with blended priors at t0
+_t0_unix      = run_trigger_time(event_ids[0], RUN_DIR)
+_t0           = pd.Timestamp(_t0_unix, unit='s')
+_current_etas = updater.update(_t0)
+print(f"\nInitial ETAS prior evaluated at {_t0.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    runners = {}
+runners = {}
+for name, ti_prior in ti_priors.items():
+    initial_mixed   = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+    params          = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
+    runners[name]   = BenchmarkRunner(
+        prior                = initial_mixed,
+        params               = params,
+        run_dir              = RUN_DIR,
+        catalog_df           = catalog_df,
+        station_availability = station_availability,
+    )
+
+_last_etas_update_unix = _t0_unix
+
+print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
+        f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
+
+for i, event_id in enumerate(event_ids):
+    event_time_unix = run_trigger_time(event_id, RUN_DIR)
+    t = pd.Timestamp(event_time_unix, unit='s')
+
+    # Re-evaluate ETAS if the update interval has elapsed
+    if (ETAS_UPDATE_INTERVAL_S == 0 or
+            event_time_unix - _last_etas_update_unix >= ETAS_UPDATE_INTERVAL_S):
+        _current_etas              = updater.update(t)
+        _last_etas_update_unix     = event_time_unix
+        print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"— catalog: {updater.n_catalog_events} events")
+
+    # Run bEPIC for each blended prior
     for name, ti_prior in ti_priors.items():
-        initial_mixed   = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-        params          = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
-        runners[name]   = BenchmarkRunner(
-            prior                = initial_mixed,
-            params               = params,
-            run_dir              = RUN_DIR,
-            catalog_df           = catalog_df,
-            station_availability = station_availability,
-        )
+        mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+        runners[name].update_prior(mixed)
+        runners[name].run_event(event_id)
 
-    _last_etas_update_unix = _t0_unix
+    # Feed USGS reference location back to ETAS — once per event, using ground
+    # truth (not bEPIC estimates) to keep the updater causally consistent.
+    eid_int = int(event_id)
+    if eid_int in _usgs_ref_lookup.index:
+        row = _usgs_ref_lookup.loc[eid_int]
+        updater.append_events(pd.DataFrame([{
+            'time':      row['time'],
+            'latitude':  row['latitude'],
+            'longitude': row['longitude'],
+            'magnitude': row['magnitude'],
+        }]))
 
-    print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
-          f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
+    if (i + 1) % 50 == 0:
+        print(f"  {i + 1}/{len(event_ids)} events complete.")
 
-    for i, event_id in enumerate(event_ids):
-        event_time_unix = _run_trigger_time(event_id)
-        t = pd.Timestamp(event_time_unix, unit='s')
+print(f"\nSaving results to:\n  {OUTPUT_DIR}")
+for name, runner in runners.items():
+    out_path = os.path.join(OUTPUT_DIR, f'{name.lower()}_etas_mixed_benchmark_results.csv')
+    runner_results_to_df(runner).to_csv(out_path, index=False)
+    print(f'  {name} → {os.path.basename(out_path)}')
 
-        # Re-evaluate ETAS if the update interval has elapsed
-        if (ETAS_UPDATE_INTERVAL_S == 0 or
-                event_time_unix - _last_etas_update_unix >= ETAS_UPDATE_INTERVAL_S):
-            _current_etas              = updater.update(t)
-            _last_etas_update_unix     = event_time_unix
-            print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
-                  f"— catalog: {updater.n_catalog_events} events")
-
-            if DEBUG_PLOT_PRIOR:
-                _fig, _ax = plt.subplots(1, 1, figsize=(7, 5))
-                _pcm = _ax.pcolormesh(
-                    _current_etas.lons, _current_etas.lats,
-                    np.log10(_current_etas.grid + 1e-12),
-                    cmap='viridis', shading='auto',
-                )
-                plt.colorbar(_pcm, ax=_ax, label='log₁₀ λ (ETAS only)')
-                _ax.set_title(f'ETAS prior  {t.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=9)
-                _ax.set_xlabel('longitude'); _ax.set_ylabel('latitude')
-                plt.tight_layout(); plt.pause(0.01); plt.close(_fig)
-
-        # Run bEPIC for each blended prior
-        for name, ti_prior in ti_priors.items():
-            mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-            runners[name].update_prior(mixed)
-            runners[name].run_event(event_id)
-
-        # Feed USGS reference location back to ETAS — once per event, using ground
-        # truth (not bEPIC estimates) to keep the updater causally consistent.
-        eid_int = int(event_id)
-        if eid_int in _usgs_ref_lookup.index:
-            row = _usgs_ref_lookup.loc[eid_int]
-            updater.append_events(pd.DataFrame([{
-                'time':      row['time'],
-                'latitude':  row['latitude'],
-                'longitude': row['longitude'],
-                'magnitude': row['magnitude'],
-            }]))
-
-        if (i + 1) % 50 == 0:
-            print(f"  {i + 1}/{len(event_ids)} events complete.")
-
-    print(f"\nSaving results to:\n  {OUTPUT_DIR}")
-    for name, runner in runners.items():
-        out_path = os.path.join(OUTPUT_DIR, f'{name.lower()}_etas_mixed_benchmark_results.csv')
-        runner_results_to_df(runner).to_csv(out_path, index=False)
-        print(f'  {name} → {os.path.basename(out_path)}')
-
-# Plotting: plot_scripts/plot_benchmark_results.py (REGION='california', WORKFLOW='mixed')
-# %%

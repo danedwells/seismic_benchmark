@@ -33,6 +33,7 @@ from benchmark import config
 from benchmark.priors import blend_priors
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
                               make_epic_params, load_station_availability_cache)
+from benchmark.time_dependent_helpers import run_trigger_time
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -71,15 +72,6 @@ AVAIL_CACHE  = os.path.join(PROJECT_ROOT, 'data', 'case_studies',f'{ACTIVE_CASE_
 # Lower alpha = STATIC prior more important
 ALPHA     = 0.5
 ALPHA_TAG = f'alpha_{ALPHA:.2f}'
-
-# How often to re-evaluate the ETAS prior (seconds of event time).
-# 0 = update before every event (most accurate, slowest).
-ETAS_UPDATE_INTERVAL_S = 0
-
-# Power-law tempering applied to the raw ETAS grid before blending.
-# Values < 1 compress dynamic range (reduce aftershock cluster dominance).
-# 1 = no change.
-PRIOR_ALPHA = 1.2
 
 # ---------------------------------------------------------------------------
 # N-dependent prior schedule (per-trigger-count ALPHA/PRIOR_ALPHA taper)
@@ -170,22 +162,38 @@ focus_run_path = os.path.join(CS_RUN_DIR, f'{FOCUS_EVENT_ID}.run')
 
 #%%
 # ---------------------------------------------------------------------------
-# Control flags
-# ---------------------------------------------------------------------------
-
-RUN_MIXED        = True   # run the blended prior benchmark
-
-#%%
-# ---------------------------------------------------------------------------
 # Load catalog from cache (preparation_scripts/case_study_preparation.py must
 # have been run first)
 # ---------------------------------------------------------------------------
 
 catalog_df = download_case_study_catalog(cs, cache_dir=CS_DATA_DIR, REDOWNLOAD=False)
-print(f"{len(catalog_df)} events in {cs['name']} catalog.")
-print(catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']].head())
 
-#%%
+_avail = (load_station_availability_cache(AVAIL_CACHE)
+          if os.path.exists(AVAIL_CACHE) else None)
+if _avail:
+    print("Station availability cache loaded")
+
+# Reference catalog (for location error computation)
+cs_ref_df = catalog_df.rename(columns={
+    'id':        'event_id',
+    'latitude':  'usgs_lat',
+    'longitude': 'usgs_lon',
+})[['event_id', 'usgs_lat', 'usgs_lon']]
+
+# Prepare case-study events for incremental ETAS feeding.
+m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
+cs_etas_catalog = (
+    catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
+    .rename(columns={'mag': 'magnitude'})
+    .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
+    .query(f'magnitude >= {m_ref}')
+    .sort_values('time')
+    .reset_index(drop=True)
+)
+cs_event_lookup = cs_etas_catalog.set_index('id')
+print(f"  {len(cs_etas_catalog)} case-study events at or above m_ref={m_ref} "
+      f"will be fed to ETAS incrementally.")
+
 # ---------------------------------------------------------------------------
 # Blending utility (imported from benchmark.priors — see benchmark/priors.py)
 # ---------------------------------------------------------------------------
@@ -214,6 +222,16 @@ for name, path in cache_paths.items():
 
 #%%
 # ---------------------------------------------------------------------------
+# Main workflow
+# ---------------------------------------------------------------------------
+# How often to re-evaluate the ETAS prior (in seconds of event time).
+ETAS_UPDATE_INTERVAL_S = 0
+
+# Power-law tempering applied to the raw ETAS grid before blending.
+PRIOR_ALPHA = 1.2
+
+#%%
+# ---------------------------------------------------------------------------
 # 4. Build EtasPriorUpdater
 # ---------------------------------------------------------------------------
 
@@ -236,254 +254,98 @@ print(f"  {len(hist_catalog)} events loaded.")
 
 print(f"\nBuilding EtasPriorUpdater from:\n  {INVERSION_JSON}")
 benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
+
+# Make updater
 updater = EtasPriorUpdater.from_inversion_json(
     json_path  = INVERSION_JSON,
     catalog_df = hist_catalog,
     **config.ETAS_UPDATER_CONFIG,
 )
-print(updater)
-
-# Prepare case-study events for incremental ETAS feeding.
-# Only events at or above m_ref are meaningful for the ETAS intensity sum.
-# ETAS_INVERSION_CONFIG['mc'] is 'positive' (a rolling per-event completeness
-# computed inside ETASParameterCalculation, not a fixed number) so it can't
-# be used as a magnitude filter here — m_ref is the fixed floor that mode
-# still requires.
-m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
-cs_etas_catalog = (
-    catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
-    .rename(columns={'mag': 'magnitude'})
-    .assign(time=lambda df: pd.to_datetime(df['time']).dt.tz_localize(None))
-    .query(f'magnitude >= {m_ref}')
-    .sort_values('time')
-    .reset_index(drop=True)
-)
-cs_event_lookup = cs_etas_catalog.set_index('id')
-print(f"  {len(cs_etas_catalog)} case-study events at or above m_ref={m_ref} "
-      f"will be fed to ETAS incrementally.")
 
 #%%
 # ---------------------------------------------------------------------------
 # 5. Sort events chronologically (causal ETAS ordering)
 # ---------------------------------------------------------------------------
 
-def _trigger_time(stem):
-    try:
-        df  = pd.read_csv(os.path.join(CS_RUN_DIR, f'{stem}.run'), nrows=1)
-        col = 'trigger time' if 'trigger time' in df.columns else 'trigger_time'
-        return float(df[col].iloc[0])
-    except Exception:
-        return 0.0
-
 run_files = sorted(Path(CS_RUN_DIR).glob('*.run'))
-event_ids = sorted([f.stem for f in run_files], key=_trigger_time)
+event_ids = sorted([f.stem for f in run_files], key=lambda eid: run_trigger_time(eid, CS_RUN_DIR))
+print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
+        f"(update interval: "
+        f"{'per-event' if ETAS_UPDATE_INTERVAL_S == 0 else f'{ETAS_UPDATE_INTERVAL_S}s'})…\n")
 
-# Reference catalog (for location error computation)
-cs_ref_df = catalog_df.rename(columns={
-    'id':        'event_id',
-    'latitude':  'usgs_lat',
-    'longitude': 'usgs_lon',
-})[['event_id', 'usgs_lat', 'usgs_lon']]
 
 #%%
 # ---------------------------------------------------------------------------
 # 6. Mixed-prior benchmark loop
 # ---------------------------------------------------------------------------
-# Events run serially in chronological order.  The shared ETAS updater is
-# advanced once per event; each of the 5 TI priors is blended with the
-# current ETAS prior before running bEPIC.
-_DISABLE_ACTIVITY_MASK = os.environ.get('DISABLE_ACTIVITY_MASK', '0') == '1'
 
-_avail = (load_station_availability_cache(AVAIL_CACHE)
-          if os.path.exists(AVAIL_CACHE) and not _DISABLE_ACTIVITY_MASK else None)
-if _avail:
-    print("Station availability cache loaded")
-elif _DISABLE_ACTIVITY_MASK:
-    print("DISABLE_ACTIVITY_MASK=1 — station_inventory left None, activity mask disabled")
+# Initialise runners with blended priors at the start of the sequence
+_t0           = pd.Timestamp(cs['starttime'])
+_current_etas = updater.update(_t0)
+print(f"\nInitial ETAS prior evaluated at {_t0.strftime('%Y-%m-%d %H:%M:%S')}")
 
+runners = {}
+for name, ti_prior in ti_priors.items():
+    # Initial-state placeholder prior: for the N-trigs schedule this is
+    # immediately superseded per-version by prior_for_n_trigs below.
+    initial_mixed = (
+        blend_priors(ti_prior, _current_etas, alpha_schedule(1), prior_alpha_schedule(1))
+        if USE_N_TRIGS_SCHEDULE else
+        blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+    )
+    params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
+    runners[name] = BenchmarkRunner(
+        prior                = initial_mixed,
+        params               = params,
+        run_dir              = CS_RUN_DIR,
+        catalog_df           = cs_ref_df,
+        station_availability = _avail,
+    )
 
-if RUN_MIXED:
+_last_etas_update_unix = _t0.timestamp()
 
-    # Initialise runners with blended priors at the start of the sequence
-    _t0           = pd.Timestamp(cs['starttime'])
-    _current_etas = updater.update(_t0)
-    print(f"\nInitial ETAS prior evaluated at {_t0.strftime('%Y-%m-%d %H:%M:%S')}")
-
-    runners = {}
-    for name, ti_prior in ti_priors.items():
-        # Initial-state placeholder prior: for the N-trigs schedule this is
-        # immediately superseded per-version by prior_for_n_trigs below.
-        initial_mixed = (
-            blend_priors(ti_prior, _current_etas, alpha_schedule(1), prior_alpha_schedule(1))
-            if USE_N_TRIGS_SCHEDULE else
-            blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-        )
-        params        = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
-        runners[name] = BenchmarkRunner(
-            prior                = initial_mixed,
-            params               = params,
-            run_dir              = CS_RUN_DIR,
-            catalog_df           = cs_ref_df,
-            station_availability = _avail,
-        )
-
-    _last_etas_update_unix = _t0.timestamp()
-
-    if USE_N_TRIGS_SCHEDULE:
-        print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
-              f"({len(runners)} TI priors × ETAS, N-trigs schedule mode={SCHED_MODE})…\n")
-    else:
-        print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
-              f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
-
-    for i, event_id in enumerate(event_ids):
-        event_time_unix = _trigger_time(event_id)
-        t = pd.Timestamp(event_time_unix, unit='s')
-
-        # Re-evaluate ETAS if the update interval has elapsed
-        if (ETAS_UPDATE_INTERVAL_S == 0 or
-                event_time_unix - _last_etas_update_unix >= ETAS_UPDATE_INTERVAL_S):
-            _current_etas          = updater.update(t)
-            _last_etas_update_unix = event_time_unix
-            print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
-                  f"— catalog: {updater.n_catalog_events} events")
-
-        # Run bEPIC for each blended prior
-        for name, ti_prior in ti_priors.items():
-            if USE_N_TRIGS_SCHEDULE:
-                runners[name].run_event(
-                    event_id,
-                    prior_for_n_trigs=build_n_trigs_prior_fn(ti_prior, _current_etas),
-                )
-            else:
-                mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
-                runners[name].update_prior(mixed)
-                runners[name].run_event(event_id)
-
-        # Feed case-study event location back to ETAS (once per event, causal)
-        if event_id in cs_event_lookup.index:
-            row = cs_event_lookup.loc[[event_id], ['time', 'latitude', 'longitude', 'magnitude']]
-            updater.append_events(row)
-
-        if (i + 1) % 20 == 0:
-            print(f"  {i + 1}/{len(event_ids)} events complete.")
-
-    print(f"\nSaving results to:\n  {CS_OUTPUT_DIR}")
-    for name, runner in runners.items():
-        out_path = os.path.join(CS_OUTPUT_DIR, f'{name.lower()}_etas_mixed_benchmark_results.csv')
-        runner_results_to_df(runner).to_csv(out_path, index=False)
-        print(f'  {name} → {os.path.basename(out_path)}')
-
-# %%
-# =============================================================================
-# Standalone single-event run (focus event, fresh blended prior per TI prior)
-# =============================================================================
-# Plotting for both this run and the main benchmark loop above now lives in
-# plot_scripts/plot_case_study_results.py (WORKFLOW='mixed').
-# =============================================================================
-# Builds a fresh blended prior for FOCUS_EVENT_ID from the historical catalog
-# plus all case-study events that preceded it.  No dependency on having run
-# the full benchmark loop first.
-#
-# TIME_PRIOR_BUFFER_DAYS : int or None
-#     Lookback window for appending pre-event case-study events to ETAS.
-#     None = include all pre-event entries.
-#
-# Produces one CSV and one trajectory figure per TI prior, saved to a
-# per-event subdirectory under CS_OUTPUT_DIR.
-# =============================================================================
-
-TIME_PRIOR_BUFFER_DAYS = 1
-
-_params_kw = {
-    'grid_size':                 config.BENCHMARK_PARAMS['grid_size'],
-    'grid_km':                   config.BENCHMARK_PARAMS['grid_km'],
-    'max_trigs':                 MAX_TRIGS,
-    'migrate_grid':              config.BENCHMARK_PARAMS['migrate_grid'],
-    'migrate_grid_min_triggers': config.BENCHMARK_PARAMS['migrate_grid_min_triggers'],
-}
-
-if not os.path.exists(focus_run_path):
-    print(f'[single-event] .run file not found: {focus_run_path}')
-    print('  → set FOCUS_EVENT_ID to a built event, or run BUILD_RUN_FILES first.')
-elif not os.path.exists(INVERSION_JSON):
-    print(f'[single-event] inversion JSON not found: {INVERSION_JSON}')
+if USE_N_TRIGS_SCHEDULE:
+    print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
+            f"({len(runners)} TI priors × ETAS, N-trigs schedule mode={SCHED_MODE})…\n")
 else:
-    _focus_cat = catalog_df[catalog_df['id'] == FOCUS_EVENT_ID]
-    if _focus_cat.empty:
-        print(f'[single-event] event {FOCUS_EVENT_ID} not found in catalog.')
-    else:
-        _focus_t = pd.Timestamp(_focus_cat['time'].iloc[0]).replace(tzinfo=None)
-        print(f'[single-event] focus event {FOCUS_EVENT_ID}  t = {_focus_t}')
+    print(f"\nRunning mixed-prior benchmark over {len(event_ids)} events "
+            f"({len(runners)} TI priors × ETAS, alpha={ALPHA})…\n")
 
-        # Build a fresh updater from the historical catalog
-        try:
-            _hist = hist_catalog
-        except NameError:
-            _hist = pd.read_csv(
-                HISTORICAL_CATALOG,
-                index_col=0,
-                dtype={'url': str, 'alert': str},
+for i, event_id in enumerate(event_ids):
+    event_time_unix = run_trigger_time(event_id, CS_RUN_DIR)
+    t = pd.Timestamp(event_time_unix, unit='s')
+
+    # Re-evaluate ETAS if the update interval has elapsed
+    if (ETAS_UPDATE_INTERVAL_S == 0 or
+            event_time_unix - _last_etas_update_unix >= ETAS_UPDATE_INTERVAL_S):
+        _current_etas          = updater.update(t)
+        _last_etas_update_unix = event_time_unix
+        print(f"  [ETAS] updated at {t.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"— catalog: {updater.n_catalog_events} events")
+
+    # Run bEPIC for each blended prior
+    for name, ti_prior in ti_priors.items():
+        if USE_N_TRIGS_SCHEDULE:
+            runners[name].run_event(
+                event_id,
+                prior_for_n_trigs=build_n_trigs_prior_fn(ti_prior, _current_etas),
             )
-            _hist['time'] = pd.to_datetime(
-                _hist['time'], format='ISO8601', utc=True
-            ).dt.tz_convert(None)
+        else:
+            mixed = blend_priors(ti_prior, _current_etas, ALPHA, PRIOR_ALPHA)
+            runners[name].update_prior(mixed)
+            runners[name].run_event(event_id)
 
-        benchmark_runner.repair_inversion_json_paths(INVERSION_JSON)
-        _updater = EtasPriorUpdater.from_inversion_json(
-            json_path  = INVERSION_JSON,
-            catalog_df = _hist,
-            **config.ETAS_UPDATER_CONFIG,
-        )
+    # Feed case-study event location back to ETAS (once per event, causal)
+    if event_id in cs_event_lookup.index:
+        row = cs_event_lookup.loc[[event_id], ['time', 'latitude', 'longitude', 'magnitude']]
+        updater.append_events(row)
 
-        # Append pre-event case-study events within the lookback window
-        _window_start = (
-            _focus_t - pd.Timedelta(days=TIME_PRIOR_BUFFER_DAYS)
-            if TIME_PRIOR_BUFFER_DAYS is not None else pd.Timestamp.min
-        )
-        _pre = cs_etas_catalog[
-            (cs_etas_catalog['time'] < _focus_t) &
-            (cs_etas_catalog['time'] >= _window_start) &
-            (cs_etas_catalog['id'] != FOCUS_EVENT_ID)
-        ][['time', 'latitude', 'longitude', 'magnitude']]
-        if not _pre.empty:
-            _updater.append_events(_pre)
-            print(f'[single-event] appended {len(_pre)} pre-event case-study events.')
+    if (i + 1) % 20 == 0:
+        print(f"  {i + 1}/{len(event_ids)} events complete.")
 
-        # Evaluate ETAS prior at focus event time
-        _standalone_etas = _updater.update(_focus_t)
-        print(f'[single-event] ETAS prior computed (catalog size: {_updater.n_catalog_events})')
+print(f"\nSaving results to:\n  {CS_OUTPUT_DIR}")
+for name, runner in runners.items():
+    out_path = os.path.join(CS_OUTPUT_DIR, f'{name.lower()}_etas_mixed_benchmark_results.csv')
+    runner_results_to_df(runner).to_csv(out_path, index=False)
+    print(f'  {name} → {os.path.basename(out_path)}')
 
-        _standalone_out_dir = os.path.join(CS_OUTPUT_DIR, f'standalone_{FOCUS_EVENT_ID}')
-        os.makedirs(_standalone_out_dir, exist_ok=True)
-
-        # Run bEPIC once per TI prior and collect results
-        for name, ti_prior in ti_priors.items():
-            mixed_name   = f'{name}_etas_mixed'
-            initial_mixed = (
-                blend_priors(ti_prior, _standalone_etas, alpha_schedule(1), prior_alpha_schedule(1))
-                if USE_N_TRIGS_SCHEDULE else
-                blend_priors(ti_prior, _standalone_etas, ALPHA, PRIOR_ALPHA)
-            )
-            _s_params    = make_epic_params(initial_mixed, True, config.BENCHMARK_PARAMS)
-            _s_runner    = BenchmarkRunner(
-                prior                = initial_mixed,
-                params               = _s_params,
-                run_dir              = CS_RUN_DIR,
-                station_availability = _avail,
-            )
-            if USE_N_TRIGS_SCHEDULE:
-                _s_runner.run_event(
-                    FOCUS_EVENT_ID,
-                    prior_for_n_trigs=build_n_trigs_prior_fn(ti_prior, _standalone_etas),
-                )
-            else:
-                _s_runner.run_event(FOCUS_EVENT_ID)
-            _standalone_csv = os.path.join(
-                _standalone_out_dir, f'{mixed_name.lower()}_benchmark_results.csv'
-            )
-            runner_results_to_df(_s_runner).to_csv(_standalone_csv, index=False)
-
-        print(f'[single-event] results written → {_standalone_out_dir}/')
-
-# %%

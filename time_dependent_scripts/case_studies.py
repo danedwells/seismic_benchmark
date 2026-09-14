@@ -41,7 +41,7 @@ from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df, 
                               load_station_availability_cache,
                               make_epic_params)
-from time_dependent_helpers import *
+from benchmark.time_dependent_helpers import *
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -121,12 +121,6 @@ if _avail:
     print("Station availability cache loaded")
 
 # -- Prepare the case-study catalog in ETAS column format ----------------
-# Events are sorted chronologically so append_events() stays causal.
-# Only events above m_ref are meaningful for the ETAS intensity sum.
-# ETAS_INVERSION_CONFIG['mc'] is 'positive' (a rolling per-event
-# completeness computed inside ETASParameterCalculation, not a fixed
-# number) so it can't be used as a magnitude filter here — m_ref is the
-# fixed floor that mode still requires.
 m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
 cs_etas_catalog = (
     catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
@@ -155,12 +149,9 @@ cs_ref_df = catalog_df.rename(columns={
 # Main workflow
 # ---------------------------------------------------------------------------
 # How often to re-evaluate the ETAS prior (in seconds of event time).
-# 0  → update before every event  (most accurate, slowest)
-# 3600 → update at most once per hour of event time
 ETAS_UPDATE_INTERVAL_S = 0
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
-# dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
 PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
 
 #%%
@@ -174,8 +165,6 @@ if not os.path.exists(INVERSION_JSON):
     )
 
 # -- Load historical catalog (background seismicity for ETAS) ------------
-# This is the same catalog used for inversion.  Case-study events will be
-# appended to it incrementally as they are located.
 print(f"Loading historical catalog from:\n  {os.path.abspath(HISTORICAL_CATALOG)}")
 hist_catalog = pd.read_csv(
     HISTORICAL_CATALOG,
@@ -213,7 +202,7 @@ def after_event_fn(event_id):
 # Collect event IDs from available .run files, sorted by first trigger time
 # (chronological order is critical so ETAS updates are causal).
 run_files   = sorted(Path(CS_RUN_DIR).glob('*.run'))
-event_ids  = sorted([f.stem for f in run_files], key=run_trigger_time)
+event_ids  = sorted([f.stem for f in run_files], key=lambda eid: run_trigger_time(eid, CS_RUN_DIR))
 print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
         f"(update interval: "
         f"{'per-event' if ETAS_UPDATE_INTERVAL_S == 0 else f'{ETAS_UPDATE_INTERVAL_S}s'})…\n")
@@ -238,7 +227,7 @@ runner = BenchmarkRunner(prior=initial_prior,
 
 runner.run_all(
     event_ids          = event_ids,
-    etas_update_fn     = etas_update_fn,
+    etas_update_fn     = lambda t: etas_update_fn(t, updater, PRIOR_ALPHA),
     update_interval_s  = ETAS_UPDATE_INTERVAL_S,
     after_event_fn     = after_event_fn,
 )

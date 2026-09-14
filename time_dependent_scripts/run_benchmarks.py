@@ -7,14 +7,14 @@ import pandas as pd
 from pathlib import Path
 
 # Custom repository imports
-from priors import SeismicPrior, EtasPriorUpdater
+from priors import EtasPriorUpdater
 
 from benchmark import runner as benchmark_runner
 from benchmark import config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
                                make_epic_params,
                               load_station_availability_cache)
-from time_dependent_helpers import *
+from benchmark.time_dependent_helpers import *
 
 
 # ---------------------------------------------------------------------------
@@ -81,12 +81,9 @@ _usgs_ref_lookup = (
 # Main workflow
 # ---------------------------------------------------------------------------
 # How often to re-evaluate the ETAS prior (in seconds of event time).
-# 0  → update before every event  (most accurate, slowest)
-# 3600 → update at most once per hour of event time
 ETAS_UPDATE_INTERVAL_S = 0
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the
-# dynamic range, reducing overconfidence.  0.5 is a reasonable starting point.
 PRIOR_ALPHA = 1 # UNCHANGED behavior if this == 1
 
 #%%
@@ -129,7 +126,6 @@ updater = EtasPriorUpdater.from_inversion_json(
     spatial_factor = spatial_factor
 )
 
-
 def after_event_fn(event_id):
     # Feeds USGS final location into ETAS — deliberately NOT the bEPIC estimate.
     eid_int = int(event_id)
@@ -147,7 +143,7 @@ def after_event_fn(event_id):
 # Collect event IDs from available .run files, sorted by first trigger time
 # (chronological order is critical so ETAS updates are causal).
 run_files  = sorted(Path(RUN_DIR).glob('*.run'))
-event_ids  = sorted([f.stem for f in run_files], key=run_trigger_time)
+event_ids  = sorted([f.stem for f in run_files], key=lambda eid: run_trigger_time(eid, RUN_DIR))
 print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
         f"(update interval: "
         f"{'per-event' if ETAS_UPDATE_INTERVAL_S == 0 else f'{ETAS_UPDATE_INTERVAL_S}s'})…\n")
@@ -158,7 +154,7 @@ print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
 # -- Set up BenchmarkRunner with the initial prior
 # -- Run the dynamic prior ----------------------
 # -----------------------------------------------------------------------
-_t0 = pd.Timestamp(_run_trigger_time(event_ids[0]), unit='s')
+_t0 = pd.Timestamp(run_trigger_time(event_ids[0], RUN_DIR), unit='s')
 initial_prior = updater.update(_t0)
 
 params = make_epic_params(initial_prior, True, config.BENCHMARK_PARAMS)
@@ -171,7 +167,7 @@ runner = BenchmarkRunner(prior=initial_prior,
 
 runner.run_all(
     event_ids         = event_ids,
-    etas_update_fn    = etas_update_fn,
+    etas_update_fn    = lambda t: etas_update_fn(t, updater, PRIOR_ALPHA),
     update_interval_s = ETAS_UPDATE_INTERVAL_S,
     after_event_fn    = after_event_fn,
 )
