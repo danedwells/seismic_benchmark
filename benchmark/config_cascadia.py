@@ -35,6 +35,9 @@ SeismicPrior.data_dir -- see preparation_scripts/build_priors.py.
 # Matches what's actually on disk at data/cascadia/reference/
 # cascadia_reference_catalog.csv, downloaded via
 # examples/download_usgs_catalog.py (which mirrors these same values).
+#   starttime, endtime — ISO 8601 window (str) for the catalog download.
+#   bounds             — (lon_min, lon_max, lat_min, lat_max) search region.
+#   min_mag            — minimum magnitude included in the download.
 REFERENCE_CATALOG_CONFIG = {
     'starttime': '1980-01-01T00:00:00',
     'endtime':   '2026-07-31T00:00:00',
@@ -46,6 +49,15 @@ REFERENCE_CATALOG_CONFIG = {
 # KDE seismicity prior configuration (Cascadia catalog instead of the main
 # benchmark's data/reference/ catalog)
 # ---------------------------------------------------------------------------
+# catalog_path    — parquet/CSV of historical seismicity (latitude, longitude
+#                   cols); filled in at build time from data/cascadia/reference/.
+# lon_col/lat_col — column names in that file.
+# grid_size       — (nx, ny) or scalar; number of grid points per axis.
+# bw_method       — bandwidth selector passed to scipy.stats.gaussian_kde.
+# min_mag         — optional magnitude filter applied before fitting the KDE.
+# adaptive        — if True, use adaptive (variable-bandwidth) KDE.
+# adaptive_alpha  — Silverman sensitivity parameter for adaptive KDE
+#                   (0 = fixed bandwidth, 0.5 = standard, 1 = max adaptivity).
 KDE_SEISMICITY_PARAMS = {
     'catalog_path':   None,   # filled in at build time from data/cascadia/reference/
     'lon_col':        'longitude',
@@ -56,8 +68,9 @@ KDE_SEISMICITY_PARAMS = {
     'adaptive':       True,
     'adaptive_alpha': 0.5,
 }
-# Cached .tt3 filenames written into SeismicPrior.data_dir.
-# KDE_Seismicity filename varies per context; set explicitly in each script.
+# Cached .tt3 filenames written into SeismicPrior.data_dir, keyed by prior name.
+# KDE_Seismicity filename varies per context; set explicitly in each script (None
+# here as a placeholder). Uniform has no cache file (None -- it needs no prior data).
 PRIOR_FILENAMES = {
     'Gear1':          'GEAR1_prior.tt3',
     'NSHM':           'USGS_NSHM_prior.tt3',
@@ -65,7 +78,9 @@ PRIOR_FILENAMES = {
     'KDE_Seismicity': None,   # set per-script: kde_seismicity_{context}.tt3
     'Uniform':        None,
 }
-# Parameters for the main benchmark run.
+# Parameters for the main benchmark run. Consumed by make_epic_params() in
+# runner.py to build an EPIC_PARAMS object; see the inline comments below
+# for what each key controls.
 BENCHMARK_PARAMS = {
     'prior':                     'KDE_Seismicity',
     'max_trigs':                 10,
@@ -86,10 +101,13 @@ BENCHMARK_PARAMS = {
 # ---------------------------------------------------------------------------
 # ETAS inversion configuration
 # ---------------------------------------------------------------------------
-# Same shape as config.ETAS_INVERSION_CONFIG, but with a wider spatial
-# polygon reaching up through Washington. mc/m_ref are placeholders pending
-# a completeness check against the Cascadia catalog -- TODO before treating
-# an inversion built from this as final.
+# Same shape as config.ETAS_INVERSION_CONFIG (see that file for a full
+# per-key description of auxiliary_start/timewindow_start/timewindow_end,
+# mc/delta_m/m_ref, shape_coords, coppersmith_multiplier/bw_sq/
+# free_background/free_productivity, theta_0, and id), but with a wider
+# spatial polygon reaching up through Washington. mc/m_ref are placeholders
+# pending a completeness check against the Cascadia catalog -- TODO before
+# treating an inversion built from this as final.
 ETAS_INVERSION_CONFIG = {
     'auxiliary_start':  '1981-01-01 00:00:00',
     'timewindow_start': '1990-01-01 00:00:00',
@@ -132,6 +150,10 @@ ETAS_INVERSION_CONFIG = {
 # ---------------------------------------------------------------------------
 # EtasPriorUpdater runtime config
 # ---------------------------------------------------------------------------
+# Same keys as config.ETAS_UPDATER_CONFIG: bounds, grid_spacing,
+# out_of_bounds_fill, use_spatial_background, use_spatial_productivity,
+# max_lookback_days -- passed to EtasPriorUpdater.from_inversion_json() at
+# runtime. See config.py's ETAS_UPDATER_CONFIG comment for what each means.
 ETAS_UPDATER_CONFIG = {
     'bounds':           REFERENCE_CATALOG_CONFIG['bounds'],
     'grid_spacing':     0.05,
@@ -165,6 +187,11 @@ BENCHMARK_CATALOG_CONFIG = {
 # ---------------------------------------------------------------------------
 CASE_STUDIES = {}
 
+# Cascadia counterpart to config.FOCUS_EVENTS (case-study key -> ANSS event
+# id for single-event posterior/trajectory figures); empty until Cascadia
+# case studies exist.
 FOCUS_EVENTS = {}
 
+# Cascadia counterpart to config.FOCUS_EVENTS_MAINSHOCK; empty until
+# Cascadia case studies exist.
 FOCUS_EVENTS_MAINSHOCK = {}

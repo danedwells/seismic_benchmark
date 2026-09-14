@@ -1,8 +1,14 @@
 """
-benchmark/metrics.py — location accuracy and posterior probability metrics.
+benchmark/metrics.py — location accuracy and posterior probability metrics,
+plus helpers for loading aggregated results from benchmark CSVs.
 
-These functions operate on the out_df grid returned by E2Location_locate
-(columns: lat, lon, like, prior, post) and on SearchOut posterior coordinates.
+Most functions here operate on the out_df grid returned by
+E2Location_locate (columns: lat, lon, like, prior, post) and on SearchOut
+posterior coordinates, computing per-event accuracy/calibration/scoring
+metrics (location error, HDR credible levels, coverage, log/Brier/energy
+scores). The load_final_values/load_final_rows/load_per_version_stats
+functions instead read the `{prior}_benchmark_results.csv` files these
+metrics are written to (via runner.py), for downstream plotting/analysis.
 """
 import numpy as np
 from obspy.geodetics import gps2dist_azimuth
@@ -11,6 +17,36 @@ import os
 from scipy.stats import kstest
 
 def load_final_values(csv_path, metric, n_trigs=None, min_events_warn=5):
+    """
+    Load one metric value per event from a benchmark results CSV.
+
+    Reads csv_path and, per event, takes either the metric value at the
+    last available trigger version (n_trigs=None) or at a specific
+    trigger count. Column-level counterpart to load_final_rows, which
+    returns the full row instead of a single column's values.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to a `{prior}_benchmark_results.csv` file.
+    metric : str
+        Name of the column to extract.
+    n_trigs : int or None, optional
+        If given, take each event's value at this specific trigger count
+        instead of its last available version. None (default) uses each
+        event's last row.
+    min_events_warn : int, optional
+        If fewer than this many events have data at the requested
+        n_trigs, emit a UserWarning that results may be unreliable.
+        Default 5. Ignored when n_trigs is None.
+
+    Returns
+    -------
+    numpy.ndarray or None
+        Array of metric values (one per event, NaNs dropped), or None if
+        csv_path doesn't exist, metric is not a column, the column is
+        entirely NaN, or no values remain after filtering.
+    """
     import warnings
     if not os.path.exists(csv_path):
         return None
@@ -54,7 +90,24 @@ def load_final_rows(csv_path, n_trigs=None, min_events_warn=5):
     callers can apply their own column selection and filter_fn) instead of
     a single column's values.
 
-    Returns None if the file is missing.
+    Parameters
+    ----------
+    csv_path : str
+        Path to a `{prior}_benchmark_results.csv` file.
+    n_trigs : int or None, optional
+        If given, keep only each event's row at this specific trigger
+        count instead of its last available version. None (default)
+        uses each event's last row.
+    min_events_warn : int, optional
+        If fewer than this many events have data at the requested
+        n_trigs, emit a UserWarning that results may be unreliable.
+        Default 5. Ignored when n_trigs is None.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        One row per event (with an n_trigs column added if not already
+        present), or None if csv_path doesn't exist.
     """
     import warnings
     if not os.path.exists(csv_path):
@@ -89,8 +142,23 @@ def load_per_version_stats(csv_path, metric, min_events=5):
     """
     Load a benchmark CSV and return per-trigger-count aggregate statistics.
 
-    Returns a DataFrame with columns [n_trigs, median, q5, q95, count],
-    or None if the file is missing or the metric column is absent / all-NaN.
+    Parameters
+    ----------
+    csv_path : str
+        Path to a `{prior}_benchmark_results.csv` file.
+    metric : str
+        Name of the column to aggregate.
+    min_events : int, optional
+        Minimum number of non-NaN observations required at a given
+        n_trigs for that row to be kept in the output. Default 5.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        One row per n_trigs value with columns n_trigs, median, mean,
+        q1, q5, q95, q99, min, max, count, restricted to rows with
+        count >= min_events. None if csv_path doesn't exist or metric
+        is absent/all-NaN.
     """
     if not os.path.exists(csv_path):
         return None
@@ -118,6 +186,33 @@ def load_per_version_stats(csv_path, metric, min_events=5):
     return stats[stats['count'] >= min_events]
 
 def hdr_levels(post_flat, credible_levels=(0.1, 0.50, 0.67, 0.90, 0.95)):
+    """
+    Compute per-grid-cell probability thresholds for the smallest highest
+    density regions (HDRs) containing each requested credible mass.
+
+    For each credible level, grid cells are ranked by probability from
+    highest to lowest and accumulated until the cumulative sum reaches
+    that level; the cell probability at that point is the threshold such
+    that {cells with density >= threshold} is the smallest-area region
+    containing at least that fraction of the total probability mass.
+    Used to draw HDR contours on prior/posterior grids.
+
+    Parameters
+    ----------
+    post_flat : numpy.ndarray
+        Flattened (1-D) array of (unnormalized) probability values for
+        every grid cell, e.g. a prior or posterior grid raveled to 1-D.
+    credible_levels : sequence of float, optional
+        Credible mass levels in (0, 1] to compute thresholds for.
+        Default (0.1, 0.50, 0.67, 0.90, 0.95).
+
+    Returns
+    -------
+    dict
+        Maps each requested credible level to the probability-density
+        threshold (float) of the smallest HDR containing at least that
+        much of the normalized probability mass.
+    """
     p = post_flat / post_flat.sum()
     idx = np.argsort(p)[::-1]
     cumsum = np.cumsum(p[idx])
@@ -129,7 +224,27 @@ def hdr_levels(post_flat, credible_levels=(0.1, 0.50, 0.67, 0.90, 0.95)):
 
 
 def location_error_km(posterior_lat, posterior_lon, ref_lat, ref_lon):
-    """Geodetic distance in km between a posterior MAP estimate and a reference location."""
+    """
+    Great-circle (geodetic) distance in km between two lat/lon points.
+
+    Despite the parameter names, this is a general-purpose distance
+    helper — runner.py uses it for the MAP posterior estimate as well
+    as the expectation, likelihood, and likelihood-expectation location
+    estimates.
+
+    Parameters
+    ----------
+    posterior_lat, posterior_lon : float
+        Latitude and longitude (degrees) of the estimated location.
+    ref_lat, ref_lon : float
+        Latitude and longitude (degrees) of the reference (e.g. USGS
+        catalog) location.
+
+    Returns
+    -------
+    float
+        Geodetic distance between the two points, in kilometers.
+    """
     m, _, _ = gps2dist_azimuth(ref_lat, ref_lon, posterior_lat, posterior_lon)
     return m / 1000.0
 
@@ -138,6 +253,21 @@ def posterior_confidence_level(out_df, usgs_lat, usgs_lon):
     """
     Credible level of the smallest HDR that contains the USGS location.
     Returns a value in [0, 1]: lower is better (USGS is in a high-density region).
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        post.
+    usgs_lat, usgs_lon : float
+        Reference location (e.g. USGS catalog) to evaluate.
+
+    Returns
+    -------
+    float
+        Credible level in [0, 1] of the smallest HDR of the posterior
+        containing the reference location; lower is better (means the
+        reference location sits in a higher-density region).
     """
     p = out_df['post'].values
     p_norm = p / p.sum()
@@ -159,6 +289,21 @@ def prior_confidence_level(out_df, usgs_lat, usgs_lon):
     Comparing the two reveals how much bEPIC's posterior improves on the raw prior.
     When use_prior=False the prior grid is uniform, so this returns ~1.0 for most
     events and the column should be excluded from analysis for Uniform runs.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        prior.
+    usgs_lat, usgs_lon : float
+        Reference location (e.g. USGS catalog) to evaluate.
+
+    Returns
+    -------
+    float
+        Credible level in [0, 1] of the smallest HDR of the prior
+        containing the reference location; lower is better (means the
+        reference location sits in a higher-density prior region).
     """
     p = out_df['prior'].values
     p_norm = p / p.sum()
@@ -181,6 +326,22 @@ def like_confidence_level(out_df, usgs_lat, usgs_lon):
     the 'like' column instead of 'post'/'prior' — shows how well the
     travel-time misfit alone (before any prior is applied) constrains the
     true location.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        like.
+    usgs_lat, usgs_lon : float
+        Reference location (e.g. USGS catalog) to evaluate.
+
+    Returns
+    -------
+    float
+        Credible level in [0, 1] of the smallest HDR of the likelihood
+        surface containing the reference location; lower is better
+        (means the reference location sits in a higher-density
+        likelihood region).
     """
     p = out_df['like'].values
     p_norm = p / p.sum()
@@ -194,10 +355,24 @@ def like_confidence_level(out_df, usgs_lat, usgs_lon):
 
 
 def _haversine_km(ref_lat, ref_lon, lats, lons):
-    """Vectorized haversine distance (km) from one point to an array of points.
+    """
+    Vectorized haversine distance (km) from one point to an array of points.
 
     Accurate to < 0.5 km within the ~400 km search boxes used here; replaces
     per-row gps2dist_azimuth calls that would otherwise loop over the full grid.
+
+    Parameters
+    ----------
+    ref_lat, ref_lon : float
+        Latitude and longitude (degrees) of the reference point.
+    lats, lons : numpy.ndarray
+        Arrays of latitude and longitude (degrees) of the target points.
+
+    Returns
+    -------
+    numpy.ndarray
+        Haversine distance (km) from the reference point to each target
+        point; same shape as lats/lons.
     """
     R = 6371.0
     dlat = np.radians(lats - ref_lat)
@@ -208,6 +383,8 @@ def _haversine_km(ref_lat, ref_lon, lats, lons):
     return 2 * R * np.arcsin(np.sqrt(a))
 
 
+# Default radii (km) at which posterior_coverage() reports cumulative
+# posterior probability mass around a reference location.
 COVERAGE_RADII_KM = (10, 25, 50, 100)
 
 
@@ -226,8 +403,9 @@ def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=COVERAGE_RADII_KM):
 
     Returns
     -------
-    dict mapping each radius to its coverage fraction in [0, 1], or a single
-    float if a scalar radii_km was supplied.
+    dict or float
+        Dict mapping each radius to its coverage fraction in [0, 1], or a
+        single float if a scalar radii_km was supplied.
     """
     dists_km = _haversine_km(ref_lat, ref_lon,
                              out_df['lat'].values, out_df['lon'].values)
@@ -243,7 +421,22 @@ def posterior_coverage(out_df, ref_lat, ref_lon, radii_km=COVERAGE_RADII_KM):
 
 
 def _nearest_cell_index(out_df, ref_lat, ref_lon):
-    """Index of the grid cell nearest to ref_lat/ref_lon (cosine-corrected)."""
+    """
+    Index of the grid cell nearest to ref_lat/ref_lon (cosine-corrected).
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon.
+    ref_lat, ref_lon : float
+        Reference location to find the nearest grid cell to.
+
+    Returns
+    -------
+    int
+        Row index into out_df of the grid cell nearest ref_lat/ref_lon,
+        with longitude distance cosine-corrected for latitude.
+    """
     dlat = out_df['lat'].values - ref_lat
     dlon = (out_df['lon'].values - ref_lon) * np.cos(np.radians(ref_lat))
     return int(np.argmin(np.hypot(dlat, dlon)))
@@ -260,6 +453,22 @@ def log_score(out_df, ref_lat, ref_lon):
     returns 0.0. Values are bounded below by log(1/G) for a G-cell uniform grid.
 
     Note: comparisons are only meaningful across grids of the same resolution.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        post.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+
+    Returns
+    -------
+    float
+        log(P_true), the natural log of the normalized posterior
+        probability at the grid cell nearest the reference location.
+        Higher (less negative) is better; 0.0 is the best possible
+        value.
     """
     p = out_df['post'].values
     p_norm = p / p.sum()
@@ -282,6 +491,21 @@ def brier_score(out_df, ref_lat, ref_lon):
 
     Note: like the log-score, this is grid-resolution dependent — only compare
     across events or priors evaluated on the same grid.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        post.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+
+    Returns
+    -------
+    float
+        Spatial Brier score (Σ_j P_j² − 2·P_true + 1). Lower is better;
+        0.0 for a posterior with all mass at the true cell, 2.0 for a
+        posterior with all mass on the wrong cell.
     """
     p = out_df['post'].values
     p_norm = p / p.sum()
@@ -306,6 +530,20 @@ def likelihood_value_at_location(out_df, ref_lat, ref_lon):
 
     Note: like log_score/brier_score, this is grid-resolution dependent —
     only compare across events or priors evaluated on the same grid.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        like.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+
+    Returns
+    -------
+    float
+        Normalized likelihood value in [0, 1] at the grid cell nearest
+        the reference location.
     """
     p = out_df['like'].values
     p_norm = p / p.sum()
@@ -322,6 +560,20 @@ def likelihood_value_at_location_unnormalized(out_df, ref_lat, ref_lon):
     Raw (un-normalized) likelihood-surface value at the grid cell nearest
     ref_lat/ref_lon — same lookup as likelihood_value_at_location, but skips
     the p / p.sum() normalization step.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        like.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+
+    Returns
+    -------
+    float
+        Raw (un-normalized) likelihood value at the grid cell nearest the
+        reference location.
     """
     p = out_df['like'].values
     idx = _nearest_cell_index(out_df, ref_lat, ref_lon)
@@ -342,6 +594,20 @@ def posterior_value_at_location(out_df, ref_lat, ref_lon):
 
     Note: like log_score/brier_score, this is grid-resolution dependent —
     only compare across events or priors evaluated on the same grid.
+
+    Parameters
+    ----------
+    out_df : pandas.DataFrame
+        Grid output from E2Location_locate — must have columns lat, lon,
+        post.
+    ref_lat, ref_lon : float
+        Reference location (e.g. USGS catalog).
+
+    Returns
+    -------
+    float
+        Normalized posterior value in [0, 1] at the grid cell nearest
+        the reference location.
     """
     p = out_df['post'].values
     p_norm = p / p.sum()

@@ -3,7 +3,6 @@ import os
 import warnings
 import numpy as np
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from bEPIC import EPIC_locate_prelim
@@ -14,33 +13,9 @@ from .metrics import (posterior_confidence_level, prior_confidence_level,
                       likelihood_value_at_location, posterior_value_at_location,
                       likelihood_value_at_location_unnormalized) 
 
-
-def get_unique_stations(run_dir):
-    """Return a DataFrame of unique stations (by station+network) across all run files."""
-    frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
-              for f in Path(run_dir).glob('*.run')]
-    return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
-
-
-def load_station_availability_cache(path):
-    """
-    Load the pre-built station availability cache produced by
-    preparation_scripts/build_station_availability.py.
-
-    Returns
-    -------
-    dict[int, pd.DataFrame]
-        Maps event_id → DataFrame(station, network, longitude, latitude)
-        containing the stations that had ??Z waveform data at event time.
-        Pass the per-event DataFrame to make_epic_params(station_inventory=...)
-        or set it directly on BenchmarkRunner via station_availability=.
-    """
-    df = pd.read_parquet(path)
-    return {
-        str(eid): grp.drop(columns='event_id').reset_index(drop=True)
-        for eid, grp in df.groupby('event_id')
-    }
-
+#--------------------------------------
+# Helper functions
+#--------------------------------------
 
 def repair_inversion_json_paths(json_path):
     """
@@ -61,6 +36,17 @@ def repair_inversion_json_paths(json_path):
     <directory of json_path>/<basename of stored path>, warns, and rewrites
     the JSON in place so the fix persists for future loads. No-ops (writes
     nothing) if every stored path already resolves.
+
+    Parameters
+    ----------
+    json_path : str
+        Path to the ETAS inversion JSON file to check/repair. The file is
+        rewritten in place if any of its stored paths are stale.
+
+    Returns
+    -------
+    None
+        The JSON file is modified on disk as a side effect (if needed).
     """
     with open(json_path) as fh:
         cfg = json.load(fh)
@@ -95,19 +81,35 @@ def repair_inversion_json_paths(json_path):
 
 
 def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None):
-    """Return a configured EPIC_PARAMS object from a benchmark params dict.
+    """
+    Return a configured EPIC_PARAMS object from a benchmark params dict.
 
-    benchmark_params must contain: grid_size, grid_km, max_trigs.
-    Optional keys (with defaults): migrate_grid (True), migrate_grid_min_triggers (1),
-    activity_mask_threshold (0.30), search_depths ([8.0] -- candidate source
-    depths in km for bEPIC's grid search; a single 8.0 entry preserves the
-    original fixed-depth behaviour).
-
-    station_inventory : pandas.DataFrame or None
+    Parameters
+    ----------
+    prior : SeismicPrior or None
+        Spatial prior to attach to the params object (params.prior).
+    use_prior : bool
+        Whether bEPIC should weight by the prior (False = uniform/
+        likelihood-only).
+    benchmark_params : dict
+        Must contain: grid_size (int), grid_km (int), max_trigs (int).
+        Optional keys (with defaults): migrate_grid (bool, True),
+        migrate_grid_min_triggers (int, 1), activity_threshold (float, 0.40),
+        resample_distant_events (bool, True), edt_sigma_s (float, 0.2),
+        sigma_s (float, 1.0), dtt_weight (float, 0.5),
+        search_depths (list[float], [8.0] -- candidate source depths in km
+        for bEPIC's grid search; a single 8.0 entry preserves the original
+        fixed-depth behaviour).
+    station_inventory : pandas.DataFrame or None, optional
         DataFrame with columns station, network, longitude, latitude.
         None (default) disables the activity mask.
         Tier 1 (benchmark): pass get_unique_stations(run_dir).
         Tier 2 (case study): pass get_fdsn_station_inventory(origin_time).
+
+    Returns
+    -------
+    EPIC_locate_prelim.EPIC_PARAMS
+        Fully populated params object ready to pass to E2Location_locate().
     """
     params = EPIC_locate_prelim.EPIC_PARAMS()
     params.prior                     = prior
@@ -129,7 +131,21 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
 
 
 def runner_results_to_df(runner):
-    """Convert a BenchmarkRunner's results and metrics into a tidy DataFrame."""
+    """
+    Convert a BenchmarkRunner's results and metrics into a tidy DataFrame.
+
+    Parameters
+    ----------
+    runner : BenchmarkRunner
+        Runner instance that has already processed events, so
+        runner.results, runner.metrics, and runner.n_trigs are populated.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (event_id, version), sorted by event_id then version,
+        with location, misfit, and metric columns.
+    """
     cov_cols = [f'coverage_{r}km' for r in COVERAGE_RADII_KM]
     rows = []
     for (eid, ver), t in runner.results.items():
@@ -203,6 +219,19 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
         If given, called once per version with the current trigger count to
         override params.prior for that version. None (default) leaves the
         prior fixed at the value passed in above, for every version.
+
+    Returns
+    -------
+    t_out : SearchOut
+        Location result object for the version actually reached (posterior/
+        exp/like lat-lon, misfits, likelihoods, etc.).
+    out_df : pandas.DataFrame
+        Grid output (prior/likelihood/posterior values per grid cell) for
+        that same version.
+    target_v : int
+        The version number actually reached — equal to focus_version when
+        it was reachable, otherwise the last version run (e.g. if the run
+        file ends early or MAX_EVENT_TRIGS is hit first).
     """
     df_run = pd.read_csv(run_path)
     df_run.columns = [c.replace(' ', '_') for c in df_run.columns]
@@ -254,6 +283,9 @@ def run_single_event_get_grid(run_path, prior, use_prior, params_kw,
 
     return t_out, out_df, target_v
 
+#-------------------------------------------------------
+# Main Class
+#-------------------------------------------------------
 
 class BenchmarkRunner:
     """
@@ -280,6 +312,36 @@ class BenchmarkRunner:
     def __init__(self, prior, params, run_dir, catalog_df=None,
                  station_availability=None, rng=None,
                  resample_distant_events=None):
+        """
+        Parameters
+        ----------
+        prior : SeismicPrior
+            Initial spatial prior; stored as self.prior and copied onto
+            params.prior before each event runs.
+        params : EPIC_locate_prelim.EPIC_PARAMS
+            Configured parameter object passed to E2Location_locate().
+        run_dir : str
+            Directory containing <event_id>.run trigger files.
+        catalog_df : pandas.DataFrame or None, optional
+            Reference catalog with columns event_id, usgs_lat, usgs_lon.
+            When given, used to build self._ref_lookup so accuracy metrics
+            are computed after each event. None (default) disables metrics.
+        station_availability : dict[str, pandas.DataFrame] or None, optional
+            Maps event_id (str) to a per-event station inventory DataFrame
+            (as returned by load_station_availability_cache()). When given,
+            params.station_inventory is set per event before locating.
+            None (default) leaves params.station_inventory unchanged.
+        rng : int, numpy.random.Generator, or None, optional
+            Seed/generator used for the energy_score metric's sampling.
+            Passed to numpy.random.default_rng().
+        resample_distant_events : optional
+            Accepted for interface compatibility but currently unused by
+            this constructor (not stored or read anywhere in __init__).
+
+        Returns
+        -------
+        None
+        """
         self.prior   = prior
         self.params  = params
         self.run_dir = run_dir
@@ -287,11 +349,8 @@ class BenchmarkRunner:
         self.metrics = {}   # {(event_id, version): {map_err_km, coverage, posterior_confidence_level}}
         self.n_trigs = {}   # {(event_id, version): int trigger count fed to bEPIC}
 
-        # Debug hook: set _debug_event_id to an event_id string/int before
-        # calling run_event() to capture out_df for every version of that event.
         self._debug_event_id = None
         self.debug_out_df    = {}   # {(event_id, version): out_df}
-
         self._rng = np.random.default_rng(rng)
 
         # Optional per-event station inventory from build_station_availability.py.
@@ -308,12 +367,49 @@ class BenchmarkRunner:
             self._ref_lookup = {}
 
     def _normalize_columns(self, df):
-        # Gets rid of spaces in column names
+        """
+        Replace spaces with underscores in a DataFrame's column names.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame whose columns may contain spaces (e.g. as read
+            straight from a .run CSV file).
+
+        Returns
+        -------
+        pandas.DataFrame
+            The same DataFrame (modified in place), with column names
+            using underscores instead of spaces.
+        """
         df.columns = [c.replace(' ', '_') for c in df.columns]
         return df
 
     def _compute_event_metrics(self, event_id, version, t, out_df):
-        """Compute and store posterior accuracy metrics for one (event, version)."""
+        """
+        Compute and store posterior accuracy metrics for one (event, version).
+
+        Parameters
+        ----------
+        event_id : int or str
+            Event identifier; used to look up the USGS reference location
+            in self._ref_lookup.
+        version : int
+            Trigger version number this location result corresponds to.
+        t : SearchOut or None
+            Location result object from E2Location_locate() (posterior/exp/
+            like lat-lon, etc.). If None, this call is a no-op.
+        out_df : pandas.DataFrame or None
+            Grid output (prior/likelihood/posterior values per grid cell)
+            from E2Location_locate(). If None, this call is a no-op.
+
+        Returns
+        -------
+        None
+            Metrics are stored in self.metrics[(event_id, version)] as a
+            side effect. No-ops if event_id has no reference location, or
+            if t/out_df is None.
+        """
         ref = self._ref_lookup.get(str(event_id))
         if ref is None or t is None or out_df is None:
             return
@@ -355,12 +451,22 @@ class BenchmarkRunner:
 
         Parameters
         ----------
-        event_id : int
+        event_id : int or str
+            Event identifier; must match the stem of a <event_id>.run file
+            in self.run_dir.
         prior_for_n_trigs : callable(n_trigs) -> SeismicPrior, optional
             If given, called once per version (with that version's trigger
             count) to override self.params.prior for that version, instead
             of the single fixed self.prior used for the whole event. None
             (default) is byte-identical to the pre-existing behavior.
+
+        Returns
+        -------
+        None
+            Results are stored as a side effect in self.results,
+            self.n_trigs, self.metrics (if a reference catalog was given),
+            and self.debug_out_df (if debug tracking is enabled for this
+            event_id).
         """
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
 
@@ -443,7 +549,22 @@ class BenchmarkRunner:
     
 
     def _get_event_time(self, event_id):
-        """FOR ETAS: Return the first trigger time in the run file as a proxy for event time."""
+        """
+        FOR ETAS: Return the first trigger time in the run file as a proxy
+        for event time.
+
+        Parameters
+        ----------
+        event_id : int or str
+            Event identifier; must match the stem of a <event_id>.run file
+            in self.run_dir.
+
+        Returns
+        -------
+        float
+            The trigger time of the first (by file order) row in the run
+            file.
+        """
         run_path = os.path.join(self.run_dir, f'{event_id}.run')
         df = pd.read_csv(run_path, nrows=1)
         return float(df['trigger time'].iloc[0])
@@ -476,6 +597,12 @@ class BenchmarkRunner:
             schedule). Its result is passed to run_event as prior_for_n_trigs,
             so the prior actually used can vary by trigger count within the
             event. None (default) leaves run_event's prior fixed per event.
+
+        Returns
+        -------
+        None
+            Results accumulate as a side effect in self.results,
+            self.n_trigs, and self.metrics via run_event().
         """
         last_update_time = None
 
@@ -497,50 +624,89 @@ class BenchmarkRunner:
                 after_event_fn(event_id)
 
     def update_prior(self, new_prior):
-        """Swap in a new prior; also updates params.prior so the next run_event uses it."""
+        """
+        Swap in a new prior; also updates params.prior so the next
+        run_event uses it.
+
+        Parameters
+        ----------
+        new_prior : SeismicPrior
+            Prior to use for subsequent events.
+
+        Returns
+        -------
+        None
+        """
         self.prior = new_prior
         self.params.prior = new_prior
+
+
+def run_prior(params, prior_name, catalog_df, run_dir, out_dir):
+    """
+    Module-level worker for ProcessPoolExecutor.
+
+    Runs an entire (time independent) prior — builds a BenchmarkRunner and
+    calls run_all(), which calls run_event() for every event found in
+    run_dir. The time-dependent loop lives in the scripts themselves, which
+    call run_all() directly instead of going through this worker.
+
+    Loads the prior already attached to params (params.prior — None means
+    uniform/no prior), runs all events in run_dir, and saves results to a
+    CSV in out_dir named <prior_name>_benchmark_results.csv.
+
+    Parameters
+    ----------
+    params : EPIC_locate_prelim.EPIC_PARAMS
+        Configured parameter object; params.prior is the SeismicPrior (or
+        None for uniform) and params.station_inventory is the optional
+        per-event station availability dict passed through to
+        BenchmarkRunner as station_availability.
+    prior_name : str
+        Name of this prior; lower-cased to build the output CSV filename.
+    catalog_df : pandas.DataFrame or None
+        Reference catalog (event_id, usgs_lat, usgs_lon) passed through to
+        BenchmarkRunner for accuracy metric computation.
+    run_dir : str
+        Directory containing this run's <event_id>.run trigger files.
+    out_dir : str
+        Directory to write <prior_name>_benchmark_results.csv into;
+        created if it doesn't already exist.
+
+    Returns
+    -------
+    str
+        prior_name, unchanged — so a ProcessPoolExecutor caller can match
+        the completed future back to the prior it ran.
+    """
+    prior = params.prior
+    station_availability = params.station_inventory
+
+    # Initiate the runner
+    runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir,
+                             catalog_df=catalog_df,
+                             station_availability=station_availability)
+    
+
+    stems = [f.stem for f in Path(run_dir).glob('*.run')]
+    # Some event ids are int()
+    try:
+        event_ids = sorted(int(s) for s in stems)
+    # Some are str()
+    except ValueError:
+        event_ids = sorted(stems)
+    
+    # Run the event
+    runner.run_all(event_ids)
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{prior_name.lower()}_benchmark_results.csv")
+    runner_results_to_df(runner).to_csv(out_path, index=False)
+    return prior_name
 
 
 # ---------------------------------------------------------------------------
 # Catalog lookup
 # ---------------------------------------------------------------------------
-
-def load_reference_catalog(catalog_path):
-    """
-    Read a bEPIC testing catalog (tab-separated) and return a DataFrame that
-    maps postgres IDs to ANSS reference locations.
-
-    The catalog must contain at minimum the columns:
-        postgres id, ANSS ID, ANSS lat, ANSS lon, ANSS depth, ANSS mag
-
-    Parameters
-    ----------
-    catalog_path : str
-        Path to the catalog file (e.g. bEPIC_testing_catalog.txt).
-
-    Returns
-    -------
-    DataFrame with columns:
-        event_id   — postgres id (int); matches run file stems
-        anss_id    — USGS/ANSS event ID string (e.g. 'nc73093981')
-        usgs_lat   — ANSS catalog latitude
-        usgs_lon   — ANSS catalog longitude
-        usgs_depth — ANSS catalog depth (km)
-        usgs_mag   — ANSS catalog magnitude
-
-    """
-    raw = pd.read_csv(catalog_path, sep='\t')
-    return pd.DataFrame({
-        'event_id':   raw['postgres id'].astype(int),
-        'anss_id':    raw['ANSS ID'],
-        'usgs_time':  pd.to_datetime(raw['ANSS date'],
-                                     format='%Y-%m-%d-%H:%M:%S.%f-GMT'),
-        'usgs_lat':   raw['ANSS lat'],
-        'usgs_lon':   raw['ANSS lon'],
-        'usgs_depth': raw['ANSS depth'],
-        'usgs_mag':   raw['ANSS mag'],
-    })
 
 
 def load_reference_catalog_usgs(catalog_path):
@@ -594,52 +760,86 @@ def load_reference_catalog_usgs(catalog_path):
         'usgs_mag':   raw['mag'],
     })
 
-
-def run_prior(params,prior_name, catalog_df, run_dir, out_dir):
+def load_reference_catalog(catalog_path):
     """
-    Module-level worker for ProcessPoolExecutor.
+    Read a bEPIC testing catalog (tab-separated) and return a DataFrame that
+    maps postgres IDs to ANSS reference locations.
 
-    Loads a prior from a .tt3 path (or uses uniform weighting if cache_path
-    is None), runs all events in run_dir, and saves results to a CSV in
-    output_dir named <prior_name>_benchmark_results.csv.
+    The catalog must contain at minimum the columns:
+        postgres id, ANSS ID, ANSS lat, ANSS lon, ANSS depth, ANSS mag
 
-    Parameters (passed as a single dict so the executor only needs one arg)
+    Parameters
     ----------
-    prior_name : str
-    cache_path : str or None   — .tt3 file; None means uniform (no prior)
-    nshm_path  : str           — .tt3 used purely for grid geometry when uniform
-    run_dir    : str
-    output_dir : str
-    grid_size  : int
-    grid_km    : int
-    max_trigs  : int
+    catalog_path : str
+        Path to the catalog file (e.g. bEPIC_testing_catalog.txt).
 
     Returns
     -------
-    prior_name : str
+    DataFrame with columns:
+        event_id   — postgres id (int); matches run file stems
+        anss_id    — USGS/ANSS event ID string (e.g. 'nc73093981')
+        usgs_lat   — ANSS catalog latitude
+        usgs_lon   — ANSS catalog longitude
+        usgs_depth — ANSS catalog depth (km)
+        usgs_mag   — ANSS catalog magnitude
+
     """
-    prior = params.prior
-    station_availability = params.station_inventory
+    raw = pd.read_csv(catalog_path, sep='\t')
+    return pd.DataFrame({
+        'event_id':   raw['postgres id'].astype(int),
+        'anss_id':    raw['ANSS ID'],
+        'usgs_time':  pd.to_datetime(raw['ANSS date'],
+                                     format='%Y-%m-%d-%H:%M:%S.%f-GMT'),
+        'usgs_lat':   raw['ANSS lat'],
+        'usgs_lon':   raw['ANSS lon'],
+        'usgs_depth': raw['ANSS depth'],
+        'usgs_mag':   raw['ANSS mag'],
+    })
 
-    # Initiate the runner
-    runner = BenchmarkRunner(prior=prior, params=params, run_dir=run_dir,
-                             catalog_df=catalog_df,
-                             station_availability=station_availability)
-    
 
-    stems = [f.stem for f in Path(run_dir).glob('*.run')]
-    # Some event ids are int()
-    try:
-        event_ids = sorted(int(s) for s in stems)
-    # Some are str()
-    except ValueError:
-        event_ids = sorted(stems)
-    
-    # Run the event
-    runner.run_all(event_ids)
+def get_unique_stations(run_dir):
+    """
+    Return a DataFrame of unique stations (by station+network) across all
+    run files.
 
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"{prior_name.lower()}_benchmark_results.csv")
-    runner_results_to_df(runner).to_csv(out_path, index=False)
-    return prior_name
+    Parameters
+    ----------
+    run_dir : str
+        Directory containing <event_id>.run CSV files, each with columns
+        station, network, longitude, latitude (among others).
 
+    Returns
+    -------
+    pandas.DataFrame
+        Columns station, network, longitude, latitude, one row per unique
+        (station, network) pair across every .run file in run_dir.
+    """
+    frames = [pd.read_csv(f, usecols=['station', 'network', 'longitude', 'latitude'])
+              for f in Path(run_dir).glob('*.run')]
+    return pd.concat(frames).drop_duplicates(subset=['station', 'network']).reset_index(drop=True)
+
+
+def load_station_availability_cache(path):
+    """
+    Load the pre-built station availability cache produced by
+    preparation_scripts/build_station_availability.py.
+
+    Parameters
+    ----------
+    path : str
+        Path to the cached .parquet file (columns include event_id,
+        station, network, longitude, latitude).
+
+    Returns
+    -------
+    dict[int, pd.DataFrame]
+        Maps event_id → DataFrame(station, network, longitude, latitude)
+        containing the stations that had ??Z waveform data at event time.
+        Pass the per-event DataFrame to make_epic_params(station_inventory=...)
+        or set it directly on BenchmarkRunner via station_availability=.
+    """
+    df = pd.read_parquet(path)
+    return {
+        str(eid): grp.drop(columns='event_id').reset_index(drop=True)
+        for eid, grp in df.groupby('event_id')
+    }

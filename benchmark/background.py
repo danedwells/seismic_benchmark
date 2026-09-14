@@ -1,5 +1,5 @@
 """
-seismicity_background.py
+benchmark/background.py
 
 Download and cache background seismicity from USGS ComCat for use as a
 spatial reference layer in benchmark plots.
@@ -45,7 +45,31 @@ REQUEST_DELAY = 0.5   # seconds between requests — be polite to the API
 # ---------------------------------------------------------------------------
 
 def _count_events(bounds, starttime, endtime, min_mag):
-    """Return the number of events USGS would return for this query."""
+    """
+    Return the number of events USGS would return for this query.
+
+    Queries the USGS ComCat FDSNWS count endpoint (cheap — no event data
+    returned) so callers can decide whether a time range needs to be
+    split before downloading it.
+
+    Parameters
+    ----------
+    bounds : tuple
+        (lon_min, lon_max, lat_min, lat_max) bounding box in degrees.
+    starttime : str
+        Query start time (date/time string accepted by the USGS
+        FDSNWS API).
+    endtime : str
+        Query end time (date/time string accepted by the USGS FDSNWS
+        API).
+    min_mag : float
+        Minimum event magnitude to include.
+
+    Returns
+    -------
+    int
+        Number of events matching the query parameters.
+    """
     lon_min, lon_max, lat_min, lat_max = bounds
     params = {
         "format":       "geojson",
@@ -66,6 +90,26 @@ def _fetch_chunk(bounds, starttime, endtime, min_mag):
     """
     Download one chunk as CSV and return a DataFrame.
     Caller must ensure the chunk has <= MAX_EVENTS_PER_REQUEST events.
+
+    Parameters
+    ----------
+    bounds : tuple
+        (lon_min, lon_max, lat_min, lat_max) bounding box in degrees.
+    starttime : str
+        Query start time (date/time string accepted by the USGS
+        FDSNWS API).
+    endtime : str
+        Query end time (date/time string accepted by the USGS FDSNWS
+        API).
+    min_mag : float
+        Minimum event magnitude to include.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns time, latitude, longitude, depth, mag — one row per
+        event in the chunk, ordered by time (ascending) as returned by
+        USGS.
     """
     lon_min, lon_max, lat_min, lat_max = bounds
     params = {
@@ -89,6 +133,30 @@ def _download_range(bounds, starttime, endtime, min_mag, chunks):
     """
     Recursively split [starttime, endtime] until each piece is under the
     event limit, then download and collect all chunks into `chunks` list.
+
+    Parameters
+    ----------
+    bounds : tuple
+        (lon_min, lon_max, lat_min, lat_max) bounding box in degrees.
+    starttime : str
+        Range start time (date/time string accepted by the USGS
+        FDSNWS API).
+    endtime : str
+        Range end time (date/time string accepted by the USGS FDSNWS
+        API).
+    min_mag : float
+        Minimum event magnitude to include.
+    chunks : list
+        Mutable list that downloaded DataFrame chunks are appended to
+        as a side effect; recursive calls share and append to this
+        same list.
+
+    Returns
+    -------
+    None
+        Downloaded chunks are appended to `chunks` in place. A range
+        with zero matching events contributes nothing and is not an
+        error.
     """
     n = _count_events(bounds, starttime, endtime, min_mag)
     if n == 0:
@@ -124,16 +192,23 @@ def download_background_seismicity(bounds, start_year, end_year,
     Parameters
     ----------
     bounds : tuple
-        (lon_min, lon_max, lat_min, lat_max)
+        (lon_min, lon_max, lat_min, lat_max) bounding box in degrees.
     start_year : int
-    end_year   : int   (inclusive)
-    min_mag    : float
-    cache_path : str or None
+        First year to include (query starts at start_year-01-01).
+    end_year : int
+        Last year to include, inclusive (query ends at end_year-12-31).
+    min_mag : float, optional
+        Minimum event magnitude to include. Default 2.5.
+    cache_path : str or None, optional
         If provided, save the result as a parquet file at this path.
+        None (default) skips caching.
 
     Returns
     -------
-    pd.DataFrame  columns: time (UTC), latitude, longitude, depth, mag
+    pandas.DataFrame
+        Columns time (UTC datetime), latitude, longitude, depth, mag —
+        one row per downloaded event, sorted by time. Empty (with
+        these columns) if no events matched.
     """
     starttime = f"{start_year}-01-01"
     endtime   = f"{end_year}-12-31"
@@ -173,16 +248,25 @@ def load_background_seismicity(cache_path, bounds, start_year, end_year,
 
     Parameters
     ----------
-    cache_path    : str   Path to parquet cache file.
-    bounds        : tuple (lon_min, lon_max, lat_min, lat_max)
-    start_year    : int
-    end_year      : int   (inclusive)
-    min_mag       : float  Default 2.5
-    force_refresh : bool   Re-download even if cache exists.
+    cache_path : str
+        Path to parquet cache file.
+    bounds : tuple
+        (lon_min, lon_max, lat_min, lat_max) bounding box in degrees.
+    start_year : int
+        First year to include (query starts at start_year-01-01).
+    end_year : int
+        Last year to include, inclusive (query ends at end_year-12-31).
+    min_mag : float, optional
+        Minimum event magnitude to include. Default 2.5.
+    force_refresh : bool, optional
+        Re-download even if a cache file already exists at cache_path.
+        Default False.
 
     Returns
     -------
-    pd.DataFrame  columns: time (UTC), latitude, longitude, depth, mag
+    pandas.DataFrame
+        Columns time (UTC datetime), latitude, longitude, depth, mag —
+        one row per event, sorted by time.
     """
     import os
     if not force_refresh and os.path.exists(cache_path):

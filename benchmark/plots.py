@@ -23,11 +23,42 @@ def plot_median_vs_triggers(metric, ylabel, title, save_path=None,
                             PRIOR_SPECS=None, log_y=False,
                             shade_groups=('mixed', 'dynamic')):
     """
-    Plot median metric vs trigger count for all priors, with 5–95 % band.
+    Plot median metric vs trigger count for all priors, with a 5-95% band.
 
-    Mixed priors: solid lines.
-    ETAS dynamic: dashed black reference.
-    TI baselines (if INCLUDE_BASELINES): dotted lines, same color palette.
+    Mixed priors are drawn as solid lines, the ETAS dynamic prior as a
+    dashed black reference, and TI baselines (if included in PRIOR_SPECS)
+    as dotted lines sharing their mixed counterpart's color.  Priors whose
+    group is in `shade_groups` also get a shaded 5th-95th percentile band
+    around the median line.
+
+    Parameters
+    ----------
+    metric : str
+        Column name in the benchmark CSVs.
+    ylabel : str
+        Y-axis label (include direction hint, e.g. '↓ better').
+    title : str
+        Figure title.
+    save_path : str or None
+        If given, the figure is saved as a PNG at 150 dpi.
+    ylim : tuple or None
+        (ymin, ymax) passed to ax.set_ylim.  None = matplotlib auto.
+    ref_line : float or None
+        If given, draws a horizontal dashed reference line at this value.
+    ref_label : str or None
+        Legend label for the reference line.
+    PRIOR_SPECS : list[dict]
+        Each dict must have: name, csv, ls, lw, group.
+        group in {'mixed', 'static', 'dynamic'}.
+    log_y : bool
+        If True, the y-axis is log-scaled.
+    shade_groups : tuple[str]
+        Groups (from each spec's 'group' key) that get a shaded 5th-95th
+        percentile band.  Defaults to ('mixed', 'dynamic').
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
     """
     # Assign consistent colors: mixed and their TI counterparts share a color.
     colors = plt.cm.tab10.colors
@@ -101,7 +132,7 @@ def plot_mean_vs_triggers(metric, ylabel, title, save_path=None,
                             PRIOR_SPECS=None, log_y=False,
                             shade_groups=None):
     """
-    Plot median metric vs trigger count for all priors, with IQR shading.
+    Plot mean metric vs trigger count for all priors, with a 5-95% band.
 
     Parameters
     ----------
@@ -112,12 +143,25 @@ def plot_mean_vs_triggers(metric, ylabel, title, save_path=None,
     title : str
         Figure title.
     save_path : str or None
+        If given, the figure is saved as a PNG at 150 dpi.
     ylim : tuple or None
         (ymin, ymax) passed to ax.set_ylim.  None = matplotlib auto.
     ref_line : float or None
         If given, draws a horizontal dashed reference line at this value.
     ref_label : str or None
         Legend label for the reference line.
+    PRIOR_SPECS : list[dict]
+        Each dict must have: name, csv, ls, lw, group.
+        group in {'mixed', 'static', 'dynamic'}.
+    log_y : bool
+        If True, the y-axis is log-scaled.
+    shade_groups : iterable[str] or None
+        Groups (from each spec's 'group' key) that get a shaded 5th-95th
+        percentile band.  None (default) shades every group.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
     """
     # Assign consistent colors: mixed and their TI counterparts share a color.
     colors = plt.cm.tab10.colors
@@ -196,8 +240,12 @@ def plot_median_posterior_coverage(
     title : str
         Figure suptitle.
     save_path : str or None
+        If given, the figure is saved as a PNG at 150 dpi.
     legend_ncol : int
         Number of columns in each subplot legend (default 1).
+    shade_groups : tuple[str]
+        Groups (from each spec's 'group' key) that get a shaded 5th-95th
+        percentile band.  Defaults to ('mixed', 'dynamic').
 
     Returns
     -------
@@ -266,7 +314,7 @@ def plot_mean_posterior_coverage(
     shade_groups=('mixed', 'dynamic'),
 ):
     """
-    2×2 panel: median posterior coverage vs trigger count for each of COVERAGE_RADII_KM.
+    2×2 panel: mean posterior coverage vs trigger count for each of COVERAGE_RADII_KM.
 
     Parameters
     ----------
@@ -276,8 +324,12 @@ def plot_mean_posterior_coverage(
     title : str
         Figure suptitle.
     save_path : str or None
+        If given, the figure is saved as a PNG at 150 dpi.
     legend_ncol : int
         Number of columns in each subplot legend (default 1).
+    shade_groups : tuple[str]
+        Groups (from each spec's 'group' key) that get a shaded 5th-95th
+        percentile band.  Defaults to ('mixed', 'dynamic').
 
     Returns
     -------
@@ -1385,6 +1437,10 @@ def plot_qq_calibration_prior(
         None (default) takes each event's last available version.
     csv_paths : dict[str, str] or None
         Optional {prior_name: csv_path} overrides — see plot_qq_calibration.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
     """
     colors = plt.cm.tab10.colors
 
@@ -1709,8 +1765,26 @@ def _load_paired_values(csv_path, columns, n_trigs=None):
 
     Unlike load_final_values (one column, NaNs dropped independently), this
     keeps `columns` aligned row-by-row: a row is dropped only if any of the
-    requested columns is NaN for that event. Returns a DataFrame indexed by
-    event_id, or None if the file/columns are missing or nothing survives.
+    requested columns is NaN for that event.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to a ``{prior_name.lower()}_benchmark_results.csv`` file.
+    columns : list[str]
+        Column names to load together; rows with a NaN in any of them are
+        dropped.
+    n_trigs : int or None
+        Which trigger-count version to use per event. None (default) takes
+        each event's last available version; an int selects each event's
+        row at that specific trigger count (events that never reached it
+        are excluded).
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        DataFrame indexed by event_id with just `columns`, or None if the
+        file/columns are missing or nothing survives after filtering.
     """
     if not os.path.exists(csv_path):
         return None
@@ -1732,7 +1806,20 @@ def _load_paired_values(csv_path, columns, n_trigs=None):
 
 
 def _to_quantile(values):
-    """Map each value to its own empirical quantile (plotting-position rank)."""
+    """
+    Map each value to its own empirical quantile (plotting-position rank).
+
+    Parameters
+    ----------
+    values : array-like
+        1-D sequence of numeric values.
+
+    Returns
+    -------
+    numpy.ndarray
+        Same length as `values`; each entry is that value's plotting-position
+        rank in [0, 1] (rank order divided by len(values), offset by 0.5/n).
+    """
     ranks = np.argsort(np.argsort(values))
     return (ranks + 0.5) / len(values)
 

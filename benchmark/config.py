@@ -1,7 +1,29 @@
+"""
+benchmark/config.py
+
+Central configuration for the seismic_benchmark package's California /
+Pacific-NW benchmark. Holds: static-prior construction parameters and
+cached .tt3 filenames, KDE seismicity prior settings, ETAS inversion and
+runtime-updater configuration (plus small helper functions that build
+filename-safe tags/labels from an ETAS config dict), the main
+BENCHMARK_PARAMS run config, and the CASE_STUDIES / FOCUS_EVENTS
+definitions used by the case-studies workflow scripts.
+
+See benchmark/config_cascadia.py for the Cascadia-region counterpart to
+the ETAS/KDE/benchmark-catalog settings defined here.
+"""
+
 import os
 
 # Parameters passed to SeismicPrior factory constructors when building .tt3 files.
-# 'bounds' is (lon_min, lon_max, lat_min, lat_max).
+#   bounds                — (lon_min, lon_max, lat_min, lat_max) shared by all priors.
+#   out_of_bounds_fill    — per-prior fill value/strategy for grid cells outside
+#                           that prior's native coverage (e.g. offshore).
+#   target_resolution_deg — per-prior resampling target in degrees before caching;
+#                           None keeps that prior's native resolution.
+#   source_paths          — per-prior source data file, relative to
+#                           SeismicPrior.data_dir (Helmstetter omitted -- its
+#                           source data comes from pycsep at runtime).
 
 PRIOR_CONSTRUCTION_PARAMS = {
     'bounds': (-129, -112, 30, 51), # Include Washingotn and Oregon
@@ -29,8 +51,9 @@ PRIOR_CONSTRUCTION_PARAMS = {
     },
 }
 
-# Cached .tt3 filenames written into SeismicPrior.data_dir.
-# KDE_Seismicity filename varies per context; set explicitly in each script.
+# Cached .tt3 filenames written into SeismicPrior.data_dir, keyed by prior name.
+# KDE_Seismicity filename varies per context; set explicitly in each script (None
+# here as a placeholder). Uniform has no cache file (None -- it needs no prior data).
 PRIOR_FILENAMES = {
     'Gear1':          'GEAR1_prior.tt3',
     'NSHM':           'USGS_NSHM_prior.tt3',
@@ -49,6 +72,10 @@ PRIOR_FILENAMES = {
 # grid_size     — (nx, ny) or scalar; number of grid points per axis.
 # bw_method     — bandwidth selector passed to scipy.stats.gaussian_kde.
 # min_mag       — optional magnitude filter applied before fitting the KDE.
+# adaptive      — if True, use adaptive (variable-bandwidth) KDE instead of a
+#                 fixed-bandwidth kernel.
+# adaptive_alpha — Silverman sensitivity parameter for adaptive KDE
+#                 (0 = fixed bandwidth, 0.5 = standard, 1 = max adaptivity).
 
 KDE_SEISMICITY_PARAMS = {
     'catalog_path':   None,   # filled in at build time from the benchmark data dir
@@ -82,6 +109,17 @@ KDE_START_DATE = '1990-01-01'
 #
 # mc: magnitude of completeness — catalog must be complete above this value.
 #   3.6 for the California example catalog; adjust if using a different catalog.
+#
+# delta_m: magnitude binning width used by the inversion.
+#
+# m_ref: reference magnitude for productivity scaling; only used by etas_2 when
+#   mc is 'positive' or 'var' (see _etas_mc_tag below) -- otherwise etas_2 uses
+#   mc itself as the effective reference magnitude.
+#
+# coppersmith_multiplier / bw_sq / free_background / free_productivity: passed
+#   straight through to ETASParameterCalculation to control rupture-length
+#   scaling, background-rate smoothing bandwidth, and whether the background
+#   rate / productivity terms are inverted for (True) or held fixed (False).
 #
 # auxiliary_start / timewindow_start / timewindow_end:
 #   auxiliary events act as sources only (not targets); primary window events
@@ -146,11 +184,29 @@ ETAS_INVERSION_CONFIG = {
 
 
 def _etas_mc_tag(cfg):
-    """('mc-<mode>', m_ref) for 'positive'/'var' mc, or ('mc-fixed<mc>', mc)
-    for a fixed numeric mc — etas_2 ignores metadata['m_ref'] when mc is a
-    fixed float (self.m_ref = metadata["m_ref"] if mc in ('var','positive')
-    else self.mc — inversion.py:766), so tag with the value etas_2 actually
-    uses, not the (possibly stale/unused) config m_ref.
+    """
+    Build the filename-safe magnitude-of-completeness tag used by the
+    etas_run_tag()/etas_catalog_tag() helpers below.
+
+    Returns ('mc-<mode>', m_ref) for 'positive'/'var' mc, or
+    ('mc-fixed<mc>', mc) for a fixed numeric mc — etas_2 ignores
+    metadata['m_ref'] when mc is a fixed float (self.m_ref =
+    metadata["m_ref"] if mc in ('var','positive') else self.mc —
+    inversion.py:766), so this tags with the value etas_2 actually uses,
+    not the (possibly stale/unused) config m_ref.
+
+    Parameters
+    ----------
+    cfg : dict
+        ETAS inversion config (e.g. ETAS_INVERSION_CONFIG); must contain
+        'mc' and 'm_ref'.
+
+    Returns
+    -------
+    tuple[str, float or str]
+        (tag, m_ref_used) — the filename-safe mc tag, and the magnitude
+        value that etas_2 actually treats as the reference magnitude for
+        this mc setting.
     """
     mc = cfg['mc']
     if mc in ('positive', 'var'):
@@ -159,9 +215,23 @@ def _etas_mc_tag(cfg):
 
 
 def etas_run_tag(cfg=None):
-    """Filename-safe tag encoding the ETAS inversion flags that change
-    parameters_{id}*.json / sources_{id}*.csv / catalog_{id}*.csv content,
-    so different flag combinations don't overwrite each other."""
+    """
+    Build a filename-safe tag encoding the ETAS inversion flags that
+    change parameters_{id}*.json / sources_{id}*.csv / catalog_{id}*.csv
+    content, so different flag combinations don't overwrite each other.
+
+    Parameters
+    ----------
+    cfg : dict or None, optional
+        ETAS inversion config; must contain free_background,
+        free_productivity, mc, m_ref, bw_sq. None (default) uses
+        ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        Tag of the form 'fb<0|1>_fp<0|1>_<mc_tag>_mref<value>_bw<value>'.
+    """
     cfg = cfg or ETAS_INVERSION_CONFIG
     mc_tag, m_ref = _etas_mc_tag(cfg)
     return (
@@ -174,8 +244,23 @@ def etas_run_tag(cfg=None):
 
 
 def etas_run_label(cfg=None):
-    """Human-readable counterpart to etas_run_tag(), for figure legends/titles
-    comparing multiple ETAS inversion configs (e.g. ETAS_plot_comparison.py)."""
+    """
+    Build a human-readable counterpart to etas_run_tag(), for figure
+    legends/titles comparing multiple ETAS inversion configs (e.g.
+    ETAS_plot_comparison.py).
+
+    Parameters
+    ----------
+    cfg : dict or None, optional
+        ETAS inversion config; must contain free_background,
+        free_productivity, mc, m_ref, bw_sq. None (default) uses
+        ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        Comma-separated label, e.g. 'free-bg, flat-prod, mc-fixed3, bw_sq=4'.
+    """
     cfg = cfg or ETAS_INVERSION_CONFIG
     bg   = 'free-bg'   if cfg['free_background']   else 'flat-bg'
     prod = 'free-prod' if cfg['free_productivity'] else 'flat-prod'
@@ -184,18 +269,52 @@ def etas_run_label(cfg=None):
 
 
 def etas_output_id(context_name, cfg=None):
-    """Tagged id for everything ETASParameterCalculation.store_results()
-    writes (parameters_/sources_/trig_and_bg_probs_/catalog_{id})."""
+    """
+    Build the tagged id for everything
+    ETASParameterCalculation.store_results() writes
+    (parameters_/sources_/trig_and_bg_probs_/catalog_{id}).
+
+    Parameters
+    ----------
+    context_name : str
+        Name of the context/region this inversion is for (e.g.
+        'benchmark', 'Ridgecrest').
+    cfg : dict or None, optional
+        ETAS inversion config passed through to etas_run_tag(). None
+        (default) uses ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        '{context_name}__{etas_run_tag(cfg)}'.
+    """
     return f"{context_name}__{etas_run_tag(cfg)}"
 
 
 def etas_catalog_tag(context_name, cfg=None):
-    """Minimal tag for input/catalog_{context}.csv (the raw download,
-    written directly by build_initial_prior.py — not by store_results()).
+    """
+    Build the minimal tag for input/catalog_{context}.csv (the raw
+    download, written directly by build_initial_prior.py — not by
+    store_results()).
+
     Its content only depends on context + the download floor (effective
     m_ref), not free_background/free_productivity/mc mode, so it's tagged
     separately to avoid duplicating an identical file across every
-    fb/fp/mc combination sharing the same context+m_ref."""
+    fb/fp/mc combination sharing the same context+m_ref.
+
+    Parameters
+    ----------
+    context_name : str
+        Name of the context/region this catalog download is for.
+    cfg : dict or None, optional
+        ETAS inversion config passed to _etas_mc_tag() to determine the
+        effective m_ref. None (default) uses ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        '{context_name}__mref{value}'.
+    """
     cfg = cfg or ETAS_INVERSION_CONFIG
     _, m_ref = _etas_mc_tag(cfg)
     return f"{context_name}__mref{float(m_ref):g}"
@@ -203,6 +322,13 @@ def etas_catalog_tag(context_name, cfg=None):
 
 # Parameters for the EtasPriorUpdater built from the inversion output above.
 # These are passed to EtasPriorUpdater.from_inversion_json() at runtime.
+#   bounds                   — (lon_min, lon_max, lat_min, lat_max) evaluation region.
+#   grid_spacing             — degrees between evaluation grid points.
+#   out_of_bounds_fill       — fill value for cells outside the ETAS polygon.
+#   use_spatial_background   — whether to use the spatially-varying background rate.
+#   use_spatial_productivity — whether to use spatially-varying productivity.
+#   max_lookback_days        — how much prior catalog history to retain/consider
+#                              when evaluating lambda(x, y, t).
 ETAS_UPDATER_CONFIG = {
     'bounds':           PRIOR_CONSTRUCTION_PARAMS['bounds'],
     'grid_spacing':     0.05,
@@ -212,7 +338,9 @@ ETAS_UPDATER_CONFIG = {
     'max_lookback_days': 365,
 }
 
-# Parameters for the main benchmark run.
+# Parameters for the main benchmark run. Consumed by make_epic_params() in
+# runner.py to build an EPIC_PARAMS object; see the inline comments below
+# for what each key controls.
 BENCHMARK_PARAMS = {
     'prior':                     'KDE_Seismicity',
     'max_trigs':                 10,
@@ -232,6 +360,8 @@ BENCHMARK_PARAMS = {
 
 # Allow shell-driven parameter sweeps (e.g. run_case_studies.sh) to override
 # BENCHMARK_PARAMS without editing this file. Unset env vars leave defaults untouched.
+# BENCHMARK_<KEY> (e.g. BENCHMARK_SIGMA_S) is read and cast for each key listed
+# here; other BENCHMARK_PARAMS keys cannot be overridden this way.
 _BENCHMARK_PARAM_ENV_CASTS = {
     'sigma_s':     float,
     'edt_sigma_s': float,
@@ -248,6 +378,12 @@ for _key, _cast in _BENCHMARK_PARAM_ENV_CASTS.items():
 # ---------------------------------------------------------------------------
 # Shared by preparation_scripts/case_study_preparation.py and all case_studies.py
 # workflow scripts.  Add new sequences here; they become available everywhere.
+# Each entry maps a case-study key to:
+#   name                — human-readable label used in figure titles/output paths.
+#   starttime, endtime  — ISO 8601 window (str) used to download/filter the USGS
+#                         catalog and build .run trigger files for this sequence.
+#   bounds              — (lon_min, lon_max, lat_min, lat_max) search region.
+#   min_mag             — minimum magnitude included when building the catalog/.run files.
 CASE_STUDIES = {
     'Ridgecrest': {
         'name':      'Ridgecrest 2019',
@@ -292,6 +428,9 @@ FOCUS_EVENTS = {
     'MTJ_2024_M7': 'nc75001903',  # M 4.67 aftershock
 }
 
+# Mainshock counterpart to FOCUS_EVENTS above, keyed the same way
+# (case-study key -> ANSS event id), for figures that focus on the
+# mainshock itself rather than a representative aftershock.
 FOCUS_EVENTS_MAINSHOCK = {
     'Ridgecrest':  'ci38457511',  # M7.1 mainshock  2019-07-06
     'Ferndale':    'nc73821036',  # M6.4 mainshock  2022-12-20

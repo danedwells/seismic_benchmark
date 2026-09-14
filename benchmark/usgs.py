@@ -1,3 +1,12 @@
+"""
+USGS ComCat / IRIS FDSNWS retrieval helpers.
+
+Functions for fetching event metadata and phase-arrival picks from the
+USGS ComCat API, resolving station coordinates via IRIS FDSNWS, downloading
+case-study earthquake catalogs, and assembling that data into bEPIC .run
+trigger files.
+"""
+
 import os
 import time
 import requests
@@ -19,6 +28,12 @@ def get_usgs_event(anss_id):
     ----------
     anss_id : str
         USGS/ANSS event ID (e.g. 'nc73093981').
+
+    Returns
+    -------
+    dict
+        Parsed GeoJSON response from the USGS ComCat event query
+        (event properties, geometry, and product metadata).
     """
     url = USGS_QUERY_URL
     r = requests.get(url, params={"eventid": anss_id, "format": "geojson"}, timeout=30)
@@ -33,9 +48,16 @@ def get_phases_df(geojson):
     Tries phases.csv first; falls back to parsing quakeml.xml when phases.csv
     is absent.
 
-    Returns a DataFrame with columns:
-        Channel, Distance, Phase, Arrival Time, Residual
-    or None if no phase product is available.
+    Parameters
+    ----------
+    geojson : dict
+        USGS ComCat GeoJSON for one event, as returned by get_usgs_event().
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        DataFrame with columns Channel, Distance, Phase, Arrival Time,
+        Residual, or None if no phase-data product is available.
     """
     # The GeoJSON 'products' dict maps product type → list of versions.
     # 'phase-data' is the USGS product that contains arrival picks.
@@ -75,9 +97,17 @@ def _parse_phases_from_quakeml(url):
     The two are linked by publicID/pickID references, so we build a pick
     lookup first, then join it with the arrival table.
 
-    Returns a DataFrame with columns matching phases.csv
-    (Channel, Distance, Phase, Arrival Time, Residual), or None if
-    no usable arrivals are found.
+    Parameters
+    ----------
+    url : str
+        URL of the quakeml.xml product to download and parse.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        DataFrame with columns matching phases.csv (Channel, Distance,
+        Phase, Arrival Time, Residual), or None if no usable arrivals
+        are found.
     """
     import xml.etree.ElementTree as ET
 
@@ -171,10 +201,14 @@ def download_case_study_catalog(cs, cache_dir, REDOWNLOAD=False):
         bounds = (min_lon, max_lon, min_lat, max_lat).
     cache_dir : str
         Directory for the parquet cache file.
+    REDOWNLOAD : bool, optional
+        If True, ignore any existing cached parquet file and re-download
+        from USGS. Default False (use the cache when present).
 
     Returns
     -------
-    DataFrame with columns: id, time, latitude, longitude, depth, mag
+    pandas.DataFrame
+        Columns: id, time, latitude, longitude, depth, mag.
     """
     name       = cs['name'].replace(' ', '_')
     cache_path = os.path.join(cache_dir, f"{name}_catalog.parquet")
@@ -221,9 +255,22 @@ def download_case_study_catalog(cs, cache_dir, REDOWNLOAD=False):
 # ---------------------------------------------------------------------------
 
 def _parse_channel(ch):
-    """Parse a USGS phases.csv Channel string into (net, sta, cha, loc).
+    """
+    Parse a USGS phases.csv Channel string into (net, sta, cha, loc).
 
     Example input: 'NC SAO HHZ --'
+
+    Parameters
+    ----------
+    ch : str
+        Channel string as it appears in the phases.csv 'Channel' column,
+        e.g. 'NC SAO HHZ --'.
+
+    Returns
+    -------
+    tuple[str, str, str, str]
+        (network, station, channel, location) parsed from ch. location
+        defaults to '--' if not present in the string.
     """
     parts = ch.strip().split()
     loc   = parts[3] if len(parts) > 3 else '--'
@@ -270,7 +317,8 @@ def build_run_file_from_usgs(
 
     Returns
     -------
-    bool : True if the file was written, False if skipped (insufficient data).
+    bool
+        True if the file was written, False if skipped (insufficient data).
     """
     if phases_filter is None:
         phases_filter = ['P', 'Pn', 'Pg', 'Pb']
@@ -424,7 +472,8 @@ def build_run_files_for_case_study(
 
     Returns
     -------
-    list[str] : ANSS IDs for which a .run file was successfully written.
+    list[str]
+        ANSS IDs for which a .run file was successfully written.
     """
     os.makedirs(run_dir, exist_ok=True)
     station_coord_cache = {}
@@ -465,7 +514,24 @@ def get_station_coords(network, station, channel, origin_time_iso):
     """
     Query IRIS FDSNWS for the lat/lon of a station at the time of the event.
 
-    Returns (lat, lon) or (None, None) if not found.
+    Parameters
+    ----------
+    network : str
+        FDSN network code (e.g. 'CI').
+    station : str
+        FDSN station code (e.g. 'WMF').
+    channel : str
+        FDSN channel code (e.g. 'HHZ'); narrows the station query.
+    origin_time_iso : str
+        ISO-8601 event origin time; only the date portion (first 10
+        characters) is used as the 'endafter' query constraint, so the
+        returned station metadata is valid at or after the event.
+
+    Returns
+    -------
+    tuple[float, float] or tuple[None, None]
+        (latitude, longitude) of the station, or (None, None) if no
+        matching station was found or the query failed.
     """
     url = "https://service.iris.edu/fdsnws/station/1/query"
     params = {
