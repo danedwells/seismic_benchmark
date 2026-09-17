@@ -18,7 +18,7 @@ from benchmark.time_dependent_helpers import *
 # ETAS inversion variant selection
 # ---------------------------------------------------------------------------
 
-BW_SQ = 4 # 4 is the default value. Unchanged behavior
+BW_SQ = 16 # 4 is the default value. Unchanged behavior
 config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 
 #manual override of spatial kernel size
@@ -40,7 +40,9 @@ HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'cascadia','etas_inversi
 
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
-SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+#SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+SIGMA_S = 0.60
+config.BENCHMARK_PARAMS['sigma_s']      = SIGMA_S
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
@@ -52,7 +54,7 @@ os.makedirs(OUTPUT_DIR,  exist_ok=True)
 # Reference catalog and station list
 # ---------------------------------------------------------------------------
 # Run bEPIC on this catalog, updating ETAS and prior as it goes.
-catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia','reference', 'cascadia_test_catalog.csv')
+catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia','reference', 'cascadia_test_catalog_west.csv')
 catalog_df = benchmark_runner.load_reference_catalog_usgs(catalog_path) if os.path.exists(catalog_path) else None
 
 station_availability = (
@@ -132,7 +134,7 @@ def after_event_fn(event_id):
         'magnitude': row['magnitude'],
     }]))
 
-
+#%%
 # Collect event IDs from available .run files, sorted by first trigger time
 # (chronological order is critical so ETAS updates are causal).
 run_files  = sorted(Path(RUN_DIR).glob('*.run'))
@@ -141,8 +143,6 @@ print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
         f"(update interval: "
         f"{'per-event' if ETAS_UPDATE_INTERVAL_S == 0 else f'{ETAS_UPDATE_INTERVAL_S}s'})…\n")
 
-
-#%%
 # -----------------------------------------------------------------------
 # -- Set up BenchmarkRunner with the initial prior
 # -- Run the dynamic prior ----------------------

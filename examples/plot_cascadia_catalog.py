@@ -27,6 +27,8 @@ df = pd.concat([pd.read_csv(p) for p in csv_paths], ignore_index=True)
 df = df.dropna(subset=["latitude", "longitude", "depth", "mag"])
 df['time'] = pd.to_datetime(df['time'],format="ISO8601")
 
+df.to_csv(f"{DATA_DIR}/cascadia_test_catalog_west.csv")
+
 
 # --- Map 1 ---
 # Magnitude and depth
@@ -133,3 +135,53 @@ ax.set_ylim([2,7.5])
 fig.savefig(OUT_PNG, dpi=150, bbox_inches="tight")
 print(f"Wrote plot to {OUT_PNG}")
 plt.show()
+
+
+#%%
+# Map 4
+# Full reference catalog (used for ETAS inversion), depth and magnitude
+REFERENCE_CATALOG = f"{DATA_DIR}/../etas_inversion/input/cascadia_reference_catalog.csv"
+OUT_PNG = f"{DATA_DIR}/cascadia_reference_catalog_depth_magnitude_map.png"
+
+ref_df = pd.read_csv(REFERENCE_CATALOG)
+ref_df = ref_df.dropna(subset=["latitude", "longitude", "depth", "mag"])
+ref_df["time"] = pd.to_datetime(ref_df["time"], format="ISO8601")
+
+# Create secondary catalog of events only in western half of WA/OR/BC
+# This is to isolate plate boundary related events - including idaho
+# (and lost river events) might be too broad
+ref_df_west = ref_df[ref_df['longitude'] < -120].copy()
+ref_df_west.to_csv(f"{DATA_DIR}/../etas_inversion/input/cascadia_reference_catalog_west.csv")
+
+pad = 1.0
+fig = plt.figure(figsize=(15, 15))
+ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+ax.set_extent([ref_df["longitude"].min() - pad, ref_df["longitude"].max() + pad,
+               ref_df["latitude"].min() - pad, ref_df["latitude"].max() + pad],
+              crs=ccrs.PlateCarree())
+
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.BORDERS, linestyle=":")
+ax.add_feature(cfeature.STATES, linewidth=0.5)
+ax.add_feature(cfeature.OCEAN, facecolor="lightblue")
+ax.add_feature(cfeature.LAND, facecolor="whitesmoke")
+
+sizes = 2 * 2 ** ref_df["mag"]
+vmin = 0
+vmax = 80
+sc = ax.scatter(ref_df["longitude"], ref_df["latitude"],
+                 s=sizes, c=ref_df["depth"], cmap="viridis",
+                 alpha=0.4, edgecolor="k", linewidth=0.2,
+                 transform=ccrs.PlateCarree(), vmin=vmin, vmax=vmax)
+
+cbar = fig.colorbar(sc, ax=ax, shrink=0.7, pad=0.05)
+cbar.set_label("Depth (km)")
+
+ax.set_title(f"Cascadia reference catalog: {len(ref_df):,} events "
+             "(color = depth, size = magnitude)")
+ax.gridlines(draw_labels=True, linewidth=0.3)
+
+fig.savefig(OUT_PNG, dpi=150, bbox_inches="tight")
+print(f"Wrote map to {OUT_PNG}")
+plt.show()
+# %%

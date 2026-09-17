@@ -91,7 +91,7 @@ BENCHMARK_PARAMS = {
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km
-    'sigma_s':                   0.35,     # estimated travel time uncertainty per pick
+    'sigma_s':                   0.60,     # estimated travel time uncertainty per pick
     'edt_sigma_s':               0.02,   # estimated travel time uncertainty per pick for dff. travle time
     'dtt_weight':                0.0,   # How much to weight the differential travel time (0 = none, 1 = all)
     'search_depths':             [8.0],  # km; candidate source depths for bEPIC's grid search.
@@ -126,7 +126,7 @@ ETAS_INVERSION_CONFIG = {
     ],
 
     'coppersmith_multiplier': 100,
-    'bw_sq':                  4,
+    'bw_sq':                  16,
     'free_background':        True,
     'free_productivity':      False,
 
@@ -195,3 +195,139 @@ FOCUS_EVENTS = {}
 # Cascadia counterpart to config.FOCUS_EVENTS_MAINSHOCK; empty until
 # Cascadia case studies exist.
 FOCUS_EVENTS_MAINSHOCK = {}
+
+def _etas_mc_tag(cfg):
+    """
+    Build the filename-safe magnitude-of-completeness tag used by the
+    etas_run_tag()/etas_catalog_tag() helpers below.
+
+    Returns ('mc-<mode>', m_ref) for 'positive'/'var' mc, or
+    ('mc-fixed<mc>', mc) for a fixed numeric mc — etas_2 ignores
+    metadata['m_ref'] when mc is a fixed float (self.m_ref =
+    metadata["m_ref"] if mc in ('var','positive') else self.mc —
+    inversion.py:766), so this tags with the value etas_2 actually uses,
+    not the (possibly stale/unused) config m_ref.
+
+    Parameters
+    ----------
+    cfg : dict
+        ETAS inversion config (e.g. ETAS_INVERSION_CONFIG); must contain
+        'mc' and 'm_ref'.
+
+    Returns
+    -------
+    tuple[str, float or str]
+        (tag, m_ref_used) — the filename-safe mc tag, and the magnitude
+        value that etas_2 actually treats as the reference magnitude for
+        this mc setting.
+    """
+    mc = cfg['mc']
+    if mc in ('positive', 'var'):
+        return f'mc-{mc}', cfg['m_ref']
+    return f'mc-fixed{float(mc):g}', mc
+
+
+def etas_run_tag(cfg=None):
+    """
+    Build a filename-safe tag encoding the ETAS inversion flags that
+    change parameters_{id}*.json / sources_{id}*.csv / catalog_{id}*.csv
+    content, so different flag combinations don't overwrite each other.
+
+    Parameters
+    ----------
+    cfg : dict or None, optional
+        ETAS inversion config; must contain free_background,
+        free_productivity, mc, m_ref, bw_sq. None (default) uses
+        ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        Tag of the form 'fb<0|1>_fp<0|1>_<mc_tag>_mref<value>_bw<value>'.
+    """
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    mc_tag, m_ref = _etas_mc_tag(cfg)
+    return (
+        f"fb{int(cfg['free_background'])}"
+        f"_fp{int(cfg['free_productivity'])}"
+        f"_{mc_tag}"
+        f"_mref{float(m_ref):g}"
+        f"_bw{float(cfg['bw_sq']):g}"
+    )
+
+
+def etas_run_label(cfg=None):
+    """
+    Build a human-readable counterpart to etas_run_tag(), for figure
+    legends/titles comparing multiple ETAS inversion configs (e.g.
+    ETAS_plot_comparison.py).
+
+    Parameters
+    ----------
+    cfg : dict or None, optional
+        ETAS inversion config; must contain free_background,
+        free_productivity, mc, m_ref, bw_sq. None (default) uses
+        ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        Comma-separated label, e.g. 'free-bg, flat-prod, mc-fixed3, bw_sq=4'.
+    """
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    bg   = 'free-bg'   if cfg['free_background']   else 'flat-bg'
+    prod = 'free-prod' if cfg['free_productivity'] else 'flat-prod'
+    mc_tag, _ = _etas_mc_tag(cfg)
+    return f"{bg}, {prod}, {mc_tag}, bw_sq={cfg['bw_sq']:g}"
+
+
+def etas_output_id(context_name, cfg=None):
+    """
+    Build the tagged id for everything
+    ETASParameterCalculation.store_results() writes
+    (parameters_/sources_/trig_and_bg_probs_/catalog_{id}).
+
+    Parameters
+    ----------
+    context_name : str
+        Name of the context/region this inversion is for (e.g.
+        'benchmark', 'Ridgecrest').
+    cfg : dict or None, optional
+        ETAS inversion config passed through to etas_run_tag(). None
+        (default) uses ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        '{context_name}__{etas_run_tag(cfg)}'.
+    """
+    return f"{context_name}__{etas_run_tag(cfg)}"
+
+
+def etas_catalog_tag(context_name, cfg=None):
+    """
+    Build the minimal tag for input/catalog_{context}.csv (the raw
+    download, written directly by build_initial_prior.py — not by
+    store_results()).
+
+    Its content only depends on context + the download floor (effective
+    m_ref), not free_background/free_productivity/mc mode, so it's tagged
+    separately to avoid duplicating an identical file across every
+    fb/fp/mc combination sharing the same context+m_ref.
+
+    Parameters
+    ----------
+    context_name : str
+        Name of the context/region this catalog download is for.
+    cfg : dict or None, optional
+        ETAS inversion config passed to _etas_mc_tag() to determine the
+        effective m_ref. None (default) uses ETAS_INVERSION_CONFIG.
+
+    Returns
+    -------
+    str
+        '{context_name}__mref{value}'.
+    """
+    cfg = cfg or ETAS_INVERSION_CONFIG
+    _, m_ref = _etas_mc_tag(cfg)
+    return f"{context_name}__mref{float(m_ref):g}"

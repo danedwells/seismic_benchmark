@@ -32,7 +32,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATION_AVAIL_CACHE = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'station_availability_cache.parquet')
 RUN_DIR             = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'run_files')
 EDT_SIGMA_S    = config.BENCHMARK_PARAMS['edt_sigma_s']
-SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+
+#SIGMA_S        = config.BENCHMARK_PARAMS['sigma_s']
+SIGMA_S = 0.60
+config.BENCHMARK_PARAMS['sigma_s']      = SIGMA_S
 MAX_TRIGS      = config.BENCHMARK_PARAMS['max_trigs']
 
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'cascadia', 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
@@ -46,7 +49,7 @@ os.makedirs(OUTPUT_DIR,  exist_ok=True)
 # Run bEPIC on this catalog. Cascadia .run files are named by ANSS event id
 # (str), not the postgres int ids the CA bEPIC_testing_catalog.txt uses, so
 # load via load_reference_catalog_usgs() — see time_dependent_scripts/run_cascadia.py.
-catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'cascadia_test_catalog.csv')
+catalog_path = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference', 'cascadia_test_catalog_west.csv')
 catalog_df = benchmark_runner.load_reference_catalog_usgs(catalog_path) if os.path.exists(catalog_path) else None
 
 # Build reference catalog before job_args so it can be passed to each worker.
@@ -77,7 +80,7 @@ ref_dir = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'reference')
 #----------------------------------------------------------
 from concurrent.futures import ProcessPoolExecutor
 
-priors_to_run = ['Gear1']#, 'NSHM', 'KDE_Seismicity', 'Helmstetter', 'Uniform']
+priors_to_run = ['KDE_Seismicity', 'Uniform']#, 'NSHM', 'KDE_Seismicity', 'Helmstetter', 'Uniform']
 
 def _run_one(name, path):
     if path is not None:

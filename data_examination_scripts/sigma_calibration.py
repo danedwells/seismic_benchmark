@@ -32,7 +32,7 @@ TARGET_KIND = 'region'        # 'region' | 'case_study'
 TARGET      = 'cascadia'      # 'california'|'cascadia' (region), or a
                                # benchmark.config.CASE_STUDIES key (case_study)
 
-SIGMA_VALUES = [0.6, 0.8, 0.9, 1.0, 1.2, 1.5]   # sweep — edit as needed
+SIGMA_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5]   # sweep — edit as needed
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir     = SeismicPrior.data_dir            # priors/data/

@@ -54,7 +54,7 @@ os.makedirs(INPUT_DIR, exist_ok=True)
 
 # Shared catalog cache — downloaded once, filtered per context. Plain CSV (not
 # the parquet load_background_seismicity() writes) so it's directly inspectable.
-SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'cascadia_reference_catalog.csv')
+SHARED_CATALOG_CACHE = os.path.join(INPUT_DIR, 'cascadia_reference_catalog_west.csv')
 
 # ── Per-context cutoff dates ───────────────────────────────────────────────────
 # timewindow_end for each inversion = the moment auxiliary/training data ends.

@@ -650,14 +650,7 @@ else:
                     label=BIN_LABELS[i], edgecolors='white', linewidths=0.3)
         for i in range(len(BIN_LABELS))
     ]
-    # COMMENTED OUT — station legend entries removed alongside the station
-    # markers above.
-    # legend_handles += [
-    #     plt.scatter([], [], c='orange',    s=15, marker='v', label='Triggered',
-    #                 edgecolors='darkorange', linewidths=0.3),
-    #     plt.scatter([], [], c='lightgray', s=10, marker='v', label='Active (untriggered)',
-    #                 edgecolors='gray', linewidths=0.3),
-    # ]
+
     fig_map.legend(handles=legend_handles, loc='lower center', ncol=7,
                    fontsize=9, bbox_to_anchor=(0.5, 0.01))
     fig_map.suptitle(
@@ -712,6 +705,7 @@ if ACTIVE_CASE_STUDY == None:
     def _get_vals_mtj(name, n_trigs):
         if name not in loaded or not mtj_event_ids:
             return None
+        
         _, df = loaded[name]
         vals = df[df['event_id'].isin(mtj_event_ids) & (df['n_trigs'] == n_trigs)][column_err].dropna().values
         return vals if len(vals) > 0 else None
@@ -971,8 +965,7 @@ if _comp_data:
 # reach the per-config subfolder each ETAS run's results live in — so pass
 # csv_paths (built from PRIOR_SPECS, which already has the correct path per
 # entry) to override that for every name it covers.
-from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior,
-                             plot_qq_prior_comparison)
+from benchmark.plots import (plot_qq_calibration, plot_qq_calibration_prior)
 
 QQ_TRIGS = 4
 _qq_prior_names = [s['name'] for s in PRIOR_SPECS]
