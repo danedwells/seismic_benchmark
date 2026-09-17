@@ -10,7 +10,7 @@ from pathlib import Path
 from priors import EtasPriorUpdater
 
 from benchmark import runner as benchmark_runner
-from benchmark import config
+import benchmark.config_california as config
 from benchmark.runner import (BenchmarkRunner, runner_results_to_df,
                                make_epic_params,
                               load_station_availability_cache)
@@ -79,8 +79,8 @@ _usgs_ref_lookup = (
 #%%
 # ---------------------------------------------------------------------------
 # Main workflow
-# ---------------------------------------------------------------------------
-# How often to re-evaluate the ETAS prior (in seconds of event time).
+# -------------------------+
+# the ETAS prior (in seconds of event time).
 ETAS_UPDATE_INTERVAL_S = 0
 
 # Prior tempering exponent.  1.0 = full ETAS weight; <1.0 compresses the

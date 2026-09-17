@@ -24,7 +24,8 @@ if PROJECT_ROOT not in sys.path:
 
 import matplotlib.pyplot as plt
 
-from benchmark import config
+
+
 from benchmark.plots import plot_qq_calibration_by_param
 
 #%%
@@ -34,6 +35,10 @@ from benchmark.plots import plot_qq_calibration_by_param
 TARGET_KIND = 'region'        # 'region' | 'case_study'
 TARGET      = 'cascadia'      # 'california'|'cascadia' (region), or a
                                # benchmark.config.CASE_STUDIES key (case_study)
+if TARGET == 'cascadia':
+    from benchmark import config_cascadia as config
+elif TARGET == 'california':
+    from benchmark import config_california as config
 
 MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
 N_TRIGS   = 5   # per-event trigger count to plot; None = each event's last (most-triggered) row

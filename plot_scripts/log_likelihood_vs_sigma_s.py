@@ -27,8 +27,6 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 import matplotlib.pyplot as plt
-
-from benchmark import config
 from benchmark.plots import plot_log_likelihood_sum_by_param
 
 #%%
@@ -38,6 +36,12 @@ from benchmark.plots import plot_log_likelihood_sum_by_param
 TARGET_KIND = 'region'        # 'region' | 'case_study'
 TARGET      = 'cascadia'      # 'california'|'cascadia' (region), or a
                                # benchmark.config.CASE_STUDIES key (case_study)
+
+if TARGET == 'cascadia':
+    from benchmark import config_cascadia as config
+elif TARGET == 'california':
+    from benchmark import config_california as config
+
 
 MAX_TRIGS = config.BENCHMARK_PARAMS['max_trigs']
 N_TRIGS   = 5   # per-event trigger count to use; None = each event's last (most-triggered) row

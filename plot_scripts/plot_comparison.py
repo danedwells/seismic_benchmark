@@ -50,31 +50,23 @@ SIGMA_S     = 0.22
 EDT_TAG     = f'edt_{EDT_SIGMA_S}'
 S_TAG       = f'sig_{SIGMA_S}'
 
-# Matches the VARY_EDT/VARY_SIG convention used by case_studies.py and
-# run_benchmarks.py — set the env vars before running this script (or edit
-# the defaults below) to pick which sweep dimension's output directory to load.
-_VARY_EDT = os.environ.get('VARY_EDT', '0') == '1'
-_VARY_SIG = os.environ.get('VARY_SIG', '1') == '1'
 
-if _VARY_EDT and _VARY_SIG:
-    raise Exception("Cannot vary both EDT and Sigma at the same time")
-_PARAM_TAG = EDT_TAG if _VARY_EDT else S_TAG
 
 if ACTIVE_CASE_STUDY is None:
     OUTPUT_DIR_STATIC  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
-                                       'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+                                       'time_independent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',
-                                       'time_dependent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'comparison', _PARAM_TAG)
+                                       'time_dependent', f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'comparison')
     PLOT_TITLE_SUFFIX  = 'main benchmark'
 else:
     cs = CASE_STUDIES[ACTIVE_CASE_STUDY]
     _cs_base           = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studies',
                                       ACTIVE_CASE_STUDY)
-    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
+    OUTPUT_DIR_STATIC  = os.path.join(_cs_base, 'output',  'time_independent', f'max_trigs_{MAX_TRIGS}')
     OUTPUT_DIR_DYNAMIC = os.path.join(_cs_base, 'output',  'time_dependent',
-                                      _PARAM_TAG, f'max_trigs_{MAX_TRIGS}')
-    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison', _PARAM_TAG)
+                                       f'max_trigs_{MAX_TRIGS}')
+    FIGURES_DIR        = os.path.join(_cs_base, 'figures', 'comparison')
     PLOT_TITLE_SUFFIX  = cs['name']
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
