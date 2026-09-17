@@ -470,13 +470,20 @@ def _plot_error_histogram_grid(get_vals, fig_num, region_label, n_trigs, save_na
     for ax in axes[:len(PRIOR_SPECS)]:
         ax.set_ylim(0, y_max)
 
-    for ax in axes[:3]:
+    # Bottom-most populated axis per column gets the x-axis label/ticks —
+    # with fewer than 6 PRIOR_SPECS the populated panels sit in the top row
+    # (axes[:3]) and the bottom row is hidden, so a hardcoded bottom row
+    # would label a hidden axis and leave the visible panels unlabeled.
+    n_hist = len(PRIOR_SPECS)
+    _hist_bottom = [axes[c + 3] if c + 3 < n_hist else axes[c] for c in range(3) if c < n_hist]
+
+    for ax in [a for a in axes[:3] if a not in _hist_bottom]:
         ax.set_xticklabels([])
     for ax in [axes[1], axes[2], axes[4], axes[5]]:
         ax.set_yticklabels([])
-    for ax in axes[3:]:
+    for ax in _hist_bottom:
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
-        ax.set_xlabel('Location error (km)', fontsize=11)
+        ax.set_xlabel('Location error (km)  (log scale)', fontsize=11)
     for ax in [axes[0], axes[3]]:
         ax.set_ylabel('Event count', fontsize=11)
 

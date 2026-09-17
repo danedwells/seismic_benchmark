@@ -366,15 +366,22 @@ y_max = max(ax.get_ylim()[1] for ax in axes[:len(PRIOR_SPECS)])
 for ax in axes[:len(PRIOR_SPECS)]:
     ax.set_ylim(0, y_max)
 
-for ax in [ax1,ax2,ax3]:
+# Bottom-most populated axis per column gets the x-axis label/ticks — with
+# fewer than 6 PRIOR_SPECS the populated panels sit in the top row (ax1-3)
+# and the bottom row is hidden, so a hardcoded bottom row would label a
+# hidden axis and leave the visible panels unlabeled.
+n_hist = len(PRIOR_SPECS)
+_hist_bottom = [axes[c + 3] if c + 3 < n_hist else axes[c] for c in range(3) if c < n_hist]
+
+for ax in [a for a in (ax1, ax2, ax3) if a not in _hist_bottom]:
     ax.set_xticklabels([])
 
 for ax in [ax2,ax3,ax5,ax6]:
     ax.set_yticklabels([])
 
-for ax in [ax4, ax5, ax6]:
+for ax in _hist_bottom:
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
-    ax.set_xlabel('Location error (km)', fontsize=11)
+    ax.set_xlabel('Location error (km)  (log scale)', fontsize=11)
 
 for ax in [ax1, ax4]:
     ax.set_ylabel('Event count', fontsize=11)
@@ -503,24 +510,29 @@ else:
         ax.set_visible(False)
 
     # Coarse shared lon/lat ticks — identical locations on every panel (same
-    # extent everywhere), but labels only drawn on the bottom row (longitude)
-    # and left column (latitude) so the 2x3 grid reads like one shared axis.
+    # extent everywhere), but labels only drawn on the bottom-most populated
+    # row per column (longitude) and left column (latitude) so the 2x3 grid
+    # reads like one shared axis. With fewer than 6 map_data entries the
+    # populated panels sit in the top row and the bottom row is hidden, so
+    # a hardcoded bottom row would label a hidden axis.
+    n_map = len(map_data)
+    _map_bottom_idxs = {c + 3 if c + 3 < n_map else c for c in range(3) if c < n_map}
+
     _lon_ticks = MaxNLocator(nbins=5).tick_values(extent[0], extent[1])
     _lat_ticks = MaxNLocator(nbins=5).tick_values(extent[2], extent[3])
     for _idx, ax in enumerate(axes_map_flat):
-        _row, _col = divmod(_idx, 3)
+        _, _col = divmod(_idx, 3)
         ax.set_xticks(_lon_ticks, crs=proj)
         ax.set_yticks(_lat_ticks, crs=proj)
         ax.xaxis.set_major_formatter(LongitudeFormatter())
         ax.yaxis.set_major_formatter(LatitudeFormatter())
         ax.tick_params(labelsize=8)
-        if _row != 1:
-            ax.tick_params(labelbottom=False)
+        ax.tick_params(labelbottom=(_idx in _map_bottom_idxs))
         if _col != 0:
             ax.tick_params(labelleft=False)
 
-    for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
-       ax.set_xlabel('Longitude', fontsize=10)
+    for _idx in sorted(_map_bottom_idxs):
+        axes_map_flat[_idx].set_xlabel('Longitude', fontsize=10)
     for ax in [axes_map_flat[0], axes_map_flat[3]]:
        ax.set_ylabel('Latitude', fontsize=10)
 

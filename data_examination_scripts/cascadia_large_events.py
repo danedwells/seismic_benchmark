@@ -52,6 +52,9 @@ DYNAMIC_OUTPUT_DIR = os.path.join(MAG_DIR, 'output', 'time_dependent',   f'max_t
 os.makedirs(STATIC_OUTPUT_DIR,  exist_ok=True)
 os.makedirs(DYNAMIC_OUTPUT_DIR, exist_ok=True)
 
+SIGMA_S = 0.60
+config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
+
 # ---------------------------------------------------------------------------
 # Reference catalog, station list, and large-event filter
 # ---------------------------------------------------------------------------
@@ -114,7 +117,7 @@ with ProcessPoolExecutor(max_workers=len(priors_to_run)) as ex:
 # ---------------------------------------------------------------------------
 # Part 2 — Dynamic ETAS prior, large events only
 # ---------------------------------------------------------------------------
-BW_SQ = 4
+BW_SQ = 16
 config.ETAS_INVERSION_CONFIG['bw_sq'] = BW_SQ
 spatial_factor = None  # multiply inverted d (spatial decay size) by this factor
 
@@ -123,8 +126,7 @@ INVERSION_JSON     = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'etas_invers
 HISTORICAL_CATALOG = os.path.join(PROJECT_ROOT, 'data', 'cascadia', 'etas_inversion', 'input',
                                    f'catalog_{config.etas_catalog_tag(config.ETAS_INVERSION_CONFIG["id"])}.csv')
 
-SIGMA_S = 0.35
-config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
+
 
 station_availability = _avail
 
