@@ -230,11 +230,13 @@ cbar_ax_row2 = fig.add_axes([0.65, 0.04, 0.015, 0.42])  # [left, bottom, width, 
 fig.colorbar(plt.cm.ScalarMappable(cmap=cmap, norm=mtj_norm), cax=cbar_ax_row2,
              label=r'$\log_{10}$ prior density')
 
+"""
 fig.suptitle(
     f'Spatial prior comparison  ({forecast_time.date()})   |   '
     f'MTJ M{MAINSHOCK_MAG:g}  {MAINSHOCK_TIME:%Y-%m-%d %H:%M} UTC',
     y=0.98,
 )
+"""
 
 # ── Exact per-panel placement [left, bottom, width, height] (figure fraction) ──
 # Edit these directly to hand-tune the layout — set_position overrides
