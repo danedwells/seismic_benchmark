@@ -580,9 +580,16 @@ else:
     if CUSTOM_EXTENT is not None:
         extent = CUSTOM_EXTENT
 
+    # Shrink the grid (and figure) to fit however many priors are actually
+    # populated instead of always reserving a full 2x3 — a 3-prior run only
+    # needs a single row, not a mostly-empty second one.
+    n_map = len(map_data)
+    _map_cols = min(n_map, 3)
+    _map_rows = -(-n_map // _map_cols)  # ceil division
+
     proj = ccrs.PlateCarree()
-    fig_map, axes_map = plt.subplots(2, 3, figsize=(15, 10), dpi=150,
-                                     subplot_kw={'projection': proj})
+    fig_map, axes_map = plt.subplots(_map_rows, _map_cols, figsize=(5 * _map_cols, 5 * _map_rows), dpi=150,
+                                     subplot_kw={'projection': proj}, squeeze=False)
     axes_map_flat = axes_map.flatten()
 
     for ax_idx, (name, (spec, sub)) in enumerate(map_data.items()):
@@ -631,26 +638,34 @@ else:
         ax.set_visible(False)
 
     # Coarse shared lon/lat ticks — identical locations on every panel (same
-    # extent everywhere), but labels only drawn on the bottom row (longitude)
-    # and left column (latitude) so the 2x3 grid reads like one shared axis.
+    # extent everywhere), but labels only drawn on the bottom-most populated
+    # row per column (longitude) and left column (latitude) so the grid
+    # reads like one shared axis.
+    _map_bottom_idxs = set()
+    for _c in range(_map_cols):
+        _col_idxs = [i for i in range(n_map) if i % _map_cols == _c]
+        if _col_idxs:
+            _map_bottom_idxs.add(max(_col_idxs))
+
     _lon_ticks = MaxNLocator(nbins=5).tick_values(extent[0], extent[1])
     _lat_ticks = MaxNLocator(nbins=5).tick_values(extent[2], extent[3])
     for _idx, ax in enumerate(axes_map_flat):
-        _row, _col = divmod(_idx, 3)
+        _, _col = divmod(_idx, _map_cols)
         ax.set_xticks(_lon_ticks, crs=proj)
         ax.set_yticks(_lat_ticks, crs=proj)
         ax.xaxis.set_major_formatter(LongitudeFormatter())
         ax.yaxis.set_major_formatter(LatitudeFormatter())
         ax.tick_params(labelsize=8)
-        if _row != 1:
-            ax.tick_params(labelbottom=False)
+        ax.tick_params(labelbottom=(_idx in _map_bottom_idxs))
         if _col != 0:
             ax.tick_params(labelleft=False)
 
-    for ax in [axes_map_flat[3], axes_map_flat[4], axes_map_flat[5]]:
-       ax.set_xlabel('Longitude', fontsize=10)
-    for ax in [axes_map_flat[0], axes_map_flat[3]]:
-       ax.set_ylabel('Latitude', fontsize=10)
+    for _idx in sorted(_map_bottom_idxs):
+        axes_map_flat[_idx].set_xlabel('Longitude', fontsize=10)
+    for _row in range(_map_rows):
+        _left_idx = _row * _map_cols
+        if _left_idx < n_map:
+            axes_map_flat[_left_idx].set_ylabel('Latitude', fontsize=10)
 
     legend_handles = [
         plt.scatter([], [], c=BIN_COLORS[i], s=BIN_SIZES[i],

@@ -293,8 +293,8 @@ for ax in [ax2,ax3,ax5,ax6]:
     ax.set_yticklabels([])
 
 for ax in [ax4, ax5, ax6]:
-    
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+    ax.set_xlabel('Location error (km)  (log scale)', fontsize=11)
 
 fig.suptitle(f"Location error (km):  Sequence: {ACTIVE_CASE_STUDY}  Number of triggers: {trigger_number}   Alpha: {ALPHA}",fontsize=16)
 
