@@ -120,8 +120,8 @@ extent = [
 ]
 
 panels = [
-    ('prior',      'Prior  (KDE Seismicity)', prior_2d, 'Blues'),
-    ('likelihood', 'Likelihood',              like_2d,  'Oranges'),
+    ('prior',      'Prior  (KDE Seismicity)', prior_2d, 'Reds'),
+    ('likelihood', 'Likelihood',              like_2d,  'Reds'),
     ('posterior',  'Posterior',               post_2d,  'Reds'),
 ]
 
@@ -152,11 +152,30 @@ for key, title, grid_2d, cmap in panels:
 
     ax.set_title(title)
 
+    # 50 km scale bar, bottom-left corner — prior panel only.
+    if key == 'prior':
+        lon_min, lon_max, lat_min, lat_max = extent
+        lat_mid   = (lat_min + lat_max) / 2
+        scale_km  = 50
+        scale_deg = scale_km / (111.32 * np.cos(np.radians(lat_mid)))
+        x0 = lon_min + 0.08 * (lon_max - lon_min)
+        y0 = lat_min + 0.08 * (lat_max - lat_min)
+        x1 = x0 + scale_deg
+        tick_h = 0.02 * (lat_max - lat_min)
+        for xs, ys in (([x0, x1], [y0, y0]),
+                       ([x0, x0], [y0 - tick_h, y0 + tick_h]),
+                       ([x1, x1], [y0 - tick_h, y0 + tick_h])):
+            ax.plot(xs, ys, color='black', linewidth=2,
+                    transform=proj, zorder=10, solid_capstyle='butt')
+        ax.text((x0 + x1) / 2, y0 + tick_h + 0.02 * (lat_max - lat_min), f'{scale_km} km',
+                ha='center', va='bottom', fontsize=8, fontweight='bold',
+                transform=proj, zorder=10)
+
 axes = [fig.axes[i] for i in range(3)]
 handles, labels = axes[-1].get_legend_handles_labels()
 fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=9, bbox_to_anchor=(0.5, -0.02))
 
-fig.suptitle(f'Bayesian location — MTJ M7.0 mainshock  ({len(triggered)} stations triggered)', y=1.0)
+#fig.suptitle(f'Bayesian location — MTJ M7.0 mainshock  ({len(triggered)} stations triggered)', y=1.0)
 
 fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_bayesian_location_example.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_bayesian_location_example.pdf'), bbox_inches='tight')

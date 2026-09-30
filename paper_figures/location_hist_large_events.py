@@ -100,7 +100,7 @@ AX_POS = {
     'map':          [0.08, 0.06, 0.84, 0.51],
 }
 
-fig = plt.figure(figsize=(12, 11))
+fig = plt.figure(figsize=(11, 11))
 
 # -- Top row: per-prior location-error histograms -----------------------------
 bins = np.logspace(-1, 3, 20)
@@ -135,10 +135,10 @@ for spec in PRIOR_SPECS:
                 transform=ax.transAxes, ha='right', va='top', fontsize=9,
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
 
-    ax.set_xlabel('Location error (km)  (log scale)')
+    ax.set_xlabel('Location error (km)')
     if name == 'KDE_Seismicity':
         ax.set_ylabel('Event count')
-        ax.legend(loc='upper left', fontsize=9)
+        ax.legend(loc='lower left', fontsize=9)
     else:
         ax.set_yticklabels([])
 
@@ -166,7 +166,7 @@ for spec in PRIOR_SPECS:
 
 all_lats = pd.concat([d[column_lat] for d in map_data.values()])
 all_lons = pd.concat([d[column_lon] for d in map_data.values()])
-buf = 1.5
+buf = 1.0
 extent = [all_lons.min() - buf, all_lons.max() + buf,
           all_lats.min() - buf, all_lats.max() + buf]
 
@@ -186,8 +186,8 @@ for name, sub in map_data.items():
                   (matched['usgs_lon'] - matched[column_lon]).values,
                   (matched['usgs_lat'] - matched[column_lat]).values,
                   angles='xy', scale_units='xy', scale=1,
-                  color=COLOR_LOOKUP[name], alpha=0.6, width=0.004,
-                  headwidth=6, headlength=6, headaxislength=5.5,
+                  color=COLOR_LOOKUP[name], alpha=0.5, width=0.004,
+                  headwidth=5, headlength=5, headaxislength=5.,
                   transform=proj, zorder=4)
 
 for name, sub in map_data.items():
@@ -202,14 +202,14 @@ _all_event_ids = set().union(*(set(sub['event_id']) for sub in map_data.values()
 usgs_pts = ref_catalog[ref_catalog['event_id'].isin(_all_event_ids)]
 ax_map.scatter(usgs_pts['usgs_lon'], usgs_pts['usgs_lat'],
                 marker='x', c='black', s=35, linewidths=1.1,
-                transform=proj, zorder=6, label='USGS (true)')
+                transform=proj, zorder=6, alpha=0.6,label='USGS (true)')
 
 _lon_ticks = np.linspace(extent[0], extent[1], 5)
 _lat_ticks = np.linspace(extent[2], extent[3], 5)
 ax_map.set_xticks(_lon_ticks, crs=proj)
 ax_map.set_yticks(_lat_ticks, crs=proj)
-ax_map.xaxis.set_major_formatter(LongitudeFormatter())
-ax_map.yaxis.set_major_formatter(LatitudeFormatter())
+ax_map.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
+ax_map.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
 ax_map.set_xlabel('Longitude')
 ax_map.set_ylabel('Latitude')
 ax_map.set_title(f'Posterior locations at {TRIGGER_NUMBER} triggers — all priors')
