@@ -55,8 +55,7 @@ PRIOR_SPECS = [
 ] + [
     {'name': 'ETAS', 'csv': os.path.join(OUTPUT_DIR_DYNAMIC, 'etas_dynamic_benchmark_results.csv')}
 ]
-_colors = plt.cm.tab10.colors
-COLOR_LOOKUP = {spec['name']: _colors[i % len(_colors)] for i, spec in enumerate(PRIOR_SPECS)}
+COLOR_LOOKUP = {'KDE_Seismicity': 'gray', 'Uniform': 'darkblue', 'ETAS': 'red'}
 
 plt.rcParams.update({
     'font.size':        12,

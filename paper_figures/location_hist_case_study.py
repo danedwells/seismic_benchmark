@@ -46,9 +46,18 @@ OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
 # ---------------------------------------------------------------------------
 CASE_STUDY      = 'MTJ_2024_M7'
 MAINSHOCK_ID    = 'nc75095651'   # highlighted on the map (USGS location + each prior's estimate)
+# CASE_STUDY      = 'Ridgecrest'
+# MAINSHOCK_ID    = 'ci38457511'   # highlighted on the map (USG
+CASE_STUDY      = 'ElMayor'
+MAINSHOCK_ID    = 'ci14607652'   # highlighted on the map (USGS location + each prior's estimate)
 MAX_TRIGS       = 10
 TRIGGER_NUMBER  = 4              # trigger count at which locations are compared
-REFERENCE_PRIOR = 'KDE_Seismicity'  # shown in blue in every histogram panel
+REFERENCE_PRIOR = 'KDE_Seismicity'  # shown in gray in every histogram panel
+
+# Inset locator map: [left, bottom, width, height] in map-axes fraction.
+# Move it per case study so it sits where there are no arrows.
+INSET_POS    = [0.74, 0.72, 0.24, 0.26]
+INSET_EXTENT = [-128, -113.5, 30, 42.5]   # California region [lon0, lon1, lat0, lat1]
 
 column_lat = 'posterior_lat'
 column_lon = 'posterior_lon'
@@ -58,7 +67,7 @@ CS_DIR             = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_s
 OUTPUT_DIR_STATIC  = os.path.join(CS_DIR, 'output', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 OUTPUT_DIR_DYNAMIC = os.path.join(CS_DIR, 'output', 'time_dependent',   f'max_trigs_{MAX_TRIGS}')
 CATALOG_PATH       = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', CASE_STUDY,
-                                  'mtj_2024_m7.csv')   # USGS ComCat download (id, latitude, longitude, ...)
+                                  'El_Mayor-Cucapah_2010_catalog.parquet') #'Ridgecrest_2019_catalog.parquet') #'mtj_2024_m7.csv')   # USGS ComCat download (id, latitude, longitude, ...)
 
 PRIOR_SPECS = [
     {'name': name, 'csv': os.path.join(OUTPUT_DIR_STATIC, f'{name.lower()}_benchmark_results.csv')}
@@ -78,8 +87,12 @@ plt.rcParams.update({
 
 # Consistent prior -> color mapping, shared by the histograms (reference
 # overlay excepted) and the combined map.
-_colors = plt.cm.tab10.colors
-COLOR_LOOKUP = {spec['name']: _colors[i % len(_colors)] for i, spec in enumerate(PRIOR_SPECS)}
+COLOR_LOOKUP = {'KDE_Seismicity': 'gray', 'Uniform': 'darkblue', 'ETAS': 'red'}
+
+# Map marker size multiplier per prior. Priors often land on nearly the same
+# spot, and they're drawn in PRIOR_SPECS order, so sizes shrink with draw order:
+# the result reads as concentric dots instead of ETAS hiding the others.
+SIZE_SCALE = {'KDE_Seismicity': 1.6, 'Uniform': 1.1, 'ETAS': 0.6}
 
 #%%
 # ── Load benchmark results and reference catalog ────────────────────────────
@@ -92,7 +105,8 @@ for spec in PRIOR_SPECS:
     df['event_id'] = df['event_id'].astype(str)
     loaded[spec['name']] = df
 
-ref_catalog = pd.read_csv(CATALOG_PATH).rename(
+_read_catalog = pd.read_parquet if CATALOG_PATH.endswith('.parquet') else pd.read_csv
+ref_catalog = _read_catalog(CATALOG_PATH).rename(
     columns={'id': 'event_id', 'latitude': 'usgs_lat', 'longitude': 'usgs_lon'}
 )[['event_id', 'usgs_lat', 'usgs_lon']].copy()
 ref_catalog['event_id'] = ref_catalog['event_id'].astype(str)
@@ -124,14 +138,13 @@ for spec in PRIOR_SPECS:
     stats = load_final_values(spec['csv'], column_err, n_trigs=TRIGGER_NUMBER)
 
     if ref_stats is not None:
-        ax.hist(ref_stats, bins=bins, rwidth=0.9, color='b', alpha=0.4, label=f'{REFERENCE_PRIOR}  (ref)')
-    if stats is not None:
-        ax.hist(stats, bins=bins, rwidth=0.9, color='r', alpha=0.6)
+        ax.hist(ref_stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[REFERENCE_PRIOR], alpha=0.5, label=f'{REFERENCE_PRIOR}  (ref)')
+    if stats is not None and name != REFERENCE_PRIOR:
+        ax.hist(stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[name], alpha=0.6)
 
     ax.set_xscale('log')
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
     ax.set_title(name)
-    ax.grid(True, alpha=0.3)
     ax.text(0.02, 0.97, f'({_letters[name]})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold')
 
@@ -189,17 +202,20 @@ for name, sub in map_data.items():
     matched = sub.merge(ref_catalog, on='event_id', how='inner')
     if matched.empty:
         continue
-    ax_map.quiver(matched[column_lon].values, matched[column_lat].values,
-                  (matched['usgs_lon'] - matched[column_lon]).values,
-                  (matched['usgs_lat'] - matched[column_lat]).values,
-                  angles='xy', scale_units='xy', scale=1,
-                  color=COLOR_LOOKUP[name], alpha=0.5, width=0.004,
-                  headwidth=5, headlength=5, headaxislength=5.,
-                  transform=proj, zorder=4)
+    # Mainshock arrow drawn thicker and in front of the rest.
+    for is_main, width, alpha, z in ((False, 0.0025, 0.5, 4), (True, 0.004, 0.8, 6)):
+        m = matched[(matched['event_id'] == MAINSHOCK_ID) == is_main]
+        ax_map.quiver(m[column_lon].values, m[column_lat].values,
+                      (m['usgs_lon'] - m[column_lon]).values,
+                      (m['usgs_lat'] - m[column_lat]).values,
+                      angles='xy', scale_units='xy', scale=1,
+                      color=COLOR_LOOKUP[name], alpha=alpha, width=width,
+                      headwidth=3, headlength=3, headaxislength=4.,
+                      transform=proj, zorder=z)
 
 for name, sub in map_data.items():
     ax_map.scatter(sub[column_lon], sub[column_lat],
-                    color=COLOR_LOOKUP[name], s=30, alpha=0.65,
+                    color=COLOR_LOOKUP[name], s=30 * SIZE_SCALE[name], alpha=0.7,
                     edgecolors='white', linewidths=0.4,
                     transform=proj, zorder=5, label=name)
 
@@ -217,12 +233,12 @@ ax_map.scatter(aftershocks['usgs_lon'], aftershocks['usgs_lat'],
 for name, sub in map_data.items():
     ms = sub[sub['event_id'] == MAINSHOCK_ID]
     ax_map.scatter(ms[column_lon], ms[column_lat],
-                    color=COLOR_LOOKUP[name], s=90, alpha=1.0,
+                    color=COLOR_LOOKUP[name], s=220 * SIZE_SCALE[name], alpha=1.0,
                     edgecolors='black', linewidths=1.0,
                     transform=proj, zorder=8)
 ms_true = usgs_pts[usgs_pts['event_id'] == MAINSHOCK_ID]
 ax_map.scatter(ms_true['usgs_lon'], ms_true['usgs_lat'],
-                marker='*', c='red', s=200, edgecolors='black', linewidths=0.8,
+                marker='*', c='yellow', s=300, edgecolors='black', linewidths=0.8,
                 transform=proj, zorder=9, label='USGS mainshock (true)')
 
 _lon_ticks = np.linspace(extent[0], extent[1], 5)
@@ -237,6 +253,18 @@ ax_map.set_title(f'Posterior locations at {TRIGGER_NUMBER} triggers — all prio
 ax_map.text(0.01, 0.98, '(d)', transform=ax_map.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold')
 ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
+
+# -- Inset: where the map extent sits within California ----------------------
+ax_in = ax_map.inset_axes(INSET_POS, projection=proj)
+ax_in.set_extent(INSET_EXTENT, crs=proj)
+ax_in.add_feature(cfeature.LAND,      facecolor='#f0f0f0')
+ax_in.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8')
+ax_in.add_feature(cfeature.COASTLINE, linewidth=0.4)
+ax_in.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray')
+ax_in.plot([extent[0], extent[1], extent[1], extent[0], extent[0]],
+           [extent[2], extent[2], extent[3], extent[3], extent[2]],
+           color='red', linewidth=1.2, transform=proj)
+ax_in.set_zorder(10)
 
 fig.savefig(os.path.join(OUTPUT_DIR, f'location_hist_{CASE_STUDY}.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(OUTPUT_DIR, f'location_hist_{CASE_STUDY}.pdf'), bbox_inches='tight')

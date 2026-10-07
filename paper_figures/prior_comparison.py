@@ -164,7 +164,7 @@ else:
 
 #%%
 # ── Build the figure ──────────────────────────────────────────────────────
-cmap = 'viridis'
+cmap = 'seismic'
 
 fig, axes = plt.subplots(2, 3, figsize=(15, 9), subplot_kw={'projection': proj})
 
@@ -176,7 +176,10 @@ panels = [
 ]
 log_grids = [np.log10(obj.grid + EPS) for _, obj in panels]
 
-vlo, vhi = np.percentile(np.concatenate([g.ravel() for g in log_grids]), [1, 99.5])
+# Fixed range centred near the ETAS background / peak boundary so that (b) and (c)
+# use both halves of the diverging colormap (percentiles put the midpoint far
+# below their backgrounds). Values outside the range saturate.
+vlo, vhi = -8.5, -3.7
 norm = mcolors.Normalize(vmin=vlo, vmax=vhi)
 
 # Zoom to the ETAS polygon's extent (with padding) — shared across all three
@@ -196,7 +199,8 @@ for ax, (title, obj), log_grid, letter in zip(axes[0, :], panels, log_grids, 'ab
     ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=norm, transform=proj)
     ax.set_title(title)
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
-            ha='left', va='top', fontsize=13, fontweight='bold', color='white')
+            ha='left', va='top', fontsize=13, fontweight='bold',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
 
 cbar_ax_row1 = fig.add_axes([0.945, 0.54, 0.015, 0.42])  # [left, bottom, width, height]
 fig.colorbar(plt.cm.ScalarMappable(cmap=cmap, norm=norm), cax=cbar_ax_row1,
@@ -220,11 +224,12 @@ for ax, (title, obj), log_grid, letter in zip(axes[1, :2], mtj_panels, mtj_log_g
     ax.set_extent(_mtj_extent, crs=proj)
     _add_basemap(ax)
     ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=mtj_norm, transform=proj)
-    ax.plot(MAINSHOCK_LON, MAINSHOCK_LAT, marker='*', color='red', markersize=16,
+    ax.plot(MAINSHOCK_LON, MAINSHOCK_LAT, marker='*', color='white', markersize=16,
             markeredgecolor='black', markeredgewidth=0.8, transform=proj, zorder=5)
     ax.set_title(title)
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
-            ha='left', va='top', fontsize=13, fontweight='bold', color='white')
+            ha='left', va='top', fontsize=13, fontweight='bold',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
 
 cbar_ax_row2 = fig.add_axes([0.65, 0.04, 0.015, 0.42])  # [left, bottom, width, height]
 fig.colorbar(plt.cm.ScalarMappable(cmap=cmap, norm=mtj_norm), cax=cbar_ax_row2,

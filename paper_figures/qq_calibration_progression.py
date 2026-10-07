@@ -62,18 +62,25 @@ RIDGECREST_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_studi
                                'Ridgecrest', 'output')
 
 
+# Colors follow the paper-wide prior scheme (see location_hist_case_study.py):
+# gray = KDE, blue = Uniform, red = ETAS. The naive Uniform stage uses a
+# lighter blue so it stays distinguishable from the calibrated Uniform stage.
 def _stages(base_dir, sigma_calibrated):
     return [
-        {'label': 'Naive (Uniform, σₛ=1.0)',
+        {'color': 'cornflowerblue',
+         'label': 'Naive (Uniform, σₛ=1.0)',
          'csv': os.path.join(base_dir, 'time_independent', 'sig_1.0', 'max_trigs_10',
                               'uniform_benchmark_results.csv')},
-        {'label': f'+ σₛ calibration (Uniform, σₛ={sigma_calibrated:g})',
+        {'color': 'darkblue',
+         'label': f'+ σₛ calibration (Uniform, σₛ={sigma_calibrated:g})',
          'csv': os.path.join(base_dir, 'time_independent', f'sig_{sigma_calibrated:g}', 'max_trigs_10',
                               'uniform_benchmark_results.csv')},
-        {'label': '+ spatial prior (KDE Seismicity)',
+        {'color': 'gray',
+         'label': '+ spatial prior (KDE Seismicity)',
          'csv': os.path.join(base_dir, 'time_independent', f'sig_{sigma_calibrated:g}', 'max_trigs_10',
                               'kde_seismicity_benchmark_results.csv')},
-        {'label': '+ dynamic ETAS prior',
+        {'color': 'red',
+         'label': '+ dynamic ETAS prior',
          'csv': os.path.join(base_dir, 'time_dependent', f'sig_{sigma_calibrated:g}', 'max_trigs_10',
                               'etas_dynamic_benchmark_results.csv')},
     ]
@@ -97,11 +104,7 @@ fig = plt.figure(figsize=(14, 7))
 
 
 def _plot_calibration_panel(ax, stages, title, letter):
-    # Sequential (not categorical) colormap — these are cumulative steps,
-    # not independent categories, so color communicates progression toward
-    # the final (brightest) stage.
-    colors = plt.cm.viridis(np.linspace(0, 1, len(stages)))
-    for stage, color in zip(stages, colors):
+    for stage in stages:
         vals = load_final_values(stage['csv'], 'posterior_confidence_level')
         if vals is None:
             print(f"  [{title} / {stage['label']}] no data — skipping")
@@ -109,7 +112,7 @@ def _plot_calibration_panel(ax, stages, title, letter):
         vals = np.sort(vals)
         n = len(vals)
         theoretical = (np.arange(1, n + 1) - 0.5) / n
-        ax.plot(theoretical, vals, color=color, linewidth=2.5, label=f"{stage['label']}  (n={n})")
+        ax.plot(theoretical, vals, color=stage['color'], linewidth=2.5, label=f"{stage['label']}  (n={n})")
 
     ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.6, label='ideal calibration')
     ax.set_xlabel('Theoretical quantile  U(0,1)')

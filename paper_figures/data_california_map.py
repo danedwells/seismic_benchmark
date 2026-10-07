@@ -127,6 +127,7 @@ ax_map.add_feature(cfeature.COASTLINE, linewidth=0.7)
 ax_map.add_feature(cfeature.OCEAN,     facecolor='lightcyan', alpha=0.4)
 ax_map.add_feature(cfeature.LAND,      facecolor='whitesmoke')
 gl = ax_map.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5)
+gl.xlines = gl.ylines = False   # keep lat/lon labels, drop the lines
 gl.top_labels   = False
 gl.right_labels = False
 
@@ -141,14 +142,16 @@ sc = ax_map.scatter(
     alpha=0.4, transform=proj, zorder=5,
 )
 
-# Case-study mainshocks — labeled stars. MTJ sits close to Ferndale on this
-# map (40.37N -125.02W vs. 40.53N -124.42W), so their label offsets point in
-# opposite directions (Ferndale NE, MTJ SW) to keep the two boxes apart.
+# Case-study mainshocks — labeled stars. Each label sits offset (points) from
+# its star, joined by a thin leader line, in a direction chosen to avoid
+# seismicity. MTJ sits close to Ferndale on this map (40.37N -125.02W vs.
+# 40.53N -124.42W), so their offsets point in opposite directions
+# (Ferndale NE, MTJ SW) to keep the two boxes apart.
 _MAINSHOCKS = {
-    'Ridgecrest\nM7.1 (2019)':  {'loc': (35.7695, -117.5990), 'offset': (6, 6),   'ha': 'left',  'va': 'bottom'},
-    'Ferndale\nM6.4 (2022)':    {'loc': (40.5268, -124.4227), 'offset': (6, 6),   'ha': 'left',  'va': 'bottom'},
-    'El Mayor\nM7.2 (2010)':    {'loc': (32.2863, -115.2950), 'offset': (6, 6),   'ha': 'left',  'va': 'bottom'},
-    'MTJ\nM7.0 (2024)':         {'loc': (40.3740, -125.0217), 'offset': (-8, -10), 'ha': 'right', 'va': 'top'},
+    'Ridgecrest\nM7.1 (2019)':  {'loc': (35.7695, -117.5990), 'offset': (40, -25), 'ha': 'left',  'va': 'top'},
+    'Ferndale\nM6.4 (2022)':    {'loc': (40.5268, -124.4227), 'offset': (35, 30), 'ha': 'left',  'va': 'bottom'},
+    'El Mayor\nM7.2 (2010)':    {'loc': (32.2863, -115.2950), 'offset': (-25, -42), 'ha': 'center', 'va': 'top'},
+    'MTJ\nM7.0 (2024)':         {'loc': (40.3740, -125.0217), 'offset': (-35, -30), 'ha': 'right', 'va': 'top'},
 }
 _star_color = 'cyan'
 _MAINSHOCK_ZORDER = 20  # above every other map layer (scatter zorder=5, stars/labels included)
@@ -160,43 +163,41 @@ for _label, _spec in _MAINSHOCKS.items():
     ax_map.annotate(
         _label,
         xy=(_lon, _lat), xycoords=proj._as_mpl_transform(ax_map),
-        fontsize=7.5, color=_star_color, fontweight='bold',
+        fontsize=7.5, color='white', fontweight='bold',
         xytext=_spec['offset'], textcoords='offset points',
         ha=_spec['ha'], va=_spec['va'], zorder=_MAINSHOCK_ZORDER + 1,
-        bbox=dict(boxstyle='round,pad=0.2', fc='black', alpha=0.55, lw=0),
+        bbox=dict(boxstyle='round,pad=0.2', fc='black', alpha=0.8, lw=0),
+        arrowprops=dict(arrowstyle='-', color='black', lw=0.8, shrinkA=0, shrinkB=6),
     )
 
 cbar_ax = fig.add_axes(AX_POS['map_cbar'])
 cbar = fig.colorbar(sc, cax=cbar_ax)
 cbar.set_label('ANSS Magnitude')
-ax_map.set_title(f'USGS/ANSS Event Locations  (n={len(catalog)})')
+ax_map.set_title('USGS/ANSS Event Locations')
 
 # -- panel2: magnitude histogram ----------------------------------------------
 ax2 = fig.add_axes(AX_POS['panel2'])
 _mag_bins = np.arange(np.floor(catalog['usgs_mag'].min() * 2) / 2,
                        np.ceil(catalog['usgs_mag'].max() * 2) / 2 + 0.25, 0.25)
-ax2.hist(catalog['usgs_mag'], bins=_mag_bins, color='steelblue', edgecolor='white', linewidth=0.4)
+ax2.hist(catalog['usgs_mag'], bins=_mag_bins, color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax2.set_xlabel('ANSS Magnitude')
 ax2.set_ylabel('Count')
 ax2.set_title('Magnitude Distribution')
-ax2.grid(True, linewidth=0.3, alpha=0.4, axis='y')
 
 # -- panel3: depth histogram ---------------------------------------------------
 ax3 = fig.add_axes(AX_POS['panel3'])
-ax3.hist(catalog['usgs_depth'], bins=30, color='darkorange', edgecolor='white', linewidth=0.4)
+ax3.hist(catalog['usgs_depth'], bins=30, color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax3.set_xlabel('Depth (km)')
 ax3.set_ylabel('Count')
 ax3.set_title('Depth Distribution')
-ax3.grid(True, linewidth=0.3, alpha=0.4, axis='y')
 
 # -- panel4: distance to the 4th triggering station histogram ----------------
 ax4 = fig.add_axes(AX_POS['panel4'])
 ax4.hist(catalog['dist_4th_station_km'].dropna(), bins=30,
-         color='seagreen', edgecolor='white', linewidth=0.4)
+         color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax4.set_xlabel('Distance to 4th station (km)')
 ax4.set_ylabel('Count')
 ax4.set_title('4th-Station Distance Distribution')
-ax4.grid(True, linewidth=0.3, alpha=0.4, axis='y')
 
 fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.pdf'), bbox_inches='tight')

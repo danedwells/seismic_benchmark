@@ -43,7 +43,7 @@ MIN_MAG         = 5.0
 MAG_FILTER      = f"M{MIN_MAG:g}"
 MAX_TRIGS       = 10
 TRIGGER_NUMBER  = 4              # trigger count at which locations are compared
-REFERENCE_PRIOR = 'KDE_Seismicity'  # shown in blue in every histogram panel
+REFERENCE_PRIOR = 'KDE_Seismicity'  # shown in gray in every histogram panel
 
 column_lat = 'posterior_lat'
 column_lon = 'posterior_lon'
@@ -72,8 +72,7 @@ plt.rcParams.update({
 
 # Consistent prior -> color mapping, shared by the histograms (reference
 # overlay excepted) and the combined map.
-_colors = plt.cm.tab10.colors
-COLOR_LOOKUP = {spec['name']: _colors[i % len(_colors)] for i, spec in enumerate(PRIOR_SPECS)}
+COLOR_LOOKUP = {'KDE_Seismicity': 'gray', 'Uniform': 'darkblue', 'ETAS': 'red'}
 
 #%%
 # ── Load benchmark results and reference catalog ────────────────────────────
@@ -116,14 +115,13 @@ for spec in PRIOR_SPECS:
     stats = load_final_values(spec['csv'], column_err, n_trigs=TRIGGER_NUMBER)
 
     if ref_stats is not None:
-        ax.hist(ref_stats, bins=bins, rwidth=0.9, color='b', alpha=0.4, label=f'{REFERENCE_PRIOR}  (ref)')
-    if stats is not None:
-        ax.hist(stats, bins=bins, rwidth=0.9, color='r', alpha=0.6)
+        ax.hist(ref_stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[REFERENCE_PRIOR], alpha=0.5, label=f'{REFERENCE_PRIOR}  (ref)')
+    if stats is not None and name != REFERENCE_PRIOR:
+        ax.hist(stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[name], alpha=0.6)
 
     ax.set_xscale('log')
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
     ax.set_title(name)
-    ax.grid(True, alpha=0.3)
     ax.text(0.02, 0.97, f'({_letters[name]})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold')
 
