@@ -30,7 +30,10 @@ EVENT_COLS = ('eventid ver evlat evlon dep mag time latu lonu depu magu timeu lk
 events, alerts, cur_xml = [], [], None
 for line in LOG.read_text().splitlines():
     msg = line.split('| INFO | ', 1)[-1]
-    if msg.startswith('E:I:  ') and not msg.startswith('E:I:T') and 'eventid' not in msg:
+    # 'E:I:F:' is the event's FIRST alert version; same columns as 'E:I:', just a different tag
+    if msg.startswith('E:I:F:'):
+        events.append(msg[6:].split())
+    elif msg.startswith('E:I:  ') and not msg.startswith('E:I:T') and 'eventid' not in msg:
         events.append(msg[4:].split())
     elif msg.startswith('<event_message'):
         cur_xml = [msg]

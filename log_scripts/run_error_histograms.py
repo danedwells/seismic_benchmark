@@ -20,19 +20,21 @@ sys.path.insert(0, str(ROOT))
 from benchmark.usgs import get_usgs_event
 
 SEQUENCE = 'Ridgecrest' # 'MTJ'
-WHICH = "Control" # 'sigma_and_prior' 'sigma_only'
+WHICH = "sigma_and_prior" # 'sigma_and_prior' 'sigma_only'
 
 
-RUN_DIR = ROOT / 'log_files' / 'Ridgecrest-selected' / 'Ridgecrest_control' / 'epic'
+RUN_DIR = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{WHICH}' / 'epic'
 N_TRIGS = 5
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
-USGS_CACHE = Path(__file__).resolve().parent / f'usgs_cache_{RUN_DIR.parent.name}.csv'
+USGS_CACHE = Path(__file__).resolve().parent / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 def parse_log(path):
     rows = []
     for line in path.open(errors='replace'):
-        _, _, msg = line.partition('| INFO | E:I: ')
+        _, _, msg = line.partition('| INFO | E:I:')
+        if msg.startswith('F:'):       # 'E:I:F:' = the event's first alert version (same columns as E:I:)
+            msg = msg[2:]
         f = msg.split()
         if len(f) < 17 or not f[0].lstrip('-').isdigit() or int(f[0]) <= 0:
             continue
@@ -100,3 +102,5 @@ fig.tight_layout()
 out_path = Path(__file__).resolve().parent / f'{RUN_DIR.parent.name}_error_hist_nS{N_TRIGS}.png'
 fig.savefig(out_path, dpi=150)
 print('Saved', out_path)
+
+# %%

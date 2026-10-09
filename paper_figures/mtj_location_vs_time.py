@@ -118,7 +118,7 @@ ax_map = fig.add_axes(AX_POS['map'], projection=proj)
 all_lons = np.concatenate([available['longitude'], used['longitude'], [epi_lon]])
 all_lats = np.concatenate([available['latitude'],  used['latitude'],  [epi_lat]])
 buf = 0.5
-extent = [all_lons.min() - buf, all_lons.max() + buf, all_lats.min() - buf, all_lats.max() + buf]
+extent = [all_lons.min() - buf, all_lons.max() + buf, all_lats.min() - buf - 0.2, all_lats.max() + buf + 0.2]
 
 ax_map.set_extent(extent, crs=proj)
 ax_map.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
@@ -156,3 +156,5 @@ ax_mag.text(0.02, 0.98, '(c)', transform=ax_mag.transAxes, ha='left', va='top', 
 fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_location_vs_time.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_location_vs_time.pdf'), bbox_inches='tight')
 plt.show()
+
+# %%

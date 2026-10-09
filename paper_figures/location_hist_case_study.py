@@ -36,8 +36,6 @@ import cartopy.feature as cfeature
 from matplotlib.ticker import FuncFormatter
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 
-from benchmark.metrics import load_final_values
-
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
 
@@ -48,11 +46,13 @@ CASE_STUDY      = 'MTJ_2024_M7'
 MAINSHOCK_ID    = 'nc75095651'   # highlighted on the map (USGS location + each prior's estimate)
 # CASE_STUDY      = 'Ridgecrest'
 # MAINSHOCK_ID    = 'ci38457511'   # highlighted on the map (USG
-CASE_STUDY      = 'ElMayor'
-MAINSHOCK_ID    = 'ci14607652'   # highlighted on the map (USGS location + each prior's estimate)
+#CASE_STUDY      = 'ElMayor'
+#MAINSHOCK_ID    = 'ci14607652'   # highlighted on the map (USGS location + each prior's estimate)
 MAX_TRIGS       = 10
 TRIGGER_NUMBER  = 4              # trigger count at which locations are compared
-REFERENCE_PRIOR = 'KDE_Seismicity'  # shown in gray in every histogram panel
+REFERENCE_PRIOR = 'Uniform'  # top histogram row
+MAP_NS_PAD      = 0.5            # extra north-south map extent, as a fraction of the data's latitude span (each side)
+MIN_USGS_MAG    = 3.5           # only plot events with USGS magnitude >= this (None = all)
 
 # Inset locator map: [left, bottom, width, height] in map-axes fraction.
 # Move it per case study so it sits where there are no arrows.
@@ -67,7 +67,9 @@ CS_DIR             = os.path.join(PROJECT_ROOT, 'results', 'california', 'case_s
 OUTPUT_DIR_STATIC  = os.path.join(CS_DIR, 'output', 'time_independent', f'max_trigs_{MAX_TRIGS}')
 OUTPUT_DIR_DYNAMIC = os.path.join(CS_DIR, 'output', 'time_dependent',   f'max_trigs_{MAX_TRIGS}')
 CATALOG_PATH       = os.path.join(PROJECT_ROOT, 'data', 'california', 'case_studies', CASE_STUDY,
-                                  'El_Mayor-Cucapah_2010_catalog.parquet') #'Ridgecrest_2019_catalog.parquet') #'mtj_2024_m7.csv')   # USGS ComCat download (id, latitude, longitude, ...)
+                                  #'El_Mayor-Cucapah_2010_catalog.parquet') 
+                                  #'Ridgecrest_2019_catalog.parquet') 
+                                  'mtj_2024_m7.csv')   # USGS ComCat download (id, latitude, longitude, ...)
 
 PRIOR_SPECS = [
     {'name': name, 'csv': os.path.join(OUTPUT_DIR_STATIC, f'{name.lower()}_benchmark_results.csv')}
@@ -87,12 +89,12 @@ plt.rcParams.update({
 
 # Consistent prior -> color mapping, shared by the histograms (reference
 # overlay excepted) and the combined map.
-COLOR_LOOKUP = {'KDE_Seismicity': 'gray', 'Uniform': 'darkblue', 'ETAS': 'red'}
+COLOR_LOOKUP = {'KDE_Seismicity': 'darkblue', 'Uniform': 'gray', 'ETAS': 'red'}
 
 # Map marker size multiplier per prior. Priors often land on nearly the same
 # spot, and they're drawn in PRIOR_SPECS order, so sizes shrink with draw order:
 # the result reads as concentric dots instead of ETAS hiding the others.
-SIZE_SCALE = {'KDE_Seismicity': 1.6, 'Uniform': 1.1, 'ETAS': 0.6}
+SIZE_SCALE = {'KDE_Seismicity': 1.6, 'Uniform': 1.3, 'ETAS': 1.1}
 
 #%%
 # ── Load benchmark results and reference catalog ────────────────────────────
@@ -108,66 +110,72 @@ for spec in PRIOR_SPECS:
 _read_catalog = pd.read_parquet if CATALOG_PATH.endswith('.parquet') else pd.read_csv
 ref_catalog = _read_catalog(CATALOG_PATH).rename(
     columns={'id': 'event_id', 'latitude': 'usgs_lat', 'longitude': 'usgs_lon'}
-)[['event_id', 'usgs_lat', 'usgs_lon']].copy()
+)[['event_id', 'usgs_lat', 'usgs_lon', 'mag']].copy()
 ref_catalog['event_id'] = ref_catalog['event_id'].astype(str)
+
+# Optional magnitude cutoff (USGS magnitude), applied to every prior's results and the map
+if MIN_USGS_MAG is not None:
+    keep_ids = set(ref_catalog.loc[ref_catalog['mag'] >= MIN_USGS_MAG, 'event_id'])
+    loaded = {n: d[d['event_id'].isin(keep_ids)] for n, d in loaded.items()}
+    ref_catalog = ref_catalog[ref_catalog['event_id'].isin(keep_ids)]
+
+def errors_at_trigger_number(name):
+    """Location errors (one per event) at TRIGGER_NUMBER for a prior, or None if unavailable."""
+    if name not in loaded:
+        return None
+    vals = loaded[name].query('n_trigs == @TRIGGER_NUMBER')[column_err].dropna().values
+    return vals if len(vals) else None
 
 #%%
 # ── Build the figure ──────────────────────────────────────────────────────
 # Exact per-panel placement [left, bottom, width, height] (figure fraction).
 # Edit these directly to hand-tune the layout.
 AX_POS = {
-    'hist_kde':     [0.06, 0.66, 0.27, 0.24],
-    'hist_uniform': [0.38, 0.66, 0.27, 0.24],
-    'hist_etas':    [0.70, 0.66, 0.27, 0.24],
-    'map':          [0.08, 0.06, 0.84, 0.51],
+    'map':   [0.06, 0.08, 0.60, 0.86],
+    'hists': [0.74, 0.183, 0.23, 0.654],   # box shared by the three stacked histograms
 }
 
-fig = plt.figure(figsize=(11, 11))
+fig = plt.figure(figsize=(14, 8.5))
 
-# -- Top row: per-prior location-error histograms -----------------------------
+# -- Right: stacked location-error histograms, one per prior, shared x-axis ---
+# Reference prior on top, then the rest in PRIOR_SPECS order. Colors match the map.
 bins = np.logspace(-1, 3, 20)
-_ref_csv = next(s['csv'] for s in PRIOR_SPECS if s['name'] == REFERENCE_PRIOR)
-ref_stats = load_final_values(_ref_csv, column_err, n_trigs=TRIGGER_NUMBER)
+hist_order = [REFERENCE_PRIOR] + [s['name'] for s in PRIOR_SPECS if s['name'] != REFERENCE_PRIOR]
 
-_hist_keys = {'KDE_Seismicity': 'hist_kde', 'Uniform': 'hist_uniform', 'ETAS': 'hist_etas'}
-_letters   = {'KDE_Seismicity': 'a', 'Uniform': 'b', 'ETAS': 'c'}
+hl, hb, hw, hh = AX_POS['hists']
+h_each = hh / len(hist_order)
+hist_axes = []
+for i, name in enumerate(hist_order):
+    ax = fig.add_axes([hl, hb + hh - (i + 1) * h_each, hw, h_each],
+                      sharex=hist_axes[0] if hist_axes else None)
+    hist_axes.append(ax)
+    stats = errors_at_trigger_number(name)
+    color = COLOR_LOOKUP[name]
 
-for spec in PRIOR_SPECS:
-    name = spec['name']
-    ax = fig.add_axes(AX_POS[_hist_keys[name]])
-    stats = load_final_values(spec['csv'], column_err, n_trigs=TRIGGER_NUMBER)
-
-    if ref_stats is not None:
-        ax.hist(ref_stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[REFERENCE_PRIOR], alpha=0.5, label=f'{REFERENCE_PRIOR}  (ref)')
-    if stats is not None and name != REFERENCE_PRIOR:
-        ax.hist(stats, bins=bins, rwidth=0.9, color=COLOR_LOOKUP[name], alpha=0.6)
-
-    ax.set_xscale('log')
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
-    ax.set_title(name)
-    ax.text(0.02, 0.97, f'({_letters[name]})', transform=ax.transAxes,
-            ha='left', va='top', fontsize=13, fontweight='bold')
-
-    if stats is not None and len(stats) > 0:
+    if stats is not None:
+        ax.hist(stats, bins=bins, rwidth=0.9, color=color, alpha=0.7)
         median_err = np.median(stats)
-        counts, edges = np.histogram(stats, bins=bins)
-        mode_lo, mode_hi = edges[np.argmax(counts)], edges[np.argmax(counts) + 1]
-        ax.text(0.95, 0.95, f"median: {median_err:.1f} km\nmode: {mode_lo:.1f}–{mode_hi:.1f} km",
-                transform=ax.transAxes, ha='right', va='top', fontsize=9,
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+        ax.axvline(median_err, color=color, ls='--', lw=1.5)
+        ax.text(0.03, 0.70, f'median: {median_err:.1f} km', transform=ax.transAxes,
+                ha='left', va='top', fontsize=11, color=color, fontweight='bold')
+    ax.text(0.03, 0.92, name, transform=ax.transAxes, ha='left', va='top',
+            fontsize=13, color=color, fontweight='bold')
 
-    ax.set_xlabel('Location error (km)')
-    if name == 'KDE_Seismicity':
-        ax.set_ylabel('Event count')
-        ax.legend(loc='lower left', fontsize=9)
-    else:
-        ax.set_yticklabels([])
+    ax.set_yticks([])
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    if i < len(hist_order) - 1:
+        ax.tick_params(labelbottom=False, bottom=False)
 
-# Consistent y-axis across the three histogram panels
-_hist_axes = [fig.axes[i] for i in range(3)]
-_y_max = max(ax.get_ylim()[1] for ax in _hist_axes)
-for ax in _hist_axes:
+hist_axes[-1].set_xscale('log')
+hist_axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+hist_axes[-1].set_xlabel('Location error (km)')
+
+# Same vertical scale in every row so bar heights are comparable
+_y_max = max(ax.get_ylim()[1] for ax in hist_axes)
+for ax in hist_axes:
     ax.set_ylim(0, _y_max)
+hist_axes[0].text(-0.15, 0.87, '(b)', transform=hist_axes[0].transAxes,
+                  ha='left', va='bottom', fontsize=13, fontweight='bold')
 
 # -- Bottom: combined map of posterior locations, colored by prior -----------
 proj = ccrs.PlateCarree()
@@ -186,9 +194,10 @@ for spec in PRIOR_SPECS:
 
 all_lats = pd.concat([d[column_lat] for d in map_data.values()])
 all_lons = pd.concat([d[column_lon] for d in map_data.values()])
-buf = 0.1
+buf = -0.02
+lat_pad = MAP_NS_PAD * (all_lats.max() - all_lats.min())   # extra north-south room -> taller map
 extent = [all_lons.min() - buf, all_lons.max() + buf,
-          all_lats.min() - buf, all_lats.max() + buf]
+          all_lats.min() - buf - lat_pad, all_lats.max() + buf + lat_pad]
 
 ax_map.set_extent(extent, crs=proj)
 ax_map.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
@@ -203,7 +212,7 @@ for name, sub in map_data.items():
     if matched.empty:
         continue
     # Mainshock arrow drawn thicker and in front of the rest.
-    for is_main, width, alpha, z in ((False, 0.0025, 0.5, 4), (True, 0.004, 0.8, 6)):
+    for is_main, width, alpha, z in ((False, 0.0025, 0.3, 4), (True, 0.004, 0.8, 6)):
         m = matched[(matched['event_id'] == MAINSHOCK_ID) == is_main]
         ax_map.quiver(m[column_lon].values, m[column_lat].values,
                       (m['usgs_lon'] - m[column_lon]).values,
@@ -215,7 +224,7 @@ for name, sub in map_data.items():
 
 for name, sub in map_data.items():
     ax_map.scatter(sub[column_lon], sub[column_lat],
-                    color=COLOR_LOOKUP[name], s=30 * SIZE_SCALE[name], alpha=0.7,
+                    color=COLOR_LOOKUP[name], s=30 * SIZE_SCALE[name], alpha=0.5,
                     edgecolors='white', linewidths=0.4,
                     transform=proj, zorder=5, label=name)
 
@@ -226,19 +235,19 @@ usgs_pts = ref_catalog[ref_catalog['event_id'].isin(_all_event_ids)]
 aftershocks = usgs_pts[usgs_pts['event_id'] != MAINSHOCK_ID]
 ax_map.scatter(aftershocks['usgs_lon'], aftershocks['usgs_lat'],
                 marker='x', c='black', s=35, linewidths=1.1,
-                transform=proj, zorder=6, alpha=0.3, label='USGS (true)')
+                transform=proj, zorder=6, alpha=0.5, label='USGS (true)')
 
 # Mainshock: each prior's estimate (larger, bolder, in front) + USGS location
 # as a red star.
 for name, sub in map_data.items():
     ms = sub[sub['event_id'] == MAINSHOCK_ID]
     ax_map.scatter(ms[column_lon], ms[column_lat],
-                    color=COLOR_LOOKUP[name], s=220 * SIZE_SCALE[name], alpha=1.0,
-                    edgecolors='black', linewidths=1.0,
+                    color=COLOR_LOOKUP[name], s=350, alpha=1.0,
+                    edgecolors='black', linewidths=1.0, marker='*',
                     transform=proj, zorder=8)
 ms_true = usgs_pts[usgs_pts['event_id'] == MAINSHOCK_ID]
 ax_map.scatter(ms_true['usgs_lon'], ms_true['usgs_lat'],
-                marker='*', c='yellow', s=300, edgecolors='black', linewidths=0.8,
+                marker='*', c='yellow', s=400, edgecolors='black', linewidths=0.8,
                 transform=proj, zorder=9, label='USGS mainshock (true)')
 
 _lon_ticks = np.linspace(extent[0], extent[1], 5)
@@ -249,8 +258,11 @@ ax_map.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
 ax_map.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
 ax_map.set_xlabel('Longitude')
 ax_map.set_ylabel('Latitude')
-ax_map.set_title(f'Posterior locations at {TRIGGER_NUMBER} triggers — all priors')
-ax_map.text(0.01, 0.98, '(d)', transform=ax_map.transAxes,
+mag_note = f', USGS M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''
+ax_map.text(0.98, 0.02, f'Posterior locations at {TRIGGER_NUMBER} triggers', transform=ax_map.transAxes,
+            ha='right', va='bottom', fontsize=13, fontweight='bold', color='black',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+ax_map.text(0.01, 0.98, '(a)', transform=ax_map.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold')
 ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
 
