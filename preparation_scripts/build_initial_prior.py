@@ -93,7 +93,7 @@ SAVE_SPATIAL = True
 # load_background_seismicity() uses recursive bisection to stay under the
 # USGS 20,000-event limit, caching to SHARED_CATALOG_CACHE as parquet.
 
-_aux_start  = config.ETAS_INVERSION_CONFIG['auxiliary_start']
+
 # Download/pre-filter floor. ETAS_INVERSION_CONFIG['mc'] is 'positive', a
 # rolling per-event completeness computed inside ETASParameterCalculation
 # (each event's mc_current = previous event's magnitude + delta_m) — not a
@@ -112,6 +112,7 @@ _query_bounds = (
     max(_shape_lats) + 0.5,   # lat_max
 )
 
+_aux_start  = config.ETAS_INVERSION_CONFIG['auxiliary_start']
 _start_year = pd.Timestamp(_aux_start).year
 _end_year   = max(pd.Timestamp(cutoff).year for cutoff in CONTEXTS.values())
 
@@ -136,9 +137,6 @@ raw_catalog['time'] = pd.to_datetime(raw_catalog['time'], utc=True).dt.tz_conver
 raw_catalog = raw_catalog[['id', 'latitude', 'longitude', 'time', 'magnitude']]
 raw_catalog = raw_catalog[raw_catalog['magnitude'] >= _m_ref].reset_index(drop=True)
 
-print(f"  Shared catalog: {len(raw_catalog):,} events  "
-      f"{raw_catalog['time'].min().date()} → {raw_catalog['time'].max().date()}")
-
 #%%
 # ── Magnitude distribution (shared catalog) ───────────────────────────────────
 # Verify that catalog appears complete down to m_ref. With mc='positive' the
@@ -146,33 +144,36 @@ print(f"  Shared catalog: {len(raw_catalog):,} events  "
 # from each event's preceding magnitude), not this fixed floor — this plot only
 # confirms the download/pre-filter didn't cut into the complete part of the catalog.
 
-bins = np.arange(
-    np.floor(raw_catalog['magnitude'].min() * 10) / 10,
-    raw_catalog['magnitude'].max() + 0.15,
-    0.1,
-)
-fig, ax = plt.subplots(figsize=(8, 5))
-ax.hist(raw_catalog['magnitude'], bins=bins, color='steelblue',
-        edgecolor='white', linewidth=0.4)
-ax.axvline(_m_ref, color='crimson', linestyle='--', linewidth=1.5,
-           label=f'$M_{{ref}}$ = {_m_ref}')
-ax.set_yscale('log')
-ax.set_xlabel('Magnitude')
-ax.set_ylabel('Count')
-ax.set_title('Magnitude distribution — shared ETAS catalog (verify completeness above $M_{ref}$)')
-ax.legend()
-plt.tight_layout()
-fig_path = os.path.join(OUTPUT_DIR, 'magnitude_distribution_shared.png')
-fig.savefig(fig_path, dpi=150)
-plt.show()
-print(f"  Magnitude distribution saved: {fig_path}")
+# bins = np.arange(
+#     np.floor(raw_catalog['magnitude'].min() * 10) / 10,
+#     raw_catalog['magnitude'].max() + 0.15,
+#     0.1,
+# )
+# fig, ax = plt.subplots(figsize=(8, 5))
+# ax.hist(raw_catalog['magnitude'], bins=bins, color='steelblue',
+#         edgecolor='white', linewidth=0.4)
+# ax.axvline(_m_ref, color='crimson', linestyle='--', linewidth=1.5,
+#            label=f'$M_{{ref}}$ = {_m_ref}')
+# ax.set_yscale('log')
+# ax.set_xlabel('Magnitude')
+# ax.set_ylabel('Count')
+# ax.set_title('Magnitude distribution — shared ETAS catalog (verify completeness above $M_{ref}$)')
+# ax.legend()
+# plt.tight_layout()
+# fig_path = os.path.join(OUTPUT_DIR, 'magnitude_distribution_shared.png')
+# fig.savefig(fig_path, dpi=150)
+# plt.show()
+# print(f"  Magnitude distribution saved: {fig_path}")
 
 #%%
 # ── Per-context inversion loop ────────────────────────────────────────────────
 
 for context_name in BUILD_CONTEXTS:
+
     cutoff_str  = CONTEXTS[context_name]
+
     tagged_id   = config.etas_output_id(context_name)
+
     output_json = os.path.join(OUTPUT_DIR, f'parameters_{tagged_id}.json')
 
     print(f"\n{'='*70}")
@@ -193,12 +194,12 @@ for context_name in BUILD_CONTEXTS:
     )
     catalog_df['id'] = range(len(catalog_df))   # re-index after filter
 
-    print(f"  Catalog after cutoff filter: {len(catalog_df):,} events  "
-          f"({catalog_df['time'].min().date()} → {catalog_df['time'].max().date()})")
+    # print(f"  Catalog after cutoff filter: {len(catalog_df):,} events  "
+    #       f"({catalog_df['time'].min().date()} → {catalog_df['time'].max().date()})")
 
-    if len(catalog_df) < 500:
-        print(f"  WARNING: only {len(catalog_df)} events — parameter estimates "
-              f"may be unreliable.  Consider lowering m_ref or extending auxiliary_start.")
+    # if len(catalog_df) < 500:
+    #     print(f"  WARNING: only {len(catalog_df)} events — parameter estimates "
+    #           f"may be unreliable.  Consider lowering m_ref or extending auxiliary_start.")
 
     # Save per-context catalog so results are reproducible without re-filtering.
     # Tagged with context + m_ref only (not the full fb/fp/mc tag) — its
@@ -218,21 +219,22 @@ for context_name in BUILD_CONTEXTS:
     inversion_metadata['catalog']        = catalog_df
     inversion_metadata['data_path']      = OUTPUT_DIR + os.sep
     inversion_metadata.pop('fn_catalog', None)
-    print("Free_background: ", inversion_metadata['free_background'])
-    print("Free_productivity: ", inversion_metadata['free_productivity'])
 
-    print(f"\n  Inversion configuration:")
-    _display = {k: v for k, v in inversion_metadata.items()
-                if k not in ('catalog', 'theta_0', 'shape_coords')}
-    for k, v in _display.items():
-        print(f"    {k}: {v}")
-    print(f"    theta_0: {config.ETAS_INVERSION_CONFIG['theta_0']}")
+    # print("Free_background: ", inversion_metadata['free_background'])
+    # print("Free_productivity: ", inversion_metadata['free_productivity'])
+
+    # print(f"\n  Inversion configuration:")
+    # _display = {k: v for k, v in inversion_metadata.items()
+    #             if k not in ('catalog', 'theta_0', 'shape_coords')}
+    # for k, v in _display.items():
+    #     print(f"    {k}: {v}")
+    # print(f"    theta_0: {config.ETAS_INVERSION_CONFIG['theta_0']}")
 
     # -- Run inversion --------------------------------------------------------
     set_up_logger(level=logging.INFO)
 
-    print(f"\n  Running ETAS inversion (id='{tagged_id}')…")
-    print("  This typically takes several minutes.\n")
+    # print(f"\n  Running ETAS inversion (id='{tagged_id}')…")
+    # print("  This typically takes several minutes.\n")
 
     calculation = ETASParameterCalculation(inversion_metadata)
     calculation.prepare()
@@ -261,7 +263,9 @@ for context_name in BUILD_CONTEXTS:
         json_path  = output_json,
         catalog_df = hist,
         **config.ETAS_UPDATER_CONFIG,
+        spatial_factor = None,
     )
+    
     forecast_time = pd.Timestamp(result['timewindow_end'])
     prior = updater.update(forecast_time)
     print(f"  Baseline prior at {forecast_time}:")

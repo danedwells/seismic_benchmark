@@ -29,6 +29,7 @@ import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from cartopy.geodesic import Geodesic
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 
 MAGNA_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -53,13 +54,13 @@ CITIES = {
     'Salt Lake City': (40.7608, -111.8910, ( 8,  4), 'left'),
     'West Valley':    (40.6916, -112.0011, ( 8, -18), 'left'),
     'Magna':          (40.7091, -112.1013, (-10, -16), 'right'),
-    'Tooele':         (40.5308, -112.2983, ( 8,  4), 'left'),
+    'Tooele':         (40.5308, -112.2983, ( 8, -22), 'left'),
     'Park City':      (40.6461, -111.4980, (-8, 12), 'right'),
     'Provo':          (40.2338, -111.6585, ( 8,  4), 'left'),
 }
 
 plt.rcParams.update({'font.size': 12, 'font.family': 'sans-serif',
-                     'axes.titlesize': 13, 'axes.titleweight': 'bold', 'figure.dpi': 150})
+                     'figure.dpi': 150, 'savefig.transparent': True})
 
 #%%
 # ---------------------------------------------------------------------------
@@ -116,15 +117,26 @@ def base_map(fig, rect):
     proj = ccrs.PlateCarree()
     ax = fig.add_axes(rect, projection=proj)
     ax.set_extent(EXTENT, crs=proj)
-    ax.add_feature(cfeature.LAND, facecolor='#f0f0f0', zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
     ax.add_feature(cfeature.NaturalEarthFeature('physical', 'lakes', '10m'),
-                   facecolor='#d6eaf8', edgecolor='#7fb3d5', linewidth=0.5, zorder=3)
+                   facecolor='lightcyan', edgecolor='gray', linewidth=0.4, zorder=3)
     ax.add_feature(cfeature.STATES, linewidth=0.4, edgecolor='gray', zorder=3)
-    ax.set_xticks(np.linspace(EXTENT[0], EXTENT[1], 5), crs=proj)
-    ax.set_yticks(np.linspace(EXTENT[2], EXTENT[3], 5), crs=proj)
-    ax.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
-    ax.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
+    # Lat/lon ticks commented out for the presentation version (restore for the paper):
+    # ax.set_xticks(np.linspace(EXTENT[0], EXTENT[1], 5), crs=proj)
+    # ax.set_yticks(np.linspace(EXTENT[2], EXTENT[3], 5), crs=proj)
+    # ax.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
+    # ax.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
     return ax, proj
+
+
+def bottom_colorbar(fig, ax, mappable, label, **kw):
+    """Horizontal colorbar under the map's actual (aspect-constrained) box."""
+    ax.apply_aspect()
+    p = ax.get_position()
+    cax = fig.add_axes([p.x0 + 0.1 * p.width, p.y0 - 0.075, 0.8 * p.width, 0.025])
+    cb = fig.colorbar(mappable, cax=cax, orientation='horizontal', **kw)
+    cb.set_label(label)
+    return cb
 
 
 #%%
@@ -137,31 +149,29 @@ LON, LAT = np.meshgrid(lon_g, lat_g)
 W = warning_s(LAT, LON, main)
 
 fig = plt.figure(figsize=(8, 9))
-ax, proj = base_map(fig, [0.10, 0.07, 0.72, 0.85])
+ax, proj = base_map(fig, [0.06, 0.12, 0.88, 0.86])
 
 levels = np.arange(-10, 31, 2)
 norm = mcolors.TwoSlopeNorm(vmin=levels[0], vcenter=0, vmax=levels[-1])
-cf = ax.contourf(LON, LAT, W, levels=levels, cmap='RdYlGn', norm=norm, extend='both',
-                 transform=proj, alpha=0.75, zorder=1)
+# Diverging about 0: blue = warning before the S wave, red = blind zone (S arrives before the alert)
+cf = ax.contourf(LON, LAT, W, levels=levels, cmap='RdBu', norm=norm, extend='both',
+                 transform=proj, alpha=0.85, zorder=1)
 cs0 = ax.contour(LON, LAT, W, levels=[0], colors='k', linewidths=1.8, transform=proj, zorder=2)
-ax.clabel(cs0, fmt=lambda v: 'blind zone', fontsize=10)
-cbar = fig.colorbar(cf, ax=ax, orientation='vertical', fraction=0.04, pad=0.03)
-cbar.set_label('Warning time before S-wave arrival (s)')
+ax.clabel(cs0, fmt=lambda v: 'blind zone', fontsize=10, manual=[(main.lon, main.lat + 0.25)])
+bottom_colorbar(fig, ax, cf, 'Warning time before S-wave arrival (s)')
 
-ax.scatter(main.lon, main.lat, marker='*', s=450, c='yellow', edgecolors='k', linewidths=1,
-           transform=proj, zorder=6, label=f'Magna M{main.mag:.1f} epicenter')
+ax.scatter(main.lon, main.lat, marker='*', s=450, c='gold', edgecolors='k', linewidths=1,
+           transform=proj, zorder=6)
 for name, (clat, clon, (dx, dy), ha) in CITIES.items():
     w = warning_s(clat, clon, main)
     ax.scatter(clon, clat, s=40, c='k', transform=proj, zorder=5)
     ax.annotate(f'{name}\n{w:+.0f} s', (clon, clat), xycoords=proj._as_mpl_transform(ax),
                 xytext=(dx, dy), textcoords='offset points', ha=ha, fontsize=10,
                 fontweight='bold', zorder=7,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.75, edgecolor='none'))
-
-ax.set_title(f'Hypothetical EEW warning time — {main.origin:%Y-%m-%d} Magna M{main.mag:.1f}\n'
-             f'alert {main.alert_time_s:.1f} s after origin '
-             f'({N_ALERT_TRIGS} stations + {ALERT_LATENCY_S:g} s latency)', fontsize=12)
-ax.legend(loc='lower left', fontsize=10, framealpha=0.9)
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.85, edgecolor='none'))
+ax.text(0.02, 0.98, f'Magna M{main.mag:.1f}\nalert {main.alert_time_s:.1f} s after origin',
+        transform=ax.transAxes, ha='left', va='top', fontsize=12, fontweight='bold', zorder=8,
+        bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='none'))
 fig.savefig(os.path.join(FIG_DIR, 'eew_warning_time_mainshock.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(FIG_DIR, 'eew_warning_time_mainshock.pdf'), bbox_inches='tight')
 plt.show()
@@ -171,29 +181,31 @@ plt.show()
 # Figure B — whole sequence, epicenters colored by alert time
 # ---------------------------------------------------------------------------
 fig = plt.figure(figsize=(8, 9))
-ax, proj = base_map(fig, [0.10, 0.07, 0.72, 0.85])
+ax, proj = base_map(fig, [0.06, 0.12, 0.88, 0.86])
 
 aft = alerts[alerts['event_id'] != main.event_id]
-sc = ax.scatter(aft['lon'], aft['lat'], c=aft['alert_time_s'], cmap='viridis_r',
+sc = ax.scatter(aft['lon'], aft['lat'], c=aft['alert_time_s'], cmap='Reds',
                 s=15 * (aft['mag'] - 2) ** 2, edgecolors='k', linewidths=0.4,
                 transform=proj, zorder=5)
-ax.scatter(main.lon, main.lat, marker='*', s=450, c='yellow', edgecolors='k', linewidths=1,
+ax.scatter(main.lon, main.lat, marker='*', s=450, c='gold', edgecolors='k', linewidths=1,
            transform=proj, zorder=6, label=f'Mainshock M{main.mag:.1f} ({main.alert_time_s:.1f} s)')
-ax.tissot(rad_km=main.blind_radius_km, lons=main.lon, lats=main.lat, n_samples=100,
-          facecolor='none', edgecolor='red', linestyle='--', linewidth=1.8, zorder=4)
+# Geodesic circle drawn directly (ax.tissot rendered this ring ~one radius south of the epicenter here)
+blind = Geodesic().circle(main.lon, main.lat, main.blind_radius_km * 1e3, n_samples=100)
+ax.plot(blind[:, 0], blind[:, 1], color='crimson', linestyle='--', linewidth=1.8, transform=proj, zorder=4)
 for name, (clat, clon, (dx, dy), ha) in CITIES.items():
     ax.scatter(clon, clat, s=30, c='k', marker='s', transform=proj, zorder=5)
     ax.annotate(name, (clon, clat), xycoords=proj._as_mpl_transform(ax), xytext=(dx, dy),
                 textcoords='offset points', ha=ha, fontsize=10, fontweight='bold', zorder=7,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.75, edgecolor='none'))
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.85, edgecolor='none'))
 
-cbar = fig.colorbar(sc, ax=ax, orientation='vertical', fraction=0.04, pad=0.03)
-cbar.set_label('Alert time after origin (s)')
-ax.set_title(f'Hypothetical EEW alert times — Magna sequence (n={len(alerts)}, M≥3)', fontsize=12)
+bottom_colorbar(fig, ax, sc, 'Alert time after origin (s)')
+ax.text(0.02, 0.98, f'Magna sequence\n{len(alerts)} events, M\u22653', transform=ax.transAxes, ha='left', va='top',
+        fontsize=12, fontweight='bold', zorder=8,
+        bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='none'))
 handles, _ = ax.get_legend_handles_labels()
-handles.append(Line2D([], [], color='red', linestyle='--', linewidth=1.8,
+handles.append(Line2D([], [], color='crimson', linestyle='--', linewidth=1.8,
                       label=f'Mainshock blind zone ({main.blind_radius_km:.0f} km radius)'))
-ax.legend(handles=handles, loc='lower left', fontsize=10, framealpha=0.9)
+ax.legend(handles=handles, loc='lower left', fontsize=10, framealpha=0.9, edgecolor='none')
 fig.savefig(os.path.join(FIG_DIR, 'eew_alert_times_sequence.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(FIG_DIR, 'eew_alert_times_sequence.pdf'), bbox_inches='tight')
 plt.show()

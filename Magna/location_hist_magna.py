@@ -22,6 +22,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.io.img_tiles as cimgt
 from matplotlib.ticker import FuncFormatter
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 
@@ -35,7 +36,11 @@ os.makedirs(FIG_DIR, exist_ok=True)
 CASE_STUDY      = 'Magna'
 TRIGGER_NUMBER  = 4              # trigger count at which locations are compared
 REFERENCE_PRIOR = 'Uniform'      # top histogram row
-MAP_PAD_DEG     = 0.03           # margin around the posterior locations (degrees)
+ZOOM_KM         = 20             # map shows at least this far (km) around the mainshock; None = fit all posterior locations
+SATELLITE       = True           # Esri World Imagery behind the map (needs internet at render time)
+SAT_ALPHA       = 0.3
+SAT_ZOOM        = 11             # tile zoom level (11 ~ 75 m/pixel; raise for sharper imagery, slower)
+MAP_PAD_DEG     = 0.03           # margin around the posterior locations when ZOOM_KM is None (degrees)
 MIN_USGS_MAG    = None           # only plot events with USGS magnitude >= this (None = all)
 
 # Inset locator map: [left, bottom, width, height] in map-axes fraction.
@@ -64,6 +69,7 @@ plt.rcParams.update({
     'axes.titleweight': 'bold',
     'axes.labelsize':   11,
     'figure.dpi':       150,
+    'savefig.transparent': True,
 })
 
 # Consistent prior -> color mapping, shared by the histograms (reference
@@ -136,7 +142,7 @@ for i, name in enumerate(hist_order):
     if stats is not None:
         ax.hist(stats, bins=bins, rwidth=0.9, color=color, alpha=0.7)
         median_err = np.median(stats)
-        ax.axvline(median_err, color=color, ls='--', lw=1.5)
+        ax.axvline(median_err, ymax=0.55, color=color, ls='--', lw=1.5)   # stops above the bars, below the labels
         ax.text(0.03, 0.70, f'median: {median_err:.1f} km', transform=ax.transAxes,
                 ha='left', va='top', fontsize=11, color=color, fontweight='bold')
     ax.text(0.03, 0.92, name, transform=ax.transAxes, ha='left', va='top',
@@ -154,12 +160,15 @@ hist_axes[-1].set_xlabel('Location error (km)')
 # Same vertical scale in every row so bar heights are comparable
 _y_max = max(ax.get_ylim()[1] for ax in hist_axes)
 for ax in hist_axes:
-    ax.set_ylim(0, _y_max)
+    ax.set_ylim(0, 2.0 * _y_max)   # headroom: bars top out at half height so the name/median labels sit clear above them
 hist_axes[0].text(-0.15, 0.87, '(b)', transform=hist_axes[0].transAxes,
                   ha='left', va='bottom', fontsize=13, fontweight='bold')
 
 # -- Bottom: combined map of posterior locations, colored by prior -----------
-proj = ccrs.PlateCarree()
+# Spherical-globe PlateCarree: Web Mercator satellite tiles use latitude on a sphere. On the default
+# WGS84-ellipsoid PlateCarree, cartopy shifts the imagery ~20-25 km south of the data here, so the axes,
+# the data and the Natural Earth outlines (drawn with crs=proj below) all use this same globe.
+proj = ccrs.PlateCarree(globe=ccrs.Globe(semimajor_axis=6378137, semiminor_axis=6378137, ellipse=None))
 ax_map = fig.add_axes(AX_POS['map'], projection=proj)
 
 map_data = {}
@@ -178,8 +187,15 @@ all_lons = pd.concat([d[column_lon] for d in map_data.values()])
 # Map extent: data range + margin, then widened in whichever direction is short so it has the
 # same aspect as the map box. The map then fills AX_POS['map'] exactly, and the histogram
 # stack (same bottom/height) lines up with it.
-extent = [all_lons.min() - MAP_PAD_DEG, all_lons.max() + MAP_PAD_DEG,
-          all_lats.min() - MAP_PAD_DEG, all_lats.max() + MAP_PAD_DEG]
+if ZOOM_KM is None:
+    extent = [all_lons.min() - MAP_PAD_DEG, all_lons.max() + MAP_PAD_DEG,
+              all_lats.min() - MAP_PAD_DEG, all_lats.max() + MAP_PAD_DEG]
+else:   # +/- ZOOM_KM around the USGS mainshock location; points farther out are clipped by the axes
+    _m = ref_catalog.loc[ref_catalog['event_id'] == MAINSHOCK_ID].iloc[0]
+    _dlat = ZOOM_KM / 110.57
+    _dlon = ZOOM_KM / (111.32 * np.cos(np.radians(_m['usgs_lat'])))
+    extent = [_m['usgs_lon'] - _dlon, _m['usgs_lon'] + _dlon,
+              _m['usgs_lat'] - _dlat, _m['usgs_lat'] + _dlat]
 _fig_w, _fig_h = fig.get_size_inches()
 _target = (AX_POS['map'][2] * _fig_w) / (AX_POS['map'][3] * _fig_h)   # width/height in degrees (equal aspect)
 _w, _h = extent[1] - extent[0], extent[3] - extent[2]
@@ -190,11 +206,20 @@ else:                     # too wide: extend latitude
     _c = (extent[2] + extent[3]) / 2
     extent[2], extent[3] = _c - _w / _target / 2, _c + _w / _target / 2
 
+
 ax_map.set_extent(extent, crs=proj)
-ax_map.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
-ax_map.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
-ax_map.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
-ax_map.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray', zorder=1)
+ax_map.add_geometries(cfeature.LAND.geometries(),      crs=proj, facecolor='lightgray', edgecolor='none', zorder=0)
+ax_map.add_geometries(cfeature.OCEAN.geometries(),     crs=proj, facecolor='lightcyan', edgecolor='none', zorder=0)
+ax_map.add_geometries(cfeature.COASTLINE.geometries(), crs=proj, facecolor='none', edgecolor='black', linewidth=0.6, zorder=1)
+ax_map.add_geometries(cfeature.STATES.geometries(),    crs=proj, facecolor='none', edgecolor='gray', linewidth=0.4, zorder=1)
+if SATELLITE:
+    try:
+        sat = cimgt.GoogleTiles(url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
+        ax_map.add_image(sat, SAT_ZOOM, alpha=SAT_ALPHA, zorder=0.5, interpolation='bilinear')
+        ax_map.text(0.5, 0.004, 'Imagery © Esri, Maxar, Earthstar Geographics', transform=ax_map.transAxes,
+                    ha='center', va='bottom', fontsize=8, color='0.25', zorder=9)
+    except Exception as e:
+        print(f"Satellite imagery not drawn ({type(e).__name__}: {e})")
 
 # Arrows from each prior's posterior location to the true USGS location,
 # colored to match that prior's scatter points.
@@ -238,17 +263,18 @@ for name, sub in map_data.items():
                     transform=proj, zorder=8)
 ms_true = usgs_pts[usgs_pts['event_id'] == MAINSHOCK_ID]
 ax_map.scatter(ms_true['usgs_lon'], ms_true['usgs_lat'],
-                marker='*', c='yellow', s=400, edgecolors='black', linewidths=0.8,
+                marker='*', c='gold', s=400, edgecolors='black', linewidths=0.8,
                 transform=proj, zorder=9, label='USGS mainshock (true)')
 
-_lon_ticks = np.linspace(extent[0], extent[1], 5)
-_lat_ticks = np.linspace(extent[2], extent[3], 5)
-ax_map.set_xticks(_lon_ticks, crs=proj)
-ax_map.set_yticks(_lat_ticks, crs=proj)
-ax_map.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
-ax_map.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
-ax_map.set_xlabel('Longitude')
-ax_map.set_ylabel('Latitude')
+# Lat/lon ticks and axis labels commented out for the presentation version (restore for the paper):
+# _lon_ticks = np.linspace(extent[0], extent[1], 5)
+# _lat_ticks = np.linspace(extent[2], extent[3], 5)
+# ax_map.set_xticks(_lon_ticks, crs=proj)
+# ax_map.set_yticks(_lat_ticks, crs=proj)
+# ax_map.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
+# ax_map.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
+# ax_map.set_xlabel('Longitude')
+# ax_map.set_ylabel('Latitude')
 mag_note = f', USGS M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''
 ax_map.text(0.98, 0.02, f'Posterior locations at {TRIGGER_NUMBER} triggers', transform=ax_map.transAxes,
             ha='right', va='bottom', fontsize=13, fontweight='bold', color='black',
@@ -260,8 +286,8 @@ ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
 # -- Inset: where the map extent sits within the western US ----------------------
 ax_in = ax_map.inset_axes(INSET_POS, projection=proj)
 ax_in.set_extent(INSET_EXTENT, crs=proj)
-ax_in.add_feature(cfeature.LAND,      facecolor='#f0f0f0')
-ax_in.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8')
+ax_in.add_feature(cfeature.LAND,      facecolor='lightgray')
+ax_in.add_feature(cfeature.OCEAN,     facecolor='lightcyan')
 ax_in.add_feature(cfeature.COASTLINE, linewidth=0.4)
 ax_in.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray')
 ax_in.plot([extent[0], extent[1], extent[1], extent[0], extent[0]],

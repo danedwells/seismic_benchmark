@@ -25,8 +25,11 @@ from datetime import datetime, timezone
 from math import radians, sin, cos, pi
 from pathlib import Path
 
+import io
+
 import numpy as np
 import pandas as pd
+import requests
 import scipy.linalg
 from scipy.stats import gaussian_kde
 from scipy.stats._stats import gaussian_kernel_estimate
@@ -34,9 +37,9 @@ from scipy.stats._stats import gaussian_kernel_estimate
 from priors import SeismicPrior, EtasPriorUpdater
 from benchmark import runner as benchmark_runner
 from benchmark import config_california as config
-from benchmark.background import load_background_seismicity
 from benchmark.runner import BenchmarkRunner, runner_results_to_df, make_epic_params
 from benchmark.time_dependent_helpers import etas_update_fn, run_trigger_time
+from variant import BW_SQ, NOCUT, MAX_LON, CONTEXT, OUT_SUFFIX, ETAS_SUFFIX   # env switches, see variant.py
 
 # ---------------------------------------------------------------------------
 # Config
@@ -46,52 +49,78 @@ DATA_DIR   = os.path.join(MAGNA_DIR, 'data')
 RUN_DIR    = os.path.join(DATA_DIR, 'run_files')
 PRIOR_DIR  = os.path.join(DATA_DIR, 'priors')
 ETAS_DIR   = os.path.join(DATA_DIR, 'etas_inversion')
-OUTPUT_DIR = os.path.join(MAGNA_DIR, 'results', 'output')
+OUTPUT_DIR = os.path.join(MAGNA_DIR, 'results', f'output{OUT_SUFFIX}')
 CATALOG_PATH = os.path.join(DATA_DIR, 'Magna_2020_catalog.parquet')   # from download_triggers.py
-BACKGROUND_PATH = os.path.join(DATA_DIR, 'background_seismicity.parquet')
 for d in (PRIOR_DIR, ETAS_DIR, os.path.join(ETAS_DIR, 'input'), OUTPUT_DIR):
     os.makedirs(d, exist_ok=True)
 
 SEQUENCE_START = '2020-03-18T13:00:00'          # prior builds only see seismicity before this
 BOUNDS         = (-114.5, -109.0, 37.0, 42.5)   # (lon_min, lon_max, lat_min, lat_max): Utah + margin
-KDE_START_YEAR = 1990
-ETAS_START_YEAR = 1980                          # auxiliary_start
-M_MIN          = 3.0
+KDE_START_YEAR = 1980                          # KDE training catalog and ETAS timewindow_start
+ETAS_START_YEAR = 1980                          # ETAS auxiliary_start (= timewindow_start: no earlier source events)
+M_MIN          = 2.5                            # magnitude of completeness for the KDE and ETAS background
+BACKGROUND_PATH = os.path.join(DATA_DIR, f'background_earthquakes_M{M_MIN:g}.parquet')
 
 # ETAS inversion polygon, [lat, lon] pairs (etas_2 convention), inside BOUNDS.
 ETAS_POLYGON = [[42.0, -114.0], [42.0, -109.5], [37.5, -109.5], [37.5, -114.0], [42.0, -114.0]]
 
-KDE_TT3   = os.path.join(PRIOR_DIR, 'kde_seismicity_Magna.tt3')
-ETAS_ID   = config.etas_output_id('Magna')
+KDE_TT3   = os.path.join(PRIOR_DIR, f'kde_seismicity_{CONTEXT}.tt3')
+ETAS_CFG  = copy.deepcopy(config.ETAS_INVERSION_CONFIG)
+ETAS_CFG.update({'mc': M_MIN, 'm_ref': M_MIN})   # fixed completeness, also used in the output file tags
+if BW_SQ is not None:
+    ETAS_CFG['bw_sq'] = BW_SQ
+ETAS_ID   = config.etas_output_id(CONTEXT, ETAS_CFG)
 ETAS_JSON = os.path.join(ETAS_DIR, f'parameters_{ETAS_ID}.json')
-ETAS_HIST = os.path.join(ETAS_DIR, 'input', f'catalog_{config.etas_catalog_tag("Magna")}.csv')
+ETAS_HIST = os.path.join(ETAS_DIR, 'input', f'catalog_{config.etas_catalog_tag(CONTEXT, ETAS_CFG)}.csv')
 
 PARAMS = copy.deepcopy(config.BENCHMARK_PARAMS)
 PARAMS['sigma_s'] = 0.22       # as in the case-study scripts
 
 FORCE_REBUILD_KDE   = False
-FORCE_RERUN_ETAS    = False    # the inversion is slow
-RUN_STATIC          = True     # Uniform + KDE_Seismicity
+FORCE_RERUN_ETAS    = False   # the inversion is slow
+RUN_STATIC          = BW_SQ is None or NOCUT     # Uniform + KDE_Seismicity (unaffected by bw_sq, but by the cut)
 RUN_ETAS            = True
 ETAS_UPDATE_INTERVAL_S = 0     # 0 = update the ETAS prior before every event
-PRIOR_ALPHA         = 1        # ETAS tempering exponent (1 = none)
+PRIOR_ALPHA         = 0.5      # tempering exponent: prior**alpha, renormalized (1 = none; <1 flattens contrast)
+FLOOR_FRAC          = 0.05     # then raise every prior's minimum to this fraction of its own maximum (None = off)
+
+
+def adjust_prior(prior, alpha=PRIOR_ALPHA, frac=FLOOR_FRAC):
+    """Temper (grid**alpha), then raise cells below frac * max up to frac * max; renormalize. In place.
+    Tempering first makes the final minimum exactly frac of the final maximum."""
+    grid = prior.grid ** alpha if alpha != 1 else prior.grid
+    if frac is not None:
+        grid = np.maximum(grid, frac * grid.max())
+    prior.grid = grid / grid.sum()
+    return prior
 
 #%%
 # ---------------------------------------------------------------------------
 # Background seismicity (shared by the KDE and ETAS builds)
 # ---------------------------------------------------------------------------
-background = load_background_seismicity(
-    cache_path = BACKGROUND_PATH,
-    bounds     = BOUNDS,
-    start_year = ETAS_START_YEAR,
-    end_year   = pd.Timestamp(SEQUENCE_START).year,
-    min_mag    = M_MIN,
-)
+# Only events labeled as earthquakes: mining/other explosions, mine collapses and sonic booms
+# are excluded (eventtype=earthquake). Mining-induced seismicity that ComCat labels as an
+# earthquake is NOT removed by this.
+if os.path.exists(BACKGROUND_PATH):
+    background = pd.read_parquet(BACKGROUND_PATH)
+else:
+    resp = requests.get('https://earthquake.usgs.gov/fdsnws/event/1/query', timeout=120, params={
+        'format': 'csv', 'eventtype': 'earthquake', 'orderby': 'time-asc',
+        'starttime': f'{ETAS_START_YEAR}-01-01', 'endtime': SEQUENCE_START,
+        'minmagnitude': M_MIN, 'minlongitude': BOUNDS[0], 'maxlongitude': BOUNDS[1],
+        'minlatitude': BOUNDS[2], 'maxlatitude': BOUNDS[3]})
+    resp.raise_for_status()
+    background = pd.read_csv(io.StringIO(resp.text))[['time', 'latitude', 'longitude', 'depth', 'mag']]
+    background['time'] = pd.to_datetime(background['time'], utc=True)
+    background.to_parquet(BACKGROUND_PATH, index=False)
 background = background.copy()
 background['time'] = pd.to_datetime(background['time'], utc=True).dt.tz_convert(None)
 background = background[(background['time'] < pd.Timestamp(SEQUENCE_START))
                         & (background['mag'] >= M_MIN)].reset_index(drop=True)
-print(f"{len(background):,} background events M>={M_MIN} before {SEQUENCE_START}")
+if MAX_LON is not None:
+    background = background[background['longitude'] <= MAX_LON].reset_index(drop=True)
+print(f"{len(background):,} background earthquakes M>={M_MIN} before {SEQUENCE_START}"
+      + (f", lon <= {MAX_LON}" if MAX_LON is not None else ""))
 
 #%%
 # ---------------------------------------------------------------------------
@@ -129,7 +158,7 @@ if FORCE_REBUILD_KDE or not os.path.exists(KDE_TT3):
 
     metadata = {'bw_method': 'scott', 'grid_size': [nx, ny], 'n_events': int(len(points)),
                 'bounds': list(BOUNDS), 'generated_at': datetime.now(timezone.utc).isoformat()}
-    SeismicPrior(name='kde_seismicity_Magna', lons=lons, lats=lats, grid=grid,
+    SeismicPrior(name=f'kde_seismicity_{CONTEXT}', lons=lons, lats=lats, grid=grid,
                  metadata=metadata).to_tt3(KDE_TT3)
     print(f"KDE prior: {len(points):,} events -> {KDE_TT3}")
 else:
@@ -150,7 +179,7 @@ if FORCE_RERUN_ETAS or not os.path.exists(ETAS_JSON):
     etas_catalog = etas_catalog[['id', 'latitude', 'longitude', 'time', 'magnitude']]
     etas_catalog.to_csv(ETAS_HIST, index=False)
 
-    meta = copy.deepcopy(config.ETAS_INVERSION_CONFIG)
+    meta = copy.deepcopy(ETAS_CFG)
     meta.update({
         'auxiliary_start':  f'{ETAS_START_YEAR}-01-01 00:00:00',
         'timewindow_start': f'{KDE_START_YEAR}-01-01 00:00:00',
@@ -188,7 +217,7 @@ print(f"{len(catalog_df)} events in catalog; {len(list(Path(RUN_DIR).glob('*.run
 # Static priors: Uniform + KDE_Seismicity
 # ---------------------------------------------------------------------------
 if RUN_STATIC:
-    kde_prior = SeismicPrior.from_tt3(KDE_TT3)
+    kde_prior = adjust_prior(SeismicPrior.from_tt3(KDE_TT3))
     for name, use_prior in (('Uniform', False), ('KDE_Seismicity', True)):
         print(f"\n=== {name} ===")
         params = make_epic_params(kde_prior, use_prior, PARAMS)   # Uniform: prior object unused
@@ -199,7 +228,7 @@ if RUN_STATIC:
 # Dynamic ETAS prior (causal: update prior -> locate event -> append USGS location)
 # ---------------------------------------------------------------------------
 if RUN_ETAS:
-    m_ref = config.ETAS_INVERSION_CONFIG['m_ref']
+    m_ref = ETAS_CFG['m_ref']
     cs_etas_catalog = (
         catalog_df[['id', 'time', 'latitude', 'longitude', 'mag']]
         .rename(columns={'mag': 'magnitude'})
@@ -228,17 +257,17 @@ if RUN_ETAS:
                        key=lambda eid: run_trigger_time(eid, RUN_DIR))
     print(f"\n=== ETAS dynamic: {len(event_ids)} events ===")
 
-    initial_prior = updater.update(pd.Timestamp(SEQUENCE_START))
+    initial_prior = adjust_prior(updater.update(pd.Timestamp(SEQUENCE_START)))
     params = make_epic_params(initial_prior, True, PARAMS)
     runner = BenchmarkRunner(prior=initial_prior, params=params, run_dir=RUN_DIR,
                              catalog_df=cs_ref_df)
     runner.run_all(
         event_ids         = event_ids,
-        etas_update_fn    = lambda t: etas_update_fn(t, updater, PRIOR_ALPHA),
+        etas_update_fn    = lambda t: adjust_prior(etas_update_fn(t, updater, 1)),   # tempering + floor in adjust_prior
         update_interval_s = ETAS_UPDATE_INTERVAL_S,
         after_event_fn    = after_event_fn,
     )
 
-    out_path = os.path.join(OUTPUT_DIR, 'etas_dynamic_benchmark_results.csv')
+    out_path = os.path.join(OUTPUT_DIR, f'etas_dynamic{ETAS_SUFFIX}_benchmark_results.csv')
     runner_results_to_df(runner).to_csv(out_path, index=False)
     print(f"ETAS results -> {out_path}")

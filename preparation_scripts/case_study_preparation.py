@@ -14,7 +14,7 @@
 # =============================================================================
 
 import os
-from benchmark import config
+from benchmark import config_california as config
 from benchmark.usgs import download_case_study_catalog, build_run_files_for_case_study
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

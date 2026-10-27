@@ -11,6 +11,9 @@ __pycache__/
 *.pyo
 *egg-info
 
+# Cached intermediate data for paper_figures/ scripts (recomputable)
+paper_figures/.cache/
+
 # Claude
 CLAUDE.md
 

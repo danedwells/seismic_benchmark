@@ -107,11 +107,7 @@ post_2d  = odf['post'].values.reshape(grid_width, grid_width)
 # ── Build the figure ──────────────────────────────────────────────────────
 # Exact per-panel placement [left, bottom, width, height] (figure fraction).
 # Edit these directly to hand-tune the layout.
-AX_POS = {
-    'prior':      [0.03, 0.08, 0.30, 0.80],
-    'likelihood': [0.36, 0.08, 0.30, 0.80],
-    'posterior':  [0.69, 0.08, 0.30, 0.80],
-}
+AX_POS = [[0.03, 0.08, 0.30, 0.80], [0.36, 0.08, 0.30, 0.80], [0.69, 0.08, 0.30, 0.80]]   # left to right
 
 pad = 0.3
 extent = [
@@ -125,10 +121,16 @@ panels = [
     ('posterior',  'Posterior',               post_2d,  'Reds'),
 ]
 
+# REVERSED=1 swaps the first and third panels (posterior, likelihood, prior); saved with a _reversed suffix.
+REVERSED = os.environ.get('REVERSED') == '1'
+if REVERSED:
+    panels = panels[::-1]
+SUFFIX = '_reversed' if REVERSED else ''
+
 fig = plt.figure(figsize=(15, 5.5))
 
-for key, title, grid_2d, cmap in panels:
-    ax = fig.add_axes(AX_POS[key], projection=proj)
+for i, (key, title, grid_2d, cmap) in enumerate(panels):
+    ax = fig.add_axes(AX_POS[i], projection=proj)
     ax.set_extent(extent, crs=proj)
     _add_basemap(ax)
 
@@ -148,12 +150,12 @@ for key, title, grid_2d, cmap in panels:
     gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5, linestyle='--')
     gl.top_labels   = False
     gl.right_labels = False
-    gl.left_labels  = (key == 'prior')
+    gl.left_labels  = (i == 0)
 
     ax.set_title(title)
 
-    # 50 km scale bar, bottom-left corner — prior panel only.
-    if key == 'prior':
+    # 50 km scale bar, bottom-left corner — first panel only.
+    if i == 0:
         lon_min, lon_max, lat_min, lat_max = extent
         lat_mid   = (lat_min + lat_max) / 2
         scale_km  = 50
@@ -177,8 +179,8 @@ fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=9, bbox_to_anch
 
 #fig.suptitle(f'Bayesian location — MTJ M7.0 mainshock  ({len(triggered)} stations triggered)', y=1.0)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_bayesian_location_example.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_bayesian_location_example.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, f'mtj_bayesian_location_example{SUFFIX}.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, f'mtj_bayesian_location_example{SUFFIX}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

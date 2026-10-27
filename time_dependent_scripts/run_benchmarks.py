@@ -48,6 +48,7 @@ config.BENCHMARK_PARAMS['sigma_s'] = SIGMA_S
 DTT_WEIGHT     = config.BENCHMARK_PARAMS['dtt_weight']
 
 OUTPUT_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output',  'time_dependent', f'max_trigs_{MAX_TRIGS}')
+
 FIGURES_DIR = os.path.join(PROJECT_ROOT, 'results', 'california', 'figures', 'time_dependent', f'max_trigs_{MAX_TRIGS}')
 
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
@@ -154,8 +155,8 @@ print(f"\nRunning dynamic ETAS prior over {len(event_ids)} events "
 # -- Set up BenchmarkRunner with the initial prior
 # -- Run the dynamic prior ----------------------
 # -----------------------------------------------------------------------
-_t0 = pd.Timestamp(run_trigger_time(event_ids[0], RUN_DIR), unit='s')
-initial_prior = updater.update(_t0)
+t0            = pd.Timestamp(run_trigger_time(event_ids[0], RUN_DIR), unit='s')
+initial_prior = updater.update(t0)
 
 params = make_epic_params(initial_prior, True, config.BENCHMARK_PARAMS)
 
@@ -173,7 +174,8 @@ runner.run_all(
 )
 
 # -- Save results ---------------------------------------------------------
-out_path = os.path.join(OUTPUT_DIR, 'etas_dynamic_benchmark_results.csv')
+#out_path = os.path.join(OUTPUT_DIR, 'etas_dynamic_benchmark_results.csv')
+out_path = os.path.join(OUTPUT_DIR, f'etas_dynamic_benchmark_results_bw{BW_SQ}.csv')
 runner_results_to_df(runner).to_csv(out_path, index=False)
 print(f"\nDynamic ETAS results saved to:\n  {out_path}")
 

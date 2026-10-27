@@ -41,6 +41,7 @@ plt.rcParams.update({
     'axes.titleweight': 'bold',
     'axes.labelsize':   11,
     'figure.dpi':       150,
+    'savefig.transparent': True,
 })
 
 proj = ccrs.PlateCarree()
@@ -64,6 +65,10 @@ print(f"Catalog loaded: {len(catalog)} events")
 
 map_extent = [catalog['usgs_lon'].min() - 1, catalog['usgs_lon'].max() + 1,
               catalog['usgs_lat'].min() - 1, catalog['usgs_lat'].max() + 1]
+
+# Displayed extent: cut ~100 km (~0.9 deg) north of the CA/OR border (42N); the few events
+# farther north are left off the map. (map_extent above still bounds the background query.)
+view_extent = [map_extent[0], map_extent[1], map_extent[2], 42.9]
 
 # force_refresh left at its default (False) — SEIS_CACHE already exists on
 # disk, so this loads instantly from the parquet cache instead of re-querying
@@ -111,25 +116,25 @@ print(f"4th-station distance computed for {_n_valid}/{len(catalog)} events "
 AX_POS = {
     'map':      [0.04, 0.06, 0.52, 0.88],  # centerpiece
     'map_cbar': [0.525, 0.06, 0.015, 0.88],
-    'panel2':   [0.64, 0.70, 0.28, 0.22],  # top-right    (blank for now)
-    'panel3':   [0.64, 0.38, 0.28, 0.22],  # middle-right (blank for now)
-    'panel4':   [0.64, 0.06, 0.28, 0.22],  # bottom-right (blank for now)
+    'panel2':   [0.71, 0.70, 0.26, 0.22],  # top-right    (blank for now)
+    'panel3':   [0.71, 0.38, 0.26, 0.22],  # middle-right (blank for now)
+    'panel4':   [0.71, 0.06, 0.26, 0.22],  # bottom-right (blank for now)
 }
 
 fig = plt.figure(figsize=(16, 9))
 
 # -- Centerpiece: map of USGS/ANSS event locations ---------------------------
 ax_map = fig.add_axes(AX_POS['map'], projection=proj)
-ax_map.set_extent(map_extent, crs=proj)
-ax_map.add_feature(cfeature.STATES,    linewidth=0.5, edgecolor='black')
-ax_map.add_feature(cfeature.BORDERS,   linewidth=0.7, edgecolor='black')
-ax_map.add_feature(cfeature.COASTLINE, linewidth=0.7)
-ax_map.add_feature(cfeature.OCEAN,     facecolor='lightcyan', alpha=0.4)
-ax_map.add_feature(cfeature.LAND,      facecolor='whitesmoke')
-gl = ax_map.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5)
-gl.xlines = gl.ylines = False   # keep lat/lon labels, drop the lines
-gl.top_labels   = False
-gl.right_labels = False
+ax_map.set_extent(view_extent, crs=proj)
+ax_map.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray', zorder=2)
+ax_map.add_feature(cfeature.BORDERS,   linewidth=0.4, edgecolor='gray', zorder=2)
+ax_map.add_feature(cfeature.COASTLINE, linewidth=0.7, zorder=2)
+ax_map.add_feature(cfeature.OCEAN,     facecolor='lightcyan', zorder=0)
+ax_map.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
+# Lat/lon gridlines, ticks and labels dropped for the presentation version (restore for the paper):
+# gl = ax_map.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5)
+# gl.xlines = gl.ylines = False
+# gl.top_labels = gl.right_labels = False
 
 if bg is not None:
     ax_map.scatter(bg['longitude'], bg['latitude'],
@@ -137,9 +142,9 @@ if bg is not None:
 
 sc = ax_map.scatter(
     catalog['usgs_lon'], catalog['usgs_lat'],
-    c=catalog['usgs_mag'], cmap='plasma',
+    c=catalog['usgs_mag'], cmap='Reds',
     s=2 * (catalog['usgs_mag'] - catalog['usgs_mag'].min() + 0.1) ** 3,
-    alpha=0.4, transform=proj, zorder=5,
+    alpha=0.6, transform=proj, zorder=5, edgecolors='black', linewidths=0.3,
 )
 
 # Case-study mainshocks — labeled stars. Each label sits offset (points) from
@@ -153,7 +158,7 @@ _MAINSHOCKS = {
     'El Mayor\nM7.2 (2010)':    {'loc': (32.2863, -115.2950), 'offset': (-25, -42), 'ha': 'center', 'va': 'top'},
     'MTJ\nM7.0 (2024)':         {'loc': (40.3740, -125.0217), 'offset': (-35, -30), 'ha': 'right', 'va': 'top'},
 }
-_star_color = 'cyan'
+_star_color = 'gold'
 _MAINSHOCK_ZORDER = 20  # above every other map layer (scatter zorder=5, stars/labels included)
 for _label, _spec in _MAINSHOCKS.items():
     _lat, _lon = _spec['loc']
@@ -163,17 +168,19 @@ for _label, _spec in _MAINSHOCKS.items():
     ax_map.annotate(
         _label,
         xy=(_lon, _lat), xycoords=proj._as_mpl_transform(ax_map),
-        fontsize=7.5, color='white', fontweight='bold',
+        fontsize=9, color='white', fontweight='bold',
         xytext=_spec['offset'], textcoords='offset points',
         ha=_spec['ha'], va=_spec['va'], zorder=_MAINSHOCK_ZORDER + 1,
         bbox=dict(boxstyle='round,pad=0.2', fc='black', alpha=0.8, lw=0),
         arrowprops=dict(arrowstyle='-', color='black', lw=0.8, shrinkA=0, shrinkB=6),
     )
 
-cbar_ax = fig.add_axes(AX_POS['map_cbar'])
-cbar = fig.colorbar(sc, cax=cbar_ax)
+# Colorbar hugs the map's actual (aspect-constrained) box, not the nominal AX_POS['map'].
+ax_map.apply_aspect()
+_p = ax_map.get_position()
+cbar_ax = fig.add_axes([_p.x1 + 0.012, _p.y0, 0.012, _p.height])
+cbar = fig.colorbar(plt.cm.ScalarMappable(norm=sc.norm, cmap=sc.cmap), cax=cbar_ax)   # opaque (sc has alpha)
 cbar.set_label('ANSS Magnitude')
-ax_map.set_title('USGS/ANSS Event Locations')
 
 # -- panel2: magnitude histogram ----------------------------------------------
 ax2 = fig.add_axes(AX_POS['panel2'])
@@ -182,14 +189,12 @@ _mag_bins = np.arange(np.floor(catalog['usgs_mag'].min() * 2) / 2,
 ax2.hist(catalog['usgs_mag'], bins=_mag_bins, color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax2.set_xlabel('ANSS Magnitude')
 ax2.set_ylabel('Count')
-ax2.set_title('Magnitude Distribution')
 
 # -- panel3: depth histogram ---------------------------------------------------
 ax3 = fig.add_axes(AX_POS['panel3'])
 ax3.hist(catalog['usgs_depth'], bins=30, color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax3.set_xlabel('Depth (km)')
 ax3.set_ylabel('Count')
-ax3.set_title('Depth Distribution')
 
 # -- panel4: distance to the 4th triggering station histogram ----------------
 ax4 = fig.add_axes(AX_POS['panel4'])
@@ -197,7 +202,9 @@ ax4.hist(catalog['dist_4th_station_km'].dropna(), bins=30,
          color='black', alpha=0.8, edgecolor='white', linewidth=0.4)
 ax4.set_xlabel('Distance to 4th station (km)')
 ax4.set_ylabel('Count')
-ax4.set_title('4th-Station Distance Distribution')
+
+for _ax in (ax2, ax3, ax4):
+    _ax.spines[['top', 'right']].set_visible(False)
 
 fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.png'), dpi=300, bbox_inches='tight')
 fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.pdf'), bbox_inches='tight')

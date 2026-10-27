@@ -19,6 +19,8 @@
 # =============================================================================
 
 import os
+import pickle
+import sys
 
 import numpy as np
 import pandas as pd
@@ -64,6 +66,8 @@ FIGURES = [
         'title':    'Ridgecrest 2019',
         'static':   os.path.join(RESULTS_DIR, 'case_studies', 'Ridgecrest', 'output',
                                  'time_independent', f'max_trigs_{MAX_TRIGS}'),
+        'dynamic':  os.path.join(RESULTS_DIR, 'case_studies', 'Ridgecrest', 'output',
+                                 'time_dependent', f'max_trigs_{MAX_TRIGS}'),
         'catalog':  os.path.join(DATA_DIR, 'case_studies', 'Ridgecrest', 'Ridgecrest_2019_catalog.parquet'),
         'run_dir':  os.path.join(DATA_DIR, 'case_studies', 'Ridgecrest', 'run_files'),
         'stations': os.path.join(DATA_DIR, 'case_studies', 'Ridgecrest', 'station_availability_cache.parquet'),
@@ -74,6 +78,7 @@ FIGURES = [
         'tag':      'benchmark',
         'title':    'California benchmark',
         'static':   os.path.join(RESULTS_DIR, 'output', 'time_independent', f'max_trigs_{MAX_TRIGS}'),
+        'dynamic':  os.path.join(RESULTS_DIR, 'output', 'time_dependent', f'max_trigs_{MAX_TRIGS}'),
         'catalog':  os.path.join(DATA_DIR, 'reference', 'bEPIC_testing_catalog.txt'),
         'run_dir':  os.path.join(DATA_DIR, 'run_files'),
         'stations': os.path.join(DATA_DIR, 'reference', 'station_availability_cache.parquet'),
@@ -106,8 +111,26 @@ def load_catalog(path):
     return cat
 
 
+ETAS_BG_CACHE = os.path.join(OUTPUT_DIR, '.cache', 'row1.pkl')   # written by prior_comparison.py
+
+
+def load_etas_background():
+    """ETAS prior with the free_background spatial mu (panel (c) of prior_comparison.png), or None if not cached.
+
+    It is the prior evaluated at the end of the inversion window, so it is dominated by the time-invariant
+    spatial background; it is not the prior bEPIC used for any particular event.
+    """
+    if not os.path.exists(ETAS_BG_CACHE):
+        print(f'  ETAS background cache not found (run prior_comparison.py first): {ETAS_BG_CACHE}')
+        return None
+    with open(ETAS_BG_CACHE, 'rb') as f:
+        return pickle.load(f)[2]      # (kde_prior, prior_flat, prior_spatial, ...)
+
+
 def load_prior_grid(name, tag):
     """Cached .tt3 for the background shading, or None (Uniform has no file)."""
+    if name == 'ETAS':
+        return load_etas_background()
     fn = f'kde_seismicity_{tag}.tt3' if name == 'KDE_Seismicity' else config.PRIOR_FILENAMES.get(name)
     if fn is None:
         return None
@@ -162,11 +185,21 @@ def plot_prior_density(ax, prior, extent, proj, pad=0.5):
                   alpha=0.35, norm=LogNorm(vmin=vmin, vmax=vmax), zorder=2)
 
 
-def plot_comparison(cfg):
+def results_csv(cfg, name):
+    """Results CSV for a prior: ETAS is the time-dependent run, the rest are time-independent."""
+    if name == 'ETAS':
+        return os.path.join(cfg['dynamic'], 'etas_dynamic_benchmark_results.csv')
+    return os.path.join(cfg['static'], f'{name.lower()}_benchmark_results.csv')
+
+
+def plot_comparison(cfg, names=None, out_prefix='time_independent_comparison'):
+    """One map panel per prior in `names` (default PRIOR_NAMES), 3 columns, legend in the next free cell.
+    ETAS is shaded with its free_background spatial prior (benchmark region only; the cache is for California)."""
+    names = names or PRIOR_NAMES
     # -- Load results at TRIGGER_NUMBER, one DataFrame per prior ---------------
     map_data = {}
-    for name in PRIOR_NAMES:
-        csv = os.path.join(cfg['static'], f'{name.lower()}_benchmark_results.csv')
+    for name in names:
+        csv = results_csv(cfg, name)
         if not os.path.exists(csv):
             print(f'  [{cfg["tag"]}/{name}] CSV not found — skipping: {csv}')
             continue
@@ -187,9 +220,17 @@ def plot_comparison(cfg):
     if SHOW_STATIONS:
         trig_stas, untrig_stas = load_stations(cfg, set(all_pts['event_id']))
 
-    # -- Figure: 2x3 grid, sixth cell holds the legend -----------------------
+    # -- Figure: 3 columns, the cell after the last panel holds the legend ----
+    # Panels are equal-aspect in degrees, so size the figure from the map extent (no dead space between rows/title).
     proj = ccrs.PlateCarree()
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10), subplot_kw={'projection': proj})
+    ncols = 3
+    nrows = int(np.ceil((len(map_data) + 1) / ncols))
+    panel_w = 15 * 0.30
+    panel_h = panel_w * (extent[3] - extent[2]) / (extent[1] - extent[0])
+    fig_h = nrows * (panel_h + 0.45) + 0.8      # + panel titles, x tick labels and the suptitle
+    fig, axes = plt.subplots(nrows, ncols, figsize=(15, fig_h), subplot_kw={'projection': proj})
+    fig.subplots_adjust(left=0.05, right=0.99, wspace=0.05, hspace=0.16 * 4 / fig_h * 2,
+                        top=1 - 0.65 / fig_h, bottom=0.45 / fig_h)
     axes = axes.flatten()
 
     for ax, (name, sub) in zip(axes, map_data.items()):
@@ -264,19 +305,27 @@ def plot_comparison(cfg):
     for ax in axes[len(map_data) + 1:]:
         ax.set_visible(False)
 
-    fig.suptitle(f'Posterior location errors at {TRIGGER_NUMBER} triggers — {cfg["title"]}', fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.suptitle(f'Posterior location errors at {TRIGGER_NUMBER} triggers — {cfg["title"]}', fontsize=14,
+                 y=1 - 0.1 / fig_h)
 
-    out = os.path.join(OUTPUT_DIR, f'time_independent_comparison_{cfg["tag"]}')
+    out = os.path.join(OUTPUT_DIR, f'{out_prefix}_{cfg["tag"]}')
     fig.savefig(out + '.png', dpi=300, bbox_inches='tight')
     fig.savefig(out + '.pdf', bbox_inches='tight')
     print(f'Saved: {out}.png')
     plt.show()
 
 #%%
-# ── Ridgecrest ──────────────────────────────────────────────────────────────
-plot_comparison(FIGURES[0])
+# Usage: python time_independent_comparison.py [ridgecrest] [benchmark] [kde_vs_etas]   (default: all three)
+which = [a.lower() for a in sys.argv[1:]] or ['ridgecrest', 'benchmark', 'kde_vs_etas']
+
+if 'ridgecrest' in which:
+    plot_comparison(FIGURES[0])
 
 #%%
-# ── California benchmark ────────────────────────────────────────────────────
-plot_comparison(FIGURES[1])
+if 'benchmark' in which:
+    plot_comparison(FIGURES[1])
+
+#%%
+# KDE_Seismicity vs ETAS only (California benchmark): two panels + legend
+if 'kde_vs_etas' in which:
+    plot_comparison(FIGURES[1], names=['KDE_Seismicity', 'ETAS'], out_prefix='kde_vs_etas_comparison')

@@ -23,7 +23,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, TwoSlopeNorm
 from scipy.interpolate import RegularGridInterpolator
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -32,6 +32,7 @@ from priors import SeismicPrior
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 CMAP       = 'seismic'
+plt.rcParams.update({'font.family': 'sans-serif', 'font.size': 12, 'savefig.transparent': True})
 
 #%%
 # ── Figure 1: ETAS conditional intensity, before vs. after ──────────────────
@@ -144,7 +145,7 @@ EXTENT = [-126.5, -113.5, 31, 43]
 # Percentile range of each panel's log10 values used for its colorbar
 # (default is the full min/max). KDE's tails reach ~-100, which would wash out
 # everything else.
-CLIM_PCT = {'KDE_Seismicity': (10, 99.5)}
+CLIM_PCT = {'KDE_Seismicity': (10, 99.5)}   # others default to (1, 99)
 
 priors = {}
 for label, fname in PRIOR_FILES:
@@ -178,29 +179,28 @@ for name, p in priors.items():
 # Uniform prior: constant on the same grid (each cell 1/N), so one flat color.
 log_grids['Uniform'] = np.full(LAT_C.shape, np.log10(1 / LAT_C.size))
 
+# Standard prior colors (skills.md), used for the panel labels.
+PRIOR_COLORS = {'GEAR1': 'tab:green', 'NSHM': 'tab:orange', 'Helmstetter': 'tab:purple',
+                'KDE_Seismicity': 'darkblue', 'Uniform': 'gray'}
+
 proj = ccrs.PlateCarree()
 n = len(log_grids)
-fig2, axes2 = plt.subplots(1, n, figsize=(3.6 * n, 4.0), subplot_kw={'projection': proj})
+fig2, axes2 = plt.subplots(1, n, figsize=(3.6 * n, 4.0), subplot_kw={'projection': proj},
+                           gridspec_kw={'wspace': 0.05})
 
 for ax, (name, g_log) in zip(axes2, log_grids.items()):
     ax.set_extent(EXTENT, crs=proj)
-    ax.add_feature(cfeature.STATES, linewidth=0.4, edgecolor='black')
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(name, fontsize=9)
-    if name == 'Uniform':
-        # Constant field: give the colorbar a +/-1 decade range so the panel
-        # shows one flat mid-scale color instead of an undefined range.
-        vmin, vmax = g_log[0, 0] - 1, g_log[0, 0] + 1
-    else:
-        vmin, vmax = np.nanpercentile(g_log, CLIM_PCT.get(name, (0, 100)))
-    im = ax.imshow(g_log, origin='lower', extent=EXTENT, transform=proj,
-                   aspect='auto', cmap=CMAP, vmin=vmin, vmax=vmax)
-    cb = fig2.colorbar(im, ax=ax, orientation='horizontal', fraction=0.05, pad=0.06)
-    cb.set_label('log₁₀(p)', fontsize=7)
-    cb.ax.tick_params(labelsize=6)
-
-fig2.suptitle('Prior models — log₁₀ scale', fontsize=11, y=1.01)
+    # Diverging about the uniform level (same grid, each prior sums to 1): red = more likely
+    # than uniform, blue = less. Ends clipped at percentiles; Uniform is flat at the center.
+    uni = log_grids['Uniform'][0, 0]
+    lo, hi = np.nanpercentile(g_log, CLIM_PCT.get(name, (1, 99)))
+    lo, hi = min(lo, uni - 0.1), max(hi, uni + 0.1)
+    ax.imshow(g_log, origin='lower', extent=EXTENT, transform=proj, aspect='auto',
+              cmap='RdBu_r', norm=TwoSlopeNorm(vcenter=uni, vmin=lo, vmax=hi))
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, zorder=2)
+    ax.add_feature(cfeature.STATES, linewidth=0.4, edgecolor='gray', zorder=2)
+    ax.set_title(name, fontsize=13, fontweight='bold', color=PRIOR_COLORS[name])
+    ax.spines['geo'].set_visible(False)
 
 out2 = os.path.join(OUTPUT_DIR, 'presentation_prior_strip.png')
 fig2.savefig(out2, dpi=200, bbox_inches='tight')

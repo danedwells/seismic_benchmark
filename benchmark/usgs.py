@@ -12,7 +12,7 @@ import time
 import requests
 import pandas as pd
 from io import StringIO
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from benchmark import runner as benchmark_runner
@@ -349,9 +349,12 @@ def build_run_file_from_usgs(
     phases_df['location'] = [p[3] for p in parsed]
 
     # --- arrival time → Unix timestamp ---
-    phases_df['trigger_time'] = phases_df['Arrival Time'].apply(
-        lambda s: datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
-    )
+    # USGS arrival strings can lack a 'Z'/offset (e.g. '2020-03-18T13:09:33.84'); they are
+    # UTC, so a naive parse must not fall back to the machine's local timezone.
+    def _unix_utc(s):
+        t = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        return (t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t).timestamp()
+    phases_df['trigger_time'] = phases_df['Arrival Time'].apply(_unix_utc)
     phases_df['tterr'] = phases_df['Residual'].fillna(0.0)
 
     # --- sort by arrival time; deduplicate same channel (keep first arrival) ---

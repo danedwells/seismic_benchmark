@@ -68,16 +68,17 @@ plt.rcParams.update({
     'axes.titleweight': 'bold',
     'axes.labelsize':   11,
     'figure.dpi':       150,
+    'savefig.transparent': True,
 })
 
 proj = ccrs.PlateCarree()
 
 
 def _add_basemap(ax):
-    ax.add_feature(cfeature.STATES,    linewidth=0.6, edgecolor='black')
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
-    ax.add_feature(cfeature.LAND,      facecolor='lightgray',   zorder=0)
-    ax.add_feature(cfeature.OCEAN,     facecolor='lightyellow', zorder=0)
+    ax.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray', zorder=2)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.7, zorder=2)
+    ax.add_feature(cfeature.LAND,      facecolor='lightgray', zorder=0)
+    ax.add_feature(cfeature.OCEAN,     facecolor='lightcyan', zorder=0)
 
 
 #%%
@@ -164,7 +165,16 @@ else:
 
 #%%
 # ── Build the figure ──────────────────────────────────────────────────────
-cmap = 'seismic'
+# Diverging about each grid's uniform level (all grids sum to 1, so log10(1/N cells)):
+# red = more likely than uniform, blue = less. Same half-range everywhere; values beyond saturate.
+cmap = 'RdBu_r'
+HALF = 2.5
+
+
+def _norm(obj):
+    c = np.log10(1 / obj.grid.size)
+    return mcolors.TwoSlopeNorm(vcenter=c, vmin=c - HALF, vmax=c + HALF)
+
 
 fig, axes = plt.subplots(2, 3, figsize=(15, 9), subplot_kw={'projection': proj})
 
@@ -175,12 +185,6 @@ panels = [
     ('ETAS — spatial background', prior_spatial),
 ]
 log_grids = [np.log10(obj.grid + EPS) for _, obj in panels]
-
-# Fixed range centred near the ETAS background / peak boundary so that (b) and (c)
-# use both halves of the diverging colormap (percentiles put the midpoint far
-# below their backgrounds). Values outside the range saturate.
-vlo, vhi = -8.5, -3.7
-norm = mcolors.Normalize(vmin=vlo, vmax=vhi)
 
 # Zoom to the ETAS polygon's extent (with padding) — shared across all three
 # panels since KDE_Seismicity covers the same California region.
@@ -196,24 +200,18 @@ _extent = [
 for ax, (title, obj), log_grid, letter in zip(axes[0, :], panels, log_grids, 'abc'):
     ax.set_extent(_extent, crs=proj)
     _add_basemap(ax)
-    ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=norm, transform=proj)
+    ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=_norm(obj), transform=proj)
     ax.set_title(title)
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold',
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
 
-cbar_ax_row1 = fig.add_axes([0.945, 0.54, 0.015, 0.42])  # [left, bottom, width, height]
-fig.colorbar(plt.cm.ScalarMappable(cmap=cmap, norm=norm), cax=cbar_ax_row1,
-             label=r'$\log_{10}$ prior density')
 
 # -- Row 2: MTJ 2024 M7 — before vs after the mainshock ----------------------
 axes[1, 2].remove()  # reserved for a future 3rd panel in this row
 
 mtj_panels    = [('Before mainshock', prior_mtj_before), ('After mainshock', prior_mtj_after)]
 mtj_log_grids = [np.log10(obj.grid + EPS) for _, obj in mtj_panels]
-
-mtj_vlo, mtj_vhi = np.percentile(np.concatenate([g.ravel() for g in mtj_log_grids]), [1, 99.9])
-mtj_norm = mcolors.Normalize(vmin=mtj_vlo, vmax=mtj_vhi)
 
 # Custom mendecino triple junction extent
 _mtj_extent = [
@@ -223,55 +221,45 @@ _mtj_extent = [
 for ax, (title, obj), log_grid, letter in zip(axes[1, :2], mtj_panels, mtj_log_grids, 'de'):
     ax.set_extent(_mtj_extent, crs=proj)
     _add_basemap(ax)
-    ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=mtj_norm, transform=proj)
-    ax.plot(MAINSHOCK_LON, MAINSHOCK_LAT, marker='*', color='white', markersize=16,
+    ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=_norm(obj), transform=proj)
+    ax.plot(MAINSHOCK_LON, MAINSHOCK_LAT, marker='*', color='gold', markersize=16,
             markeredgecolor='black', markeredgewidth=0.8, transform=proj, zorder=5)
     ax.set_title(title)
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold',
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
 
-cbar_ax_row2 = fig.add_axes([0.65, 0.04, 0.015, 0.42])  # [left, bottom, width, height]
-fig.colorbar(plt.cm.ScalarMappable(cmap=cmap, norm=mtj_norm), cax=cbar_ax_row2,
-             label=r'$\log_{10}$ prior density')
-
-"""
-fig.suptitle(
-    f'Spatial prior comparison  ({forecast_time.date()})   |   '
-    f'MTJ M{MAINSHOCK_MAG:g}  {MAINSHOCK_TIME:%Y-%m-%d %H:%M} UTC',
-    y=0.98,
-)
-"""
 
 # ── Exact per-panel placement [left, bottom, width, height] (figure fraction) ──
 # Edit these directly to hand-tune the layout — set_position overrides
 # whatever matplotlib's default subplot grid computed above.
-axes[0, 0].set_position([0.03, 0.52, 0.28, 0.42])  # (a) KDE Seismicity
-axes[0, 1].set_position([0.34, 0.52, 0.28, 0.42])  # (b) ETAS — flat background
-axes[0, 2].set_position([0.65, 0.52, 0.28, 0.42])  # (c) ETAS — spatial background
-axes[1, 0].set_position([0.03, 0.04, 0.28, 0.42])  # (d) Before mainshock
-axes[1, 1].set_position([0.34, 0.04, 0.28, 0.42])  # (e) After mainshock
+axes[0, 0].set_position([0.06, 0.52, 0.29, 0.42])  # (a) KDE Seismicity
+axes[0, 1].set_position([0.37, 0.52, 0.29, 0.42])  # (b) ETAS — flat background
+axes[0, 2].set_position([0.68, 0.52, 0.29, 0.42])  # (c) ETAS — spatial background
+axes[1, 0].set_position([0.06, 0.04, 0.29, 0.42])  # (d) Before mainshock
+axes[1, 1].set_position([0.37, 0.04, 0.29, 0.42])  # (e) After mainshock
 
+# Axis ticks/labels — commented out for the presentation version (restore for the paper).
 # X-axis ticks/labels — bottom-most panel in each column (axes[0,2] has no
-# panel below it since axes[1,2] was removed, so it gets the tick marks instead)
-for ax, step in ((axes[1, 0], 1), (axes[1, 1], 1)):
-    lo, hi = ax.get_extent(crs=proj)[:2]
-    ax.set_xticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
-    ax.xaxis.set_major_formatter(LongitudeFormatter())
-    ax.set_xlabel('Longitude')
-
-for ax,step in ((axes[0,0],4), (axes[0,1],4),(axes[0, 2], 4)):
-    lo, hi = ax.get_extent(crs=proj)[:2]
-    ax.set_xticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
-    ax.xaxis.set_major_formatter(LongitudeFormatter())
-    #ax.set_xlabel('Longitude')
-
-# Y-axis ticks/labels — left-most panel in each row
-for ax, step in ((axes[0, 0], 4), (axes[1, 0], 1)):
-    lo, hi = ax.get_extent(crs=proj)[2:]
-    ax.set_yticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
-    ax.yaxis.set_major_formatter(LatitudeFormatter())
-    ax.set_ylabel('Latitude')
+# # panel below it since axes[1,2] was removed, so it gets the tick marks instead)
+# for ax, step in ((axes[1, 0], 1), (axes[1, 1], 1)):
+#     lo, hi = ax.get_extent(crs=proj)[:2]
+#     ax.set_xticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
+#     ax.xaxis.set_major_formatter(LongitudeFormatter())
+#     ax.set_xlabel('Longitude')
+#
+# for ax,step in ((axes[0,0],4), (axes[0,1],4),(axes[0, 2], 4)):
+#     lo, hi = ax.get_extent(crs=proj)[:2]
+#     ax.set_xticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
+#     ax.xaxis.set_major_formatter(LongitudeFormatter())
+#     #ax.set_xlabel('Longitude')
+#
+# # Y-axis ticks/labels — left-most panel in each row
+# for ax, step in ((axes[0, 0], 4), (axes[1, 0], 1)):
+#     lo, hi = ax.get_extent(crs=proj)[2:]
+#     ax.set_yticks(np.arange(np.ceil(lo / step) * step, hi, step), crs=proj)
+#     ax.yaxis.set_major_formatter(LatitudeFormatter())
+#     ax.set_ylabel('Latitude')
 
 
 fig.savefig(os.path.join(OUTPUT_DIR, 'prior_comparison.png'), dpi=300, bbox_inches='tight')

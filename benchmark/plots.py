@@ -1648,7 +1648,10 @@ def plot_qq_calibration_by_param(
         results aren't named ``{prior}_benchmark_results.csv``). Keys:
           'name'         — panel title / legend label prefix
           'output_dirs'  — dict[param_value, dir], analogous to `output_dirs`
-          'csv_filename' — filename read from each directory in 'output_dirs'
+          'csv_filename' — filename read from each directory in 'output_dirs';
+                            may contain a ``{param_value}`` placeholder for
+                            sweeps that vary the filename rather than the
+                            directory (e.g. ``bw_sq``)
         Param values shared with `output_dirs` reuse the same colour so
         sigma_s is comparable across all panels; values unique to
         `extra_panel` fall back to a separate colour cycle.
@@ -1703,7 +1706,8 @@ def plot_qq_calibration_by_param(
         panel_param_values = list(spec['output_dirs'].keys())
         for i, param_value in enumerate(panel_param_values):
             color = color_map.get(param_value, fallback_colors[i % len(fallback_colors)])
-            csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
+            csv_path = os.path.join(spec['output_dirs'][param_value],
+                                     spec['csv_filename'].format(param_value=param_value))
 
             try:
                 y_src = load_final_values(csv_path, y_column, n_trigs=n_trigs)
@@ -2027,7 +2031,10 @@ def plot_log_likelihood_sum_by_param(
         tree with a fixed CSV filename (e.g. the dynamic ETAS prior). Keys:
           'name'         — panel title
           'output_dirs'  — dict[param_value, dir], analogous to `output_dirs`
-          'csv_filename' — filename read from each directory in 'output_dirs'
+          'csv_filename' — filename read from each directory in 'output_dirs';
+                            may contain a ``{param_value}`` placeholder for
+                            sweeps that vary the filename rather than the
+                            directory (e.g. ``bw_sq``)
     n_trigs : int or None
         Which trigger-count version to use per event. Defaults to None,
         which takes each event's last (most-triggered) row.
@@ -2060,7 +2067,8 @@ def plot_log_likelihood_sum_by_param(
         panel_param_values = sorted(spec['output_dirs'].keys())
         xs, ys = [], []
         for param_value in panel_param_values:
-            csv_path = os.path.join(spec['output_dirs'][param_value], spec['csv_filename'])
+            csv_path = os.path.join(spec['output_dirs'][param_value],
+                                     spec['csv_filename'].format(param_value=param_value))
             vals = load_final_values(csv_path, column, n_trigs=n_trigs)
             if vals is None or len(vals) == 0:
                 print(f"  [{spec['name']}, {param_label}={param_value}] no data for {column}")
