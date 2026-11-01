@@ -105,6 +105,6 @@ for r, ((ev, rowlabel), R) in enumerate(zip(EVENTS, results)):
         ax.plot(R['usgs'][1], R['usgs'][0], '*', ms=16, color='gold', markeredgecolor='black',
                 markeredgewidth=0.8, transform=proj, zorder=7, label='USGS location')
         ax.set_title(title)
-fig.savefig(os.path.join(OUTPUT_DIR, 'likelihood_vs_prior_failure.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'likelihood_vs_prior_failure.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'likelihood_vs_prior_failure.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'likelihood_vs_prior_failure.pdf'), bbox_inches='tight')
 plt.show()

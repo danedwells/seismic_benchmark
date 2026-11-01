@@ -127,6 +127,6 @@ axd.text(0.97, 0.93, f'(d) Log-likelihood vs $\\sigma_s$ - {N_TRIGGERS} triggers
 axd.grid(True, alpha=0.3)
 axd.legend()
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'sigma_calibration.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'sigma_calibration.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'sigma_calibration.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'sigma_calibration.pdf'), bbox_inches='tight')
 plt.show()

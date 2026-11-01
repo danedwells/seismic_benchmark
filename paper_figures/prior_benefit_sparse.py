@@ -100,6 +100,6 @@ for r, ((ev, rowlabel), R) in enumerate(zip(EVENTS, results)):
         ax.plot(R['usgs'][1], R['usgs'][0], '*', ms=16, color='gold', markeredgecolor='black',
                 markeredgewidth=0.8, transform=proj, zorder=7, label='USGS location')
         ax.set_title(title)
-fig.savefig(os.path.join(OUTPUT_DIR, 'prior_benefit_sparse.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'prior_benefit_sparse.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'prior_benefit_sparse.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'prior_benefit_sparse.pdf'), bbox_inches='tight')
 

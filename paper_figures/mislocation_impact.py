@@ -58,7 +58,7 @@ from benchmark.metrics import _haversine_km
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
-FIG_DIR      = os.path.join(OUTPUT_DIR, 'mislocation_impact')    # figures are saved in this subfolder
+FIG_DIR      = os.path.join(OUTPUT_DIR, 'figures', 'mislocation_impact')    # figures are saved in this subfolder
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------

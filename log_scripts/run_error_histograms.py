@@ -99,7 +99,7 @@ ax_mag.axvline(0, color='r', ls='--')
 ax_mag.set_xlabel('EPIC mag - USGS mag'); ax_mag.set_ylabel('Events')
 ax_mag.set_title(f'Magnitude error (nS >= {N_TRIGS}, n={len(res)})')
 fig.tight_layout()
-out_path = Path(__file__).resolve().parent / f'{RUN_DIR.parent.name}_error_hist_nS{N_TRIGS}.png'
+out_path = Path(__file__).resolve().parent / 'figures' / f'{RUN_DIR.parent.name}_error_hist_nS{N_TRIGS}.png'
 fig.savefig(out_path, dpi=150)
 print('Saved', out_path)
 

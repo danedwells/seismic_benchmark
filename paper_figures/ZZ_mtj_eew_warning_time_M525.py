@@ -34,7 +34,7 @@ from openquake.hazardlib.gsim.chiou_youngs_2014 import ChiouYoungs2014
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
-FIG_DIR      = os.path.join(OUTPUT_DIR, 'eew_warning_time')    # figures are saved in this subfolder
+FIG_DIR      = os.path.join(OUTPUT_DIR, 'figures', 'eew_warning_time')    # figures are saved in this subfolder
 os.makedirs(FIG_DIR, exist_ok=True)
 
 CASE_STUDY   = 'MTJ_2024_M7'

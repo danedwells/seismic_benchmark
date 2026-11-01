@@ -77,6 +77,6 @@ ax2.legend(loc='upper left', fontsize=10, frameon=False, bbox_to_anchor=(0.0, 1.
 for ax in (ax1, ax2):
     ax.spines[['top', 'right']].set_visible(False)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'pit_concept.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'pit_concept.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'pit_concept.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'pit_concept.pdf'), bbox_inches='tight')
 plt.show()

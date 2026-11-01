@@ -133,8 +133,8 @@ _plot_calibration_panel(ax_b, PANELS[1]['stages'], PANELS[1]['title'], 'b')
 ax_a.set_ylabel('Empirical posterior confidence level')
 ax_b.set_yticklabels([])
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'qq_calibration_progression.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'qq_calibration_progression.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'qq_calibration_progression.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'qq_calibration_progression.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

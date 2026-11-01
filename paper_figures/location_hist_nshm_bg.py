@@ -94,5 +94,5 @@ for txt, x0, ha, v in (('← better', 0.0, 'left', -0.8 * LIM), ('worse →', 1.
     cax.annotate(txt, xy=(x0, 0), xycoords='axes fraction', xytext=(0, -52), textcoords='offset points', ha=ha, va='top',
                  fontsize=16, fontweight='bold', color=cmap(norm(v)))
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'location_hist_nshm_bg.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'location_hist_nshm_bg.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_nshm_bg.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_nshm_bg.pdf'), bbox_inches='tight')

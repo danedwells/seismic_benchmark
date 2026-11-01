@@ -153,8 +153,8 @@ ax_mag.text(0.5, 0.7, 'Magnitude results pending', transform=ax_mag.transAxes,
             ha='center', va='center', fontsize=12, color='gray')
 ax_mag.text(0.02, 0.98, '(c)', transform=ax_mag.transAxes, ha='left', va='top', fontsize=13, fontweight='bold')
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_location_vs_time.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'mtj_location_vs_time.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'mtj_location_vs_time.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'mtj_location_vs_time.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

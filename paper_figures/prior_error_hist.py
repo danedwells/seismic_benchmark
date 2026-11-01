@@ -69,8 +69,8 @@ def plot_error_hists(names, out_name, labeled=True):
         for ax in axes:
             ax.tick_params(which='both', bottom=False, labelbottom=False)
 
-    fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.png'), dpi=300, bbox_inches='tight')
-    fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.png'), dpi=300, bbox_inches='tight')
+    fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.pdf'), bbox_inches='tight')
     plt.show()
 
 

@@ -206,8 +206,8 @@ ax4.set_ylabel('Count')
 for _ax in (ax2, ax3, ax4):
     _ax.spines[['top', 'right']].set_visible(False)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'data_california_map.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'data_california_map.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'data_california_map.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

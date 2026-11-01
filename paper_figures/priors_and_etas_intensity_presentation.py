@@ -125,7 +125,7 @@ cbar = fig1.colorbar(im1, ax=axes, shrink=0.85, pad=0.02)
 cbar.set_label(r'Conditional intensity $\lambda(x,y,t)$  [events / km$^2$ / day]', fontsize=11)
 fig1.suptitle('ETAS conditional intensity: before vs. after a new earthquake', fontsize=14)
 
-out1 = os.path.join(OUTPUT_DIR, 'presentation_etas_intensity.png')
+out1 = os.path.join(OUTPUT_DIR, 'figures', 'presentation_etas_intensity.png')
 fig1.savefig(out1, dpi=200, bbox_inches='tight')
 print(f'Saved: {out1}')
 plt.show()
@@ -202,7 +202,7 @@ for ax, (name, g_log) in zip(axes2, log_grids.items()):
     ax.set_title(name, fontsize=13, fontweight='bold', color=PRIOR_COLORS[name])
     ax.spines['geo'].set_visible(False)
 
-out2 = os.path.join(OUTPUT_DIR, 'presentation_prior_strip.png')
+out2 = os.path.join(OUTPUT_DIR, 'figures', 'presentation_prior_strip.png')
 fig2.savefig(out2, dpi=200, bbox_inches='tight')
 print(f'Saved: {out2}')
 plt.show()

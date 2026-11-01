@@ -111,8 +111,8 @@ def plot_improvement_map(ev, extent, pixel_deg, min_events, figsize, out_name, a
         ax.text(0.98, 0.97, f'Median improvement:\n{pct:.0f}%  ({km:.1f} km)', transform=ax.transAxes,
                 ha='right', va='top', fontsize=14, fontweight='bold', color=cmap(norm(-(pct if RELATIVE else km))),
                 bbox=dict(boxstyle='round', facecolor='#222222', alpha=0.92, edgecolor='none'), zorder=10)   # dark box so pale blues stay readable
-    fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.png'), dpi=300, bbox_inches='tight')
-    fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.pdf'), bbox_inches='tight')
+    fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.png'), dpi=300, bbox_inches='tight')
+    fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.pdf'), bbox_inches='tight')
     plt.show()
 
 

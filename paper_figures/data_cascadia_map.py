@@ -114,5 +114,5 @@ ax4 = fig.add_axes(AX_POS['panel4'])
 ax4.hist(catalog['year'], bins=np.arange(2022, np.ceil(catalog['year'].max()) + 0.5, 0.5), **hist_kw)
 ax4.set_xlabel('Year'); style(ax4)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'data_cascadia_map.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'data_cascadia_map.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'data_cascadia_map.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'data_cascadia_map.pdf'), bbox_inches='tight')

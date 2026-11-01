@@ -66,5 +66,5 @@ cat = cat.sort_values('mag')   # large events on top
 ax.scatter(cat.longitude, cat.latitude, s=1.5 * (cat.mag - 3) ** 2, c='#1f3a5f', alpha=0.35,
            linewidths=0, transform=ccrs.PlateCarree(), zorder=2)
 
-fig.savefig(os.path.join(OUT, 'global_seismicity_map.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUT, 'global_seismicity_map.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUT, 'figures', 'global_seismicity_map.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUT, 'figures', 'global_seismicity_map.pdf'), bbox_inches='tight')

@@ -18,7 +18,7 @@ RUN  = 'MTJ_sigma_and_prior'      # EPIC run whose log is compared
 EVENT_ID = 'nc75095651'
 LOG  = ROOT / 'log_files' / 'MTJ-selected' / RUN / 'epic' / f'{EVENT_ID}.log'
 CS   = ROOT / 'data' / 'california' / 'case_studies' / 'MTJ_2024_M7'
-OUT  = Path(__file__).resolve().parent / 'station_map.png'
+OUT  = Path(__file__).resolve().parent / 'figures' / 'station_map.png'
 USGS = (40.3740, -125.0217)
 N_PANELS = (10, 70)
 

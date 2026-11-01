@@ -179,8 +179,8 @@ fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=9, bbox_to_anch
 
 #fig.suptitle(f'Bayesian location — MTJ M7.0 mainshock  ({len(triggered)} stations triggered)', y=1.0)
 
-fig.savefig(os.path.join(OUTPUT_DIR, f'mtj_bayesian_location_example{SUFFIX}.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, f'mtj_bayesian_location_example{SUFFIX}.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'mtj_bayesian_location_example{SUFFIX}.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'mtj_bayesian_location_example{SUFFIX}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

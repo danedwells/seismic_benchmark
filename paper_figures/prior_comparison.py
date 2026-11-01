@@ -262,8 +262,8 @@ axes[1, 1].set_position([0.37, 0.04, 0.29, 0.42])  # (e) After mainshock
 #     ax.set_ylabel('Latitude')
 
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'prior_comparison.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'prior_comparison.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'prior_comparison.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'prior_comparison.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

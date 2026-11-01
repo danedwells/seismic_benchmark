@@ -176,13 +176,13 @@ def draw(i):
 
 
 anim = animation.FuncAnimation(fig, draw, frames=len(seq), blit=False)
-mp4 = os.path.join(OUTPUT_DIR, f'{OUT_NAME}.mp4')
+mp4 = os.path.join(OUTPUT_DIR, 'figures', f'{OUT_NAME}.mp4')
 anim.save(mp4, writer=animation.FFMpegWriter(fps=FPS, bitrate=4000,
                                               extra_args=['-pix_fmt', 'yuv420p']), dpi=120)
 print('saved', mp4)
 
 # GIF (palette-optimized, narrower) from the mp4
-gif = os.path.join(OUTPUT_DIR, f'{OUT_NAME}.gif')
+gif = os.path.join(OUTPUT_DIR, 'figures', f'{OUT_NAME}.gif')
 subprocess.run(['ffmpeg', '-y', '-i', mp4, '-vf',
                 f'fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse',
                 gif], check=True, capture_output=True)

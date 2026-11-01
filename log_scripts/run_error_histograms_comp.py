@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from benchmark.usgs import get_usgs_event
 
-SEQUENCE = 'Ridgecrest' # 'MTJ'
+SEQUENCE = 'MTJ' #'Ridgecrest' # 'MTJ'
 RUNS = {'control': 'gray', 'sigma_only': 'blue', 'sigma_and_prior': 'red'}
 
 N_TRIGS = 4
@@ -96,7 +96,7 @@ for which, logs in all_logs.items():
         r = d.sort_values('ver').iloc[0]
         out.append(dict(anss_id=anss_id, ver=r.ver, nS=r.nS, usgs_mag=u.mag,
                         loc_err_km=gps2dist_azimuth(u.lat, u.lon, r.lat, r.lon)[0] / 1e3,
-                        mag_err=r.mag - u.mag))
+                        mag_err=r.mag - u.mag, lat=r.lat, lon=r.lon, usgs_lat=u.lat, usgs_lon=u.lon))
     results[which] = pd.DataFrame(out)
     print(f'{which}: {len(results[which])} events with a matched version at nS >= {N_TRIGS}'
           + (f' and USGS M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''))
@@ -146,8 +146,129 @@ ax_mag.set_xlabel('EPIC mag - USGS mag'); ax_mag.set_ylabel('Events')
 ax_mag.set_title(f'Magnitude error (nS >= {N_TRIGS}{mag_note})')
 ax_mag.legend(loc='upper right')
 fig.tight_layout()
-out_path = Path(__file__).resolve().parent / f'{SEQUENCE}_error_hist_{N_TRIGS}_comp.png'
+out_path = Path(__file__).resolve().parent / 'figures' / f'{SEQUENCE}_error_hist_{N_TRIGS}_comp.png'
 fig.savefig(out_path, dpi=150)
 print('Saved', out_path)
+
+#%% Paper-style figure (same layout/style as paper_figures/location_hist_case_study.py):
+# (a) map of EPIC locations per run with arrows to the USGS location, (b) stacked location-error histograms
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from matplotlib.ticker import FuncFormatter
+from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+
+plt.rcParams.update({'font.size': 12, 'font.family': 'sans-serif', 'axes.titlesize': 13, 'axes.titleweight': 'bold',
+                     'axes.labelsize': 11, 'figure.dpi': 150})
+proj = ccrs.PlateCarree()
+SIZE_SCALE = dict(zip(RUNS, (1.6, 1.3, 1.1)))   # decreasing with draw order so overlapping dots read as concentric
+BUF = 0.2                                     # degrees added around the posterior locations
+MIN_MAP_ASPECT = 6.3 / 7.3                      # map box width/height; tall regions are widened east-west
+AX_POS = {'map': [0.05, 0.08, 0.45, 0.86], 'hists': [0.58, 0.183, 0.17, 0.654], 'mags': [0.82, 0.183, 0.17, 0.654]}
+
+fig = plt.figure(figsize=(14, 8.5))
+
+# -- Right: stacked location-error histograms, one per run, shared x-axis --
+bins = np.logspace(-1, 3, 20)
+hl, hb, hw, hh = AX_POS['hists']
+h_each = hh / len(RUNS)
+hist_axes = []
+for i, (which, color) in enumerate(RUNS.items()):
+    ax = fig.add_axes([hl, hb + hh - (i + 1) * h_each, hw, h_each], sharex=hist_axes[0] if hist_axes else None)
+    hist_axes.append(ax)
+    stats = results[which].loc_err_km.values
+    if len(stats):
+        ax.hist(stats, bins=bins, rwidth=0.9, color=color, alpha=0.7)
+        median_err = np.median(stats)
+        ax.axvline(median_err, ymax=0.55, color=color, ls='--', lw=1.5)   # stops above the bars, below the labels
+        ax.text(0.03, 0.70, f'median: {median_err:.1f} km', transform=ax.transAxes,
+                ha='left', va='top', fontsize=11, color=color, fontweight='bold')
+    ax.text(0.03, 0.92, which, transform=ax.transAxes, ha='left', va='top',
+            fontsize=13, color=color, fontweight='bold')
+    ax.set_yticks([])
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    if i < len(RUNS) - 1:
+        ax.tick_params(labelbottom=False, bottom=False)
+hist_axes[-1].set_xscale('log')
+hist_axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+hist_axes[-1].set_xlabel('Location error (km)')
+_y_max = max(a.get_ylim()[1] for a in hist_axes)
+for a in hist_axes:
+    a.set_ylim(0, 2.0 * _y_max)   # headroom: bars top out at half height so the name/median labels sit clear above them
+hist_axes[0].text(-0.2, 0.87, '(b)', transform=hist_axes[0].transAxes,
+                  ha='left', va='bottom', fontsize=13, fontweight='bold')
+
+# -- Middle-right: stacked magnitude-error histograms (same style, shared bins) --
+ml, mb, mw, mh = AX_POS['mags']
+m_each = mh / len(RUNS)
+mag_axes = []
+for i, (which, color) in enumerate(RUNS.items()):
+    ax = fig.add_axes([ml, mb + mh - (i + 1) * m_each, mw, m_each], sharex=mag_axes[0] if mag_axes else None)
+    mag_axes.append(ax)
+    stats = results[which].mag_err.values
+    if len(stats):
+        ax.hist(stats, bins=mag_bins, rwidth=0.9, color=color, alpha=0.7)
+        median_err = np.median(stats)
+        ax.axvline(median_err, ymax=0.55, color=color, ls='--', lw=1.5)
+        ax.text(0.03, 0.70, f'median: {median_err:+.2f}', transform=ax.transAxes,
+                ha='left', va='top', fontsize=11, color=color, fontweight='bold')
+    ax.text(0.03, 0.92, which, transform=ax.transAxes, ha='left', va='top',
+            fontsize=13, color=color, fontweight='bold')
+    ax.axvline(0, color='k', lw=0.8, alpha=0.5)
+    ax.set_yticks([])
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    if i < len(RUNS) - 1:
+        ax.tick_params(labelbottom=False, bottom=False)
+mag_axes[-1].set_xlabel('EPIC mag − USGS mag')
+_y_max = max(a.get_ylim()[1] for a in mag_axes)
+for a in mag_axes:
+    a.set_ylim(0, 2.0 * _y_max)
+mag_axes[0].text(-0.2, 0.87, '(c)', transform=mag_axes[0].transAxes,
+                 ha='left', va='bottom', fontsize=13, fontweight='bold')
+
+# -- Left: combined map of EPIC locations, colored by run --
+ax_map = fig.add_axes(AX_POS['map'], projection=proj)
+all_lats = pd.concat([r.lat for r in results.values()])
+all_lons = pd.concat([r.lon for r in results.values()])
+extent = [all_lons.min() - BUF, all_lons.max() + BUF, all_lats.min() - BUF, all_lats.max() + BUF]
+if (extent[1] - extent[0]) < MIN_MAP_ASPECT * (extent[3] - extent[2]):
+    _half = 0.5 * MIN_MAP_ASPECT * (extent[3] - extent[2])
+    _lon_c = 0.5 * (extent[0] + extent[1])
+    extent[0], extent[1] = _lon_c - _half, _lon_c + _half
+ax_map.set_extent(extent, crs=proj)
+ax_map.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
+ax_map.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
+ax_map.add_feature(cfeature.COASTLINE, linewidth=0.6, zorder=1)
+ax_map.add_feature(cfeature.STATES,    linewidth=0.4, edgecolor='gray', zorder=1)
+
+# Arrows from each run's location to the USGS location, colored to match that run's points
+for which, color in RUNS.items():
+    m = results[which]
+    ax_map.quiver(m.lon.values, m.lat.values, (m.usgs_lon - m.lon).values, (m.usgs_lat - m.lat).values,
+                  angles='xy', scale_units='xy', scale=1, color=color, alpha=0.3, width=0.0025,
+                  headwidth=3, headlength=3, headaxislength=4., transform=proj, zorder=4)
+for which, color in RUNS.items():
+    m = results[which]
+    ax_map.scatter(m.lon, m.lat, color=color, s=30 * SIZE_SCALE[which], alpha=0.5,
+                   edgecolors='white', linewidths=0.4, transform=proj, zorder=5, label=which)
+usgs_pts = pd.concat([r[['anss_id', 'usgs_lat', 'usgs_lon']] for r in results.values()]).drop_duplicates('anss_id')
+ax_map.scatter(usgs_pts.usgs_lon, usgs_pts.usgs_lat, marker='x', c='black', s=35, linewidths=1.1,
+               transform=proj, zorder=6, alpha=0.5, label='USGS (true)')
+
+ax_map.set_xticks(np.linspace(extent[0], extent[1], 5), crs=proj)
+ax_map.set_yticks(np.linspace(extent[2], extent[3], 5), crs=proj)
+ax_map.xaxis.set_major_formatter(LongitudeFormatter(number_format='.2f'))
+ax_map.yaxis.set_major_formatter(LatitudeFormatter(number_format='.2f'))
+ax_map.set_xlabel('Longitude')
+ax_map.set_ylabel('Latitude')
+ax_map.text(0.98, 0.02, f'EPIC locations at {N_TRIGS} stations', transform=ax_map.transAxes,
+            ha='right', va='bottom', fontsize=13, fontweight='bold', color='black',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none'))
+ax_map.text(0.01, 0.98, '(a)', transform=ax_map.transAxes, ha='left', va='top', fontsize=13, fontweight='bold')
+ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
+
+out_stem = Path(__file__).resolve().parent / 'figures' / f'{SEQUENCE}_location_hist_{N_TRIGS}_comp'
+fig.savefig(out_stem.with_suffix('.png'), dpi=300, bbox_inches='tight')
+fig.savefig(out_stem.with_suffix('.pdf'), bbox_inches='tight')
+print('Saved', out_stem)
 
 # %%

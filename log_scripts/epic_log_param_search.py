@@ -213,8 +213,8 @@ ax.plot(sel(best)['n'], sel(best).err_km, '^-', c='red',
         label=f"best: σ={best.sigma_s}, α={best.alpha}, dtt={best.dtt_weight}, depths={best.depths}")
 ax.set_xlabel('Stations reporting'); ax.set_ylabel('Distance to USGS (km)'); ax.set_ylim(bottom=0)
 ax.set_title(f'M7.0 MTJ mainshock, EPIC-log triggers + {PRIOR} prior'); ax.legend(fontsize=8)
-fig.tight_layout(); fig.savefig(HERE / f'epic_log_param_search_{PRIOR}.png', dpi=150)
-print('Saved', HERE / f'epic_log_param_search_{PRIOR}.png')
+fig.tight_layout(); fig.savefig(HERE / 'figures' / f'epic_log_param_search_{PRIOR}.png', dpi=150)
+print('Saved', HERE / 'figures' / f'epic_log_param_search_{PRIOR}.png')
 
 #%% Drop one station at each station count
 # 'worst residual': locate with all stations, drop the station with the largest travel-time residual
@@ -337,5 +337,5 @@ for (sg, al), d in extra:
     ax.plot(d.n, d.drop_worst_resid, lw=1.5, ms=5, label=f'  dropped, σ={sg}, α={al}', **st)
 ax.set_xlabel('Stations reporting'); ax.set_ylabel('Distance to USGS (km)'); ax.set_ylim(bottom=0)
 ax.set_title('(c)  Location error', fontweight='bold'); ax.legend(fontsize=8)
-fig.tight_layout(); fig.savefig(HERE / f'epic_log_drop_station_{PRIOR}.png', dpi=150)
-print('Saved', HERE / f'epic_log_drop_station_{PRIOR}.png')
+fig.tight_layout(); fig.savefig(HERE / 'figures' / f'epic_log_drop_station_{PRIOR}.png', dpi=150)
+print('Saved', HERE / 'figures' / f'epic_log_drop_station_{PRIOR}.png')

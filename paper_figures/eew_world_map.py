@@ -43,5 +43,5 @@ for adm, names in REGIONS.items():
     fill([s.geometry for s in states if s.attributes['admin'] == adm and s.attributes['name'] in names])
 
 ax.add_feature(cfeature.COASTLINE.with_scale('50m'), edgecolor='#999999', linewidth=0.3)
-fig.savefig(os.path.join(OUT, 'eew_world_map.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUT, 'eew_world_map.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUT, 'figures', 'eew_world_map.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUT, 'figures', 'eew_world_map.pdf'), bbox_inches='tight')

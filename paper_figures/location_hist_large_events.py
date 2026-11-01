@@ -221,8 +221,8 @@ ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
 #     y=0.98,
 # )
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'location_hist_large_events.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'location_hist_large_events.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_large_events.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_large_events.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

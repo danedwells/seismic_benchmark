@@ -308,7 +308,7 @@ def plot_comparison(cfg, names=None, out_prefix='time_independent_comparison'):
     fig.suptitle(f'Posterior location errors at {TRIGGER_NUMBER} triggers — {cfg["title"]}', fontsize=14,
                  y=1 - 0.1 / fig_h)
 
-    out = os.path.join(OUTPUT_DIR, f'{out_prefix}_{cfg["tag"]}')
+    out = os.path.join(OUTPUT_DIR, 'figures', f'{out_prefix}_{cfg["tag"]}')
     fig.savefig(out + '.png', dpi=300, bbox_inches='tight')
     fig.savefig(out + '.pdf', bbox_inches='tight')
     print(f'Saved: {out}.png')

@@ -85,8 +85,8 @@ for i, radius_km in enumerate(COVERAGE_RADII_KM):
     if i == 0:
         ax.legend(loc='lower right', fontsize=10)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'coverage_vs_triggers.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'coverage_vs_triggers.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'coverage_vs_triggers.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'coverage_vs_triggers.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

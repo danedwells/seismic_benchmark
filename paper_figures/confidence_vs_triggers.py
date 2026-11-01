@@ -92,8 +92,8 @@ for i, p in enumerate(CREDIBLE_LEVELS):
     if i == 3:
         ax.text(0.98, 0.04, 'dashed: perfect calibration', transform=ax.transAxes, ha='right', va='bottom', fontsize=9)
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'confidence_vs_triggers.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'confidence_vs_triggers.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'confidence_vs_triggers.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'confidence_vs_triggers.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%

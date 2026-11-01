@@ -21,7 +21,7 @@ from priors import SeismicPrior, EtasPriorUpdater
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
-FIG_DIR      = os.path.join(OUTPUT_DIR, 'saf_carrizo')    # figures are saved in this subfolder
+FIG_DIR      = os.path.join(OUTPUT_DIR, 'figures', 'saf_carrizo')    # figures are saved in this subfolder
 os.makedirs(FIG_DIR, exist_ok=True)
 RUN_DIR      = os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files')
 

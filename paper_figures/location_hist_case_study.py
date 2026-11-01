@@ -318,8 +318,8 @@ if CASES[CASE_STUDY].get('inset', True):
     ax_in.set_zorder(10)
 
 out_name = f'location_hist_{CASE_STUDY}' + (f'_M{MIN_USGS_MAG:g}' if CASE_STUDY == 'catalog' else '')
-fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, f'{out_name}.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', f'{out_name}.pdf'), bbox_inches='tight')
 plt.show()
 
 #%%
@@ -374,8 +374,8 @@ if CASE_STUDY == 'benchmark':
     ax2.set_ylabel('Latitude')
     ax2.legend(loc='lower left', fontsize=9, framealpha=0.9)
 
-    fig2.savefig(os.path.join(OUTPUT_DIR, 'location_hist_benchmark_MTJ.png'), dpi=300, bbox_inches='tight')
-    fig2.savefig(os.path.join(OUTPUT_DIR, 'location_hist_benchmark_MTJ.pdf'), bbox_inches='tight')
+    fig2.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_benchmark_MTJ.png'), dpi=300, bbox_inches='tight')
+    fig2.savefig(os.path.join(OUTPUT_DIR, 'figures', 'location_hist_benchmark_MTJ.pdf'), bbox_inches='tight')
     plt.show()
 
 # %%

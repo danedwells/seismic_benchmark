@@ -221,6 +221,6 @@ fig.legend(handles=[
            markeredgecolor='black', label='triggered station'),
 ], loc='lower center', ncol=3, fontsize=10, bbox_to_anchor=(0.5, -0.02))
 
-fig.savefig(os.path.join(OUTPUT_DIR, 'metric_illustration.png'), dpi=300, bbox_inches='tight')
-fig.savefig(os.path.join(OUTPUT_DIR, 'metric_illustration.pdf'), bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'metric_illustration.png'), dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(OUTPUT_DIR, 'figures', 'metric_illustration.pdf'), bbox_inches='tight')
 plt.show()
