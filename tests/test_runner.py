@@ -208,7 +208,8 @@ def test_make_epic_params_required_keys_propagate():
 def test_make_epic_params_optional_defaults():
     params = make_epic_params('P', False, {'grid_size': 1, 'grid_km': 1, 'max_trigs': 1})
     assert params.migrate_grid is True
-    assert params.migrate_grid_min_triggers == 1
+    assert params.migrate_grid_min_stations == 1
+    assert params.min_stations_grid_search == 1
     assert params.station_inventory is None
     assert params.activity_threshold == pytest.approx(0.40)
     assert params.resample_distant_events is True
@@ -221,14 +222,15 @@ def test_make_epic_params_optional_defaults():
 def test_make_epic_params_optional_overrides():
     benchmark_params = {
         'grid_size': 1, 'grid_km': 1, 'max_trigs': 1,
-        'migrate_grid': False, 'migrate_grid_min_triggers': 3,
+        'migrate_grid': False, 'migrate_grid_min_stations': 3, 'min_stations_grid_search': 3,
         'activity_threshold': 0.9, 'resample_distant_events': False,
         'edt_sigma_s': 0.5, 'sigma_s': 2.0, 'dtt_weight': 0.1,
         'search_depths': [4.0, 8.0, 12.0],
     }
     params = make_epic_params('P', True, benchmark_params)
     assert params.migrate_grid is False
-    assert params.migrate_grid_min_triggers == 3
+    assert params.migrate_grid_min_stations == 3
+    assert params.min_stations_grid_search == 3
     assert params.activity_threshold == pytest.approx(0.9)
     assert params.resample_distant_events is False
     assert params.edt_sigma_s == pytest.approx(0.5)

@@ -7,7 +7,8 @@ import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT  = os.path.dirname(os.path.abspath(__file__))
-MAX_TRIGS, TRIGGER_NUMBER, MIN_MAG = 10, 4, 4.0   # same as location_hist_case_study.py
+MAX_TRIGS, TRIGGER_NUMBER = 10, 4   # same as location_hist_case_study.py
+MIN_MAG = float(os.environ.get('MIN_MAG', 3.5))   # events with ANSS magnitude >= this
 
 CASES = {   # name: (mainshock id, catalog file)
     'MTJ 2024 M7': ('MTJ_2024_M7', 'nc75095651', 'mtj_2024_m7.csv'),
@@ -41,3 +42,36 @@ table = pd.DataFrame(rows)
 print(f'MAP location error (km) at {TRIGGER_NUMBER} triggers, events with M >= {MIN_MAG}')
 print(table.to_string(index=False, float_format=lambda x: f'{x:.1f}'))
 table.to_csv(os.path.join(OUT, 'location_error_summary.csv'), index=False, float_format='%.2f')
+
+# LaTeX table (booktabs).  The two magnitude-error columns are left blank until those results exist.
+def cell(x):
+    return '--' if pd.isna(x) else f'{x:.1f}'
+blocks = []
+for label in CASES:
+    sub = table[table['case'] == label]
+    blocks.append([[label if i == 0 else '', r.prior, str(r.n_events), cell(r.median_km), cell(r.min_km), cell(r.max_km),
+                    cell(r.mainshock_km), '', ''] for i, r in enumerate(sub.itertuples())])
+widths = [max(len(r[j]) for b in blocks for r in b) for j in range(9)]
+def line(r):    # first two columns left-aligned, the rest right-aligned
+    return '    ' + ' & '.join(r[j].ljust(widths[j]) if j < 2 else r[j].rjust(widths[j]) for j in range(9)) + r' \\'
+body = '\n    \\midrule\n'.join('\n'.join(line(r) for r in b) for b in blocks)
+tex = rf"""\begin{{table}}[htbp]
+  \centering
+  \small
+  \setlength{{\tabcolsep}}{{4pt}}
+  \caption{{Location errors for the case-study sequences with station masking, with $M \geq {MIN_MAG:g}$ (ANSS magnitude)}}
+  \label{{tab:case_studies}}
+  \begin{{tabular}}{{llrrrrrrr}}
+    \toprule
+    & & & \multicolumn{{4}}{{c}}{{Location error (km)}} & \multicolumn{{2}}{{c}}{{Magnitude error}} \\
+    \cmidrule(lr){{4-7}} \cmidrule(lr){{8-9}}
+    Case & Prior & $N$ & Median & Min & Max & Mainshock & Median & Max $|\cdot|$ \\
+    \midrule
+{body}
+    \bottomrule
+  \end{{tabular}}
+\end{{table}}
+"""
+with open(os.path.join(OUT, 'location_error_summary.tex'), 'w') as f:
+    f.write(tex)
+print(tex)

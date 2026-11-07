@@ -3,12 +3,14 @@ Comparison of location and magnitude error histograms across the control, sigma_
 sigma_and_prior EPIC replay runs of one sequence, overlaid (see run_error_histograms.py
 for the single-run version).
 
-Reads every <anss_id>.log in a run folder, takes the first EPIC version whose
-station count (nS, the E:I: column) reaches N_TRIGS, and compares its location and
-magnitude to the USGS/ANSS solution.  Logs with no event reaching N_TRIGS are skipped.
+Reads every <anss_id>.log in a run folder (parsing_tools.py), finds the EPIC event that matches the
+USGS/ANSS event (within MAX_ORIGIN_DIFF_S and 100 km), takes that event's first alerted version whose
+station count (nS, the E:I: column) reaches N_TRIGS, and compares its location and magnitude to the
+USGS/ANSS solution.  Events without such a version are skipped.
 USGS solutions are cached to a CSV so re-runs don't re-query ComCat.
 """
 #%%
+import os
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -19,41 +21,35 @@ from obspy.geodetics import gps2dist_azimuth
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from benchmark.usgs import get_usgs_event
+import benchmark.config_california as config
+import parsing_tools
 
-SEQUENCE = 'MTJ' #'Ridgecrest' # 'MTJ'
+# Sequence -> case-study key in config.FOCUS_EVENTS_MAINSHOCK.  Logs are read from
+# log_files/<SEQUENCE>-selected/<SEQUENCE>_<run>/epic/; the figure size follows the map extent (see the paper-style cell).
+SEQUENCE = os.environ.get('SEQUENCE', 'Ridgecrest')     # 'MTJ' | 'Ridgecrest' | 'ElMayor' | 'Ferndale'
+CASE_KEY = {'Ridgecrest': 'Ridgecrest', 'MTJ': 'MTJ_2024_M7', 'ElMayor': 'ElMayor', 'Ferndale': 'Ferndale'}[SEQUENCE]
+MAINSHOCK_ID = config.FOCUS_EVENTS_MAINSHOCK[CASE_KEY]   # starred on the map
 RUNS = {'control': 'gray', 'sigma_only': 'blue', 'sigma_and_prior': 'red'}
+LABELS = {'control': 'Control', 'sigma_only': 'Sigma Only', 'sigma_and_prior': 'Sigma and ETAS'}   # names shown on the paper figure
 
 N_TRIGS = 4
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
 ALPHA = 0.3
-MIN_USGS_MAG = 4.            # only compare events with USGS magnitude >= this (None = all)
-ALERTS_ONLY = True              # keep only E:I: lines with Ast == 1 (alert actually sent)
-AST_COL = 42                    # index of the Ast column in the E:I: line
+MIN_USGS_MAG = 3.5            # only compare events with USGS magnitude >= this (None = all)
+ALERTS_ONLY = True              # use only versions with Ast == 1 (alert actually sent)
 USGS_CACHE = Path(__file__).resolve().parent / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
-def parse_log(path, alerts_only=ALERTS_ONLY):
-    rows = []
-    for line in path.open(errors='replace'):
-        _, _, msg = line.partition('| INFO | E:I:')
-        if msg.startswith('F:'):       # 'E:I:F:' = the event's first alert version (same columns as E:I:)
-            msg = msg[2:]
-        f = msg.split()
-        if len(f) < 17 or not f[0].lstrip('-').isdigit() or int(f[0]) <= 0:
-            continue
-        if alerts_only and (len(f) <= AST_COL or f[AST_COL] != '1'):
-            continue
-        rows.append((int(f[0]), int(f[1]), float(f[2]), float(f[3]), float(f[5]),
-                     pd.Timestamp(f[6]), int(f[15]), int(f[16])))
-    return pd.DataFrame(rows, columns=['eventid', 'ver', 'lat', 'lon', 'mag', 'time', 'nT', 'nS'])
-
 all_logs = {}
 for which in RUNS:
     run_dir = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{which}' / 'epic'
-    all_logs[which] = {p.stem: parse_log(p) for p in sorted(run_dir.glob('*.log'))}
+    if not run_dir.is_dir():
+        raise FileNotFoundError(f'No logs for {SEQUENCE}: {run_dir} does not exist')
+    all_logs[which] = {p.stem: parsing_tools.read_ei(p) for p in sorted(run_dir.glob('*.log'))}
     logs = all_logs[which]
-    print(f'{which}: {len(logs)} logs; {sum(len(d) > 0 for d in logs.values())} contain an alerted event')
+    print(f'{which}: {len(logs)} logs; {sum((d.Ast == 1).any() for d in logs.values())} contain an alerted event')
 
 #%% USGS solutions (cached)
 def fetch_usgs(anss_id):
@@ -67,7 +63,7 @@ def fetch_usgs(anss_id):
 
 usgs = pd.read_csv(USGS_CACHE, parse_dates=['time']) if USGS_CACHE.exists() else pd.DataFrame(
     columns=['anss_id', 'lat', 'lon', 'mag', 'time'])
-todo = sorted({i for logs in all_logs.values() for i, d in logs.items() if len(d)} - set(usgs.anss_id))
+todo = sorted({i for logs in all_logs.values() for i, d in logs.items() if (d.Ast == 1).any()} - set(usgs.anss_id))
 if todo:
     with ThreadPoolExecutor(8) as ex:
         new = [r for r in ex.map(fetch_usgs, todo) if r]
@@ -80,20 +76,16 @@ results = {}
 for which, logs in all_logs.items():
     out = []
     for anss_id, d in logs.items():
-        if not len(d) or anss_id not in usgs.index:
+        if d.empty or anss_id not in usgs.index:
             continue
         u = usgs.loc[anss_id]
         if MIN_USGS_MAG is not None and not u.mag >= MIN_USGS_MAG:
             continue
-        d = d[d.nS >= N_TRIGS]
-        if d.empty:
+        # Several events can be in one log; take the EPIC event that matches USGS, then its first version at N_TRIGS
+        eventid = parsing_tools.match_event(d, u.time, u.lat, u.lon, max_dt_s=MAX_ORIGIN_DIFF_S)
+        r = None if eventid is None else parsing_tools.first_at_stations(d, eventid, N_TRIGS, alerted_only=ALERTS_ONLY)
+        if r is None:
             continue
-        # Several events can be alerted in one log; take the one whose origin matches USGS
-        dt = (d.time - u.time).abs().dt.total_seconds()
-        d = d[dt == dt.min()]
-        if dt.min() > MAX_ORIGIN_DIFF_S:
-            continue
-        r = d.sort_values('ver').iloc[0]
         out.append(dict(anss_id=anss_id, ver=r.ver, nS=r.nS, usgs_mag=u.mag,
                         loc_err_km=gps2dist_azimuth(u.lat, u.lon, r.lat, r.lon)[0] / 1e3,
                         mag_err=r.mag - u.mag, lat=r.lat, lon=r.lon, usgs_lat=u.lat, usgs_lon=u.lon))
@@ -101,6 +93,10 @@ for which, logs in all_logs.items():
     print(f'{which}: {len(results[which])} events with a matched version at nS >= {N_TRIGS}'
           + (f' and USGS M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''))
     print(results[which][['loc_err_km', 'mag_err']].describe())
+
+# Per-event results of every run, for tables (make_log_table.py)
+pd.concat([r.assign(run=w) for w, r in results.items()]).to_csv(
+    Path(__file__).resolve().parent / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', index=False)
 
 #%% Plot
 # Shared bins so the three runs are directly comparable
@@ -151,7 +147,9 @@ fig.savefig(out_path, dpi=150)
 print('Saved', out_path)
 
 #%% Paper-style figure (same layout/style as paper_figures/location_hist_case_study.py):
-# (a) map of EPIC locations per run with arrows to the USGS location, (b) stacked location-error histograms
+# (a) map of EPIC locations per run with arrows to the USGS location, (b) stacked location-error histograms, (c) magnitude errors.
+# Sizes are in inches and follow the map extent: the map is MAP_W wide and as tall as its extent needs (within MAP_H_MIN..MAP_H_MAX),
+# the histogram columns sit to its right, and the figure is as wide/tall as that takes.  Works for any sequence without hand-tuning.
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.ticker import FuncFormatter
@@ -161,79 +159,78 @@ plt.rcParams.update({'font.size': 12, 'font.family': 'sans-serif', 'axes.titlesi
                      'axes.labelsize': 11, 'figure.dpi': 150})
 proj = ccrs.PlateCarree()
 SIZE_SCALE = dict(zip(RUNS, (1.6, 1.3, 1.1)))   # decreasing with draw order so overlapping dots read as concentric
-BUF = 0.2                                     # degrees added around the posterior locations
-MIN_MAP_ASPECT = 6.3 / 7.3                      # map box width/height; tall regions are widened east-west
-AX_POS = {'map': [0.05, 0.08, 0.45, 0.86], 'hists': [0.58, 0.183, 0.17, 0.654], 'mags': [0.82, 0.183, 0.17, 0.654]}
+BUF = 0.1                                        # degrees added around the plotted locations
+MAP_PCT = float(os.environ.get('MAP_PCT', {'Ridgecrest': 96}.get(SEQUENCE, 100)))  # middle percentile range of the plotted points that sets the map extent: 100 = every point,
+                                                 # e.g. 96 lets the farthest 2% on each side run off the map edge (histograms still include them)
+MAP_W, MAP_H_MIN, MAP_H_MAX = 9.0, 4.5, 7.5      # map panel (inches): width, and the limits of its height
+HIST_W, GAP = 2.5, 0.6                           # width of each histogram column; gap before each column (room for the (b)/(c) labels)
+MARGIN_L, MARGIN_R, MARGIN_B, MARGIN_T = 0.9, 0.2, 1.0, 0.4
 
-fig = plt.figure(figsize=(14, 8.5))
+# -- Map extent from every plotted point (EPIC and USGS locations), then padded to the map box's aspect --
+lats = pd.concat([r[c] for r in results.values() for c in ('lat', 'usgs_lat')])
+lons = pd.concat([r[c] for r in results.values() for c in ('lon', 'usgs_lon')])
+lo, hi = (100 - MAP_PCT) / 2, 100 - (100 - MAP_PCT) / 2
+extent = [np.percentile(lons, lo) - BUF, np.percentile(lons, hi) + BUF, np.percentile(lats, lo) - BUF, np.percentile(lats, hi) + BUF]
+aspect = (extent[1] - extent[0]) / (extent[3] - extent[2])                 # axes are equal-aspect in degrees
+map_h = float(np.clip(MAP_W / aspect, MAP_H_MIN, MAP_H_MAX))
+map_w = MAP_W if MAP_W / aspect <= MAP_H_MAX else map_h * aspect           # tall regions: narrower map instead of a huge one
+box = map_w / map_h
+if aspect < box:                                                           # pad whichever side is short so the extent fills the box
+    half = 0.5 * box * (extent[3] - extent[2])
+    c = 0.5 * (extent[0] + extent[1]); extent[0], extent[1] = c - half, c + half
+else:
+    half = 0.5 * (extent[1] - extent[0]) / box
+    c = 0.5 * (extent[2] + extent[3]); extent[2], extent[3] = c - half, c + half
 
-# -- Right: stacked location-error histograms, one per run, shared x-axis --
-bins = np.logspace(-1, 3, 20)
-hl, hb, hw, hh = AX_POS['hists']
-h_each = hh / len(RUNS)
-hist_axes = []
-for i, (which, color) in enumerate(RUNS.items()):
-    ax = fig.add_axes([hl, hb + hh - (i + 1) * h_each, hw, h_each], sharex=hist_axes[0] if hist_axes else None)
-    hist_axes.append(ax)
-    stats = results[which].loc_err_km.values
-    if len(stats):
-        ax.hist(stats, bins=bins, rwidth=0.9, color=color, alpha=0.7)
-        median_err = np.median(stats)
-        ax.axvline(median_err, ymax=0.55, color=color, ls='--', lw=1.5)   # stops above the bars, below the labels
-        ax.text(0.03, 0.70, f'median: {median_err:.1f} km', transform=ax.transAxes,
-                ha='left', va='top', fontsize=11, color=color, fontweight='bold')
-    ax.text(0.03, 0.92, which, transform=ax.transAxes, ha='left', va='top',
-            fontsize=13, color=color, fontweight='bold')
-    ax.set_yticks([])
-    ax.spines[['top', 'right', 'left']].set_visible(False)
-    if i < len(RUNS) - 1:
-        ax.tick_params(labelbottom=False, bottom=False)
-hist_axes[-1].set_xscale('log')
-hist_axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
-hist_axes[-1].set_xlabel('Location error (km)')
-_y_max = max(a.get_ylim()[1] for a in hist_axes)
-for a in hist_axes:
-    a.set_ylim(0, 2.0 * _y_max)   # headroom: bars top out at half height so the name/median labels sit clear above them
-hist_axes[0].text(-0.2, 0.87, '(b)', transform=hist_axes[0].transAxes,
-                  ha='left', va='bottom', fontsize=13, fontweight='bold')
+fig_w = MARGIN_L + map_w + 2 * (GAP + HIST_W) + MARGIN_R
+fig_h = MARGIN_B + map_h + MARGIN_T
+def rect(x, w):                                  # inches -> figure fractions, spanning the map's vertical range
+    return [x / fig_w, MARGIN_B / fig_h, w / fig_w, map_h / fig_h]
+fig = plt.figure(figsize=(fig_w, fig_h))
 
-# -- Middle-right: stacked magnitude-error histograms (same style, shared bins) --
-ml, mb, mw, mh = AX_POS['mags']
-m_each = mh / len(RUNS)
-mag_axes = []
-for i, (which, color) in enumerate(RUNS.items()):
-    ax = fig.add_axes([ml, mb + mh - (i + 1) * m_each, mw, m_each], sharex=mag_axes[0] if mag_axes else None)
-    mag_axes.append(ax)
-    stats = results[which].mag_err.values
-    if len(stats):
-        ax.hist(stats, bins=mag_bins, rwidth=0.9, color=color, alpha=0.7)
-        median_err = np.median(stats)
-        ax.axvline(median_err, ymax=0.55, color=color, ls='--', lw=1.5)
-        ax.text(0.03, 0.70, f'median: {median_err:+.2f}', transform=ax.transAxes,
-                ha='left', va='top', fontsize=11, color=color, fontweight='bold')
-    ax.text(0.03, 0.92, which, transform=ax.transAxes, ha='left', va='top',
-            fontsize=13, color=color, fontweight='bold')
+def stacked_hists(x, values, bins, fmt, xlabel, tag, log=False):
+    """One histogram per run, stacked, shared x-axis: run name, then its median (number only) directly below."""
+    left, bottom, width, height = rect(x, HIST_W)
+    each = height / len(RUNS)
+    axes = []
+    for i, (which, color) in enumerate(RUNS.items()):
+        ax = fig.add_axes([left, bottom + height - (i + 1) * each, width, each], sharex=axes[0] if axes else None)
+        axes.append(ax)
+        stats = values[which]
+        if len(stats):
+            ax.hist(stats, bins=bins, rwidth=0.9, color=color, alpha=0.7)
+            med = np.median(stats)
+            ax.axvline(med, ymax=0.55, color=color, ls='--', lw=1.5)      # stops above the bars, below the labels
+            ax.annotate(fmt(med), xy=(0.03, 0.96), xytext=(0, -17), xycoords='axes fraction', textcoords='offset points',
+                        ha='left', va='top', fontsize=11, color=color, fontweight='bold')
+        ax.annotate(LABELS[which], xy=(0.03, 0.96), xycoords='axes fraction', ha='left', va='top',
+                    fontsize=13, color=color, fontweight='bold')
+        ax.set_yticks([])
+        ax.spines[['top', 'right', 'left']].set_visible(False)
+        if i < len(RUNS) - 1:
+            ax.tick_params(labelbottom=False, bottom=False)
+    axes[-1].set_xlabel(xlabel)
+    ymax = max(a.get_ylim()[1] for a in axes)
+    for a in axes:
+        a.set_ylim(0, 2.0 * ymax)   # headroom: bars top out at half height so the name/median labels sit clear above them
+    axes[0].text(-0.2, 0.87, tag, transform=axes[0].transAxes, ha='left', va='bottom', fontsize=13, fontweight='bold')
+    return axes
+
+# -- (b) location error --
+x_b = MARGIN_L + map_w + GAP
+axes_b = stacked_hists(x_b, {w: r.loc_err_km.values for w, r in results.items()}, np.logspace(-1, 3, 20),
+                       lambda m: f'{m:.1f} km', 'Location error (km)', '(b)')
+axes_b[-1].set_xscale('log')
+axes_b[-1].xaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:g}'))
+
+# -- (c) magnitude error (shared bins) --
+axes_c = stacked_hists(x_b + HIST_W + GAP, {w: r.mag_err.dropna().values for w, r in results.items()}, mag_bins,
+                       lambda m: f'{m:+.2f}'.replace('-', '−'), 'EPIC mag − USGS mag', '(c)')
+for ax in axes_c:
     ax.axvline(0, color='k', lw=0.8, alpha=0.5)
-    ax.set_yticks([])
-    ax.spines[['top', 'right', 'left']].set_visible(False)
-    if i < len(RUNS) - 1:
-        ax.tick_params(labelbottom=False, bottom=False)
-mag_axes[-1].set_xlabel('EPIC mag − USGS mag')
-_y_max = max(a.get_ylim()[1] for a in mag_axes)
-for a in mag_axes:
-    a.set_ylim(0, 2.0 * _y_max)
-mag_axes[0].text(-0.2, 0.87, '(c)', transform=mag_axes[0].transAxes,
-                 ha='left', va='bottom', fontsize=13, fontweight='bold')
 
-# -- Left: combined map of EPIC locations, colored by run --
-ax_map = fig.add_axes(AX_POS['map'], projection=proj)
-all_lats = pd.concat([r.lat for r in results.values()])
-all_lons = pd.concat([r.lon for r in results.values()])
-extent = [all_lons.min() - BUF, all_lons.max() + BUF, all_lats.min() - BUF, all_lats.max() + BUF]
-if (extent[1] - extent[0]) < MIN_MAP_ASPECT * (extent[3] - extent[2]):
-    _half = 0.5 * MIN_MAP_ASPECT * (extent[3] - extent[2])
-    _lon_c = 0.5 * (extent[0] + extent[1])
-    extent[0], extent[1] = _lon_c - _half, _lon_c + _half
+# -- (a) combined map of EPIC locations, colored by run --
+ax_map = fig.add_axes(rect(MARGIN_L, map_w), projection=proj)
 ax_map.set_extent(extent, crs=proj)
 ax_map.add_feature(cfeature.LAND,      facecolor='#f0f0f0', zorder=0)
 ax_map.add_feature(cfeature.OCEAN,     facecolor='#d6eaf8', zorder=0)
@@ -249,10 +246,20 @@ for which, color in RUNS.items():
 for which, color in RUNS.items():
     m = results[which]
     ax_map.scatter(m.lon, m.lat, color=color, s=30 * SIZE_SCALE[which], alpha=0.5,
-                   edgecolors='white', linewidths=0.4, transform=proj, zorder=5, label=which)
+                   edgecolors='white', linewidths=0.4, transform=proj, zorder=5, label=LABELS[which])
+# Mainshock: each run's location as a large star in the run's color, drawn above everything else.
+# Runs often land on the same spot, so the stars shrink in draw order and nest instead of hiding each other.
+for i, (which, color) in enumerate(RUNS.items()):
+    ms = results[which][results[which].anss_id == MAINSHOCK_ID]
+    ax_map.scatter(ms.lon, ms.lat, color=color, s=300 + 150 * (len(RUNS) - 1 - i), edgecolors='black', linewidths=1.0,
+                   marker='*', transform=proj, zorder=8 + i)
 usgs_pts = pd.concat([r[['anss_id', 'usgs_lat', 'usgs_lon']] for r in results.values()]).drop_duplicates('anss_id')
 ax_map.scatter(usgs_pts.usgs_lon, usgs_pts.usgs_lat, marker='x', c='black', s=35, linewidths=1.1,
-               transform=proj, zorder=6, alpha=0.5, label='USGS (true)')
+               transform=proj, zorder=6, alpha=0.5, label='ANSS locations')
+# True (USGS) mainshock location: yellow star on top of the run stars, with a legend entry
+if MAINSHOCK_ID in usgs.index:
+    ax_map.scatter(usgs.loc[MAINSHOCK_ID, 'lon'], usgs.loc[MAINSHOCK_ID, 'lat'], marker='*', c='yellow', s=400,
+                   edgecolors='black', linewidths=0.8, transform=proj, zorder=20, label='ANSS mainshock')
 
 ax_map.set_xticks(np.linspace(extent[0], extent[1], 5), crs=proj)
 ax_map.set_yticks(np.linspace(extent[2], extent[3], 5), crs=proj)
@@ -269,6 +276,6 @@ ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
 out_stem = Path(__file__).resolve().parent / 'figures' / f'{SEQUENCE}_location_hist_{N_TRIGS}_comp'
 fig.savefig(out_stem.with_suffix('.png'), dpi=300, bbox_inches='tight')
 fig.savefig(out_stem.with_suffix('.pdf'), bbox_inches='tight')
-print('Saved', out_stem)
+print('Saved', out_stem, f'(figure {fig_w:.1f} x {fig_h:.1f} in, map {map_w:.1f} x {map_h:.1f} in)')
 
 # %%

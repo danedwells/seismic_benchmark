@@ -94,7 +94,10 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     benchmark_params : dict
         Must contain: grid_size (int), grid_km (int), max_trigs (int).
         Optional keys (with defaults): migrate_grid (bool, True),
-        migrate_grid_min_triggers (int, 1), activity_threshold (float, 0.40),
+        migrate_grid_min_stations (int, 1: re-centre after every station),
+        min_stations_grid_search (int, 1; EPIC uses 3: with fewer distinct stations the
+        location is the station / the two-station point and there is no grid search),
+        activity_threshold (float, 0.40),
         resample_distant_events (bool, True), edt_sigma_s (float, 0.2),
         sigma_s (float, 1.0), dtt_weight (float, 0.5),
         search_depths (list[float], [8.0] -- candidate source depths in km
@@ -119,7 +122,8 @@ def make_epic_params(prior, use_prior, benchmark_params, station_inventory=None)
     params.method                    = 'EPIC C'
     params.MAX_EVENT_TRIGS           = benchmark_params['max_trigs']
     params.migrate_grid              = benchmark_params.get('migrate_grid', True)
-    params.migrate_grid_min_triggers = benchmark_params.get('migrate_grid_min_triggers', 1)
+    params.migrate_grid_min_stations = benchmark_params.get('migrate_grid_min_stations', 1)
+    params.min_stations_grid_search  = benchmark_params.get('min_stations_grid_search', 1)
     params.station_inventory         = station_inventory
     params.activity_threshold        = benchmark_params.get('activity_threshold', 0.40)
     params.resample_distant_events   = benchmark_params.get('resample_distant_events', True)
