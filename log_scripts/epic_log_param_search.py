@@ -187,7 +187,7 @@ for sigma_s, dtt_weight, depths in itertools.product(*GRID.values()):
             results.append(dict(sigma_s=sigma_s, dtt_weight=dtt_weight, depths=str(list(depths)),
                                 alpha=a, n=n, err_km=err_km(o['lat'].values[i], o['lon'].values[i])))
 res = pd.DataFrame(results)
-res.to_csv(HERE / f'epic_log_param_search_{PRIOR}.csv', index=False)
+res.to_csv(HERE / 'output' / f'epic_log_param_search_{PRIOR}.csv', index=False)
 
 keys = ['sigma_s', 'dtt_weight', 'depths', 'alpha']
 score = (res.groupby(keys).err_km.agg(mean='mean', worst='max').reset_index())
@@ -268,7 +268,7 @@ for sigma_s, alpha in DROP_SETTINGS:
                    oracle=oracle[1], oracle_station=oracle[2], rms_all=float(np.sqrt(np.mean(r0 ** 2))))
         rows.append(row)
 drop = pd.DataFrame(rows)
-drop.to_csv(HERE / f'epic_log_drop_station_{PRIOR}.csv', index=False)
+drop.to_csv(HERE / 'output' / f'epic_log_drop_station_{PRIOR}.csv', index=False)
 print('\nMAP error (km) vs USGS after dropping one station:')
 for (sigma_s, alpha), d in drop.groupby(['sigma_s', 'alpha']):
     print(f'\n sigma_s={sigma_s}, alpha={alpha}')

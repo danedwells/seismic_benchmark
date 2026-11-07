@@ -347,7 +347,8 @@ BENCHMARK_PARAMS = {
     'grid_size':                 25,
     'grid_km':                   50,
     'migrate_grid':              True,  # re-centre grid on posterior MAP between versions
-    'migrate_grid_min_triggers': 0,     # suppress migration until this many triggers have reported
+    'migrate_grid_min_stations': 1,     # re-centre the grid once this many distinct stations have reported (1 = after every station)
+    'min_stations_grid_search': 3,      # EPIC rule: below this many stations no grid search (1 station -> the station, 2 -> the point 2:1 toward the first)
     'activity_threshold':        0.40,  # operational EPIC value; pass station_inventory=None to disable
     'station_inventory':         None,
     'resample_distant_events':   False,  # re-run with random trigger subset when nearest station > 200 km

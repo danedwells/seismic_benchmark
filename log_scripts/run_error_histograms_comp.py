@@ -36,10 +36,9 @@ LABELS = {'control': 'Control', 'sigma_only': 'Sigma Only', 'sigma_and_prior': '
 
 N_TRIGS = 4
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
-ALPHA = 0.3
 MIN_USGS_MAG = 3.5            # only compare events with USGS magnitude >= this (None = all)
 ALERTS_ONLY = True              # use only versions with Ast == 1 (alert actually sent)
-USGS_CACHE = Path(__file__).resolve().parent / f'usgs_cache_{SEQUENCE}.csv'
+USGS_CACHE = Path(__file__).resolve().parent / 'output' / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 all_logs = {}
@@ -96,55 +95,11 @@ for which, logs in all_logs.items():
 
 # Per-event results of every run, for tables (make_log_table.py)
 pd.concat([r.assign(run=w) for w, r in results.items()]).to_csv(
-    Path(__file__).resolve().parent / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', index=False)
+    Path(__file__).resolve().parent / 'output' / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', index=False)
 
-#%% Plot
-# Shared bins so the three runs are directly comparable
-loc_all = pd.concat([r.loc_err_km for r in results.values()])
+#%% Shared magnitude-error bins for the stacked histograms in the figure below
 mag_all = pd.concat([r.mag_err for r in results.values()])
-loc_bins = np.logspace(np.log10(loc_all.min()), np.log10(loc_all.max()), 41)
 mag_bins = np.linspace(mag_all.min(), mag_all.max(), 41)
-
-BIN_OFFSET = 0.15   # per-run shift, as a fraction of bin width, so overlapping bars stay distinguishable
-BAR_WIDTH = 0.7     # bar width as a fraction of bin width
-
-def offset_hist(ax, values, bins, k, color, label, log=False):
-    """Histogram drawn as bars shifted by k*BIN_OFFSET bin widths (in log10 space if log)."""
-    counts, edges = np.histogram(values, bins=bins)
-    u = np.log10(edges) if log else edges
-    w = np.diff(u)
-    left = u[:-1] + (0.5 - BAR_WIDTH / 2 + k * BIN_OFFSET) * w
-    right = left + BAR_WIDTH * w
-    if log:
-        left, right = 10 ** left, 10 ** right
-    ax.bar(left, counts, width=right - left, align='edge', color=color, alpha=ALPHA, label=label)
-
-fig, (ax_loc, ax_mag) = plt.subplots(1, 2, figsize=(12, 4.5))
-for i, (which, color) in enumerate(RUNS.items()):
-    res = results[which]
-    k = i - (len(RUNS) - 1) / 2
-    label = f'{which} (n={len(res)})'
-    offset_hist(ax_loc, res.loc_err_km, loc_bins, k, color, label, log=True)
-    offset_hist(ax_mag, res.mag_err, mag_bins, k, color, label)
-    for ax, med in ((ax_loc, res.loc_err_km.abs().median()), (ax_mag, res.mag_err.abs().median())):
-        unit = ' km' if ax is ax_loc else ''
-        ax.text(0.02, 0.97 - 0.07 * i, f'{which}: median |err| = {med:.2f}{unit}', transform=ax.transAxes,
-                color=color, ha='left', va='top', fontsize=9)
-for ax in (ax_loc, ax_mag):
-    ax.set_ylim(top=ax.get_ylim()[1] * 1.35)   # headroom for annotations/legend
-ax_loc.set_xscale('log')
-ax_loc.set_xlabel('Location error vs USGS (km)'); ax_loc.set_ylabel('Events')
-mag_note = f', M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''
-ax_loc.set_title(f'Location error (nS >= {N_TRIGS}{mag_note})')
-ax_loc.legend(loc='upper right')
-ax_mag.axvline(0, color='k', ls='--')
-ax_mag.set_xlabel('EPIC mag - USGS mag'); ax_mag.set_ylabel('Events')
-ax_mag.set_title(f'Magnitude error (nS >= {N_TRIGS}{mag_note})')
-ax_mag.legend(loc='upper right')
-fig.tight_layout()
-out_path = Path(__file__).resolve().parent / 'figures' / f'{SEQUENCE}_error_hist_{N_TRIGS}_comp.png'
-fig.savefig(out_path, dpi=150)
-print('Saved', out_path)
 
 #%% Paper-style figure (same layout/style as paper_figures/location_hist_case_study.py):
 # (a) map of EPIC locations per run with arrows to the USGS location, (b) stacked location-error histograms, (c) magnitude errors.

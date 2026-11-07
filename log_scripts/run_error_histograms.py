@@ -26,7 +26,7 @@ WHICH = "sigma_and_prior" # 'sigma_and_prior' 'sigma_only'
 RUN_DIR = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{WHICH}' / 'epic'
 N_TRIGS = 5
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
-USGS_CACHE = Path(__file__).resolve().parent / f'usgs_cache_{SEQUENCE}.csv'
+USGS_CACHE = Path(__file__).resolve().parent / 'output' / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 def parse_log(path):

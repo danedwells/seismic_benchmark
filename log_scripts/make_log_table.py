@@ -27,7 +27,7 @@ def tex_num(x):
 
 blocks = []
 for name, seq, key in CASES:
-    path = HERE / f'log_results_{seq}_nS{N_TRIGS}.csv'
+    path = HERE / 'output' / f'log_results_{seq}_nS{N_TRIGS}.csv'
     df = pd.read_csv(path) if path.exists() else None
     rows = []
     for i, (run, label) in enumerate(RUNS.items()):
