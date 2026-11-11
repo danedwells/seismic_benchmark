@@ -764,6 +764,24 @@ def load_reference_catalog_usgs(catalog_path):
         'usgs_mag':   raw['mag'],
     })
 
+def rows_at_n_stations(df, run_dir, n_stations):
+    """
+    One row per event from a benchmark results DataFrame: the first version at which the event's .run file
+    has >= n_stations distinct stations (net.sta; a station's HH and HN triggers count once). Events that never
+    reach n_stations are dropped. If the results lack that exact version, the next available one is used.
+    """
+    keep = []
+    for eid, g in df.groupby('event_id'):
+        run = pd.read_csv(Path(run_dir) / f'{eid}.run', usecols=['version', 'network', 'station'])
+        n = (run.network + '.' + run.station).groupby(run.version).nunique()
+        ok = n[n >= n_stations]
+        if len(ok):
+            later = g[g.version >= ok.index[0]]
+            if len(later):
+                keep.append(later.nsmallest(1, 'version'))
+    return pd.concat(keep) if keep else df.iloc[:0]
+
+
 def load_reference_catalog(catalog_path):
     """
     Read a bEPIC testing catalog (tab-separated) and return a DataFrame that

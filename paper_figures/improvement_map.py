@@ -3,7 +3,7 @@
 # improvement_map.py — paper figure: where does sigma calibration + ETAS help?
 # =============================================================================
 # California benchmark catalog binned into PIXEL_DEG pixels. Each pixel shows the
-# median (or mean) change in MAP location error at the first location with >= TRIGGER_NUMBER triggers,
+# median (or mean) change in MAP location error at the first location with >= TRIGGER_NUMBER stations,
 #   calibrated (sigma_s = 0.35 + dynamic ETAS prior) minus
 #   baseline   (sigma_s = 1.0 (EPIC default) + KDE_Seismicity prior),
 # so negative (blue) = improvement. Pixels with fewer than MIN_EVENTS are blank.
@@ -26,14 +26,15 @@ import cartopy.feature as cfeature
 from matplotlib.colors import TwoSlopeNorm
 
 from benchmark import config
-from benchmark.runner import load_reference_catalog
+from benchmark.runner import load_reference_catalog, rows_at_n_stations
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR  = os.path.join(PROJECT_ROOT, 'results', 'california', 'output')
 
 MAX_TRIGS      = 10
-TRIGGER_NUMBER = 4
+TRIGGER_NUMBER = 4                                    # stations (net.sta) from the .run files
+RUN_DIR        = os.path.join(PROJECT_ROOT, 'data', 'california', 'run_files')
 PIXEL_DEG      = 0.25
 EXTENT         = [-125.5, -114, 32, 42.5]     # California (lon0, lon1, lat0, lat1)
 MIN_EVENTS     = 2
@@ -53,9 +54,8 @@ proj = ccrs.PlateCarree()
 
 #%%
 # ── Per-event error difference ───────────────────────────────────────────────
-def errors_at_n(path):
-    df = pd.read_csv(path)
-    df = df[df['n_trigs'] >= TRIGGER_NUMBER].sort_values('n_trigs').drop_duplicates('event_id', keep='first')   # first location with >= N triggers
+def errors_at_n(path, run_dir=RUN_DIR):
+    df = rows_at_n_stations(pd.read_csv(path), run_dir, TRIGGER_NUMBER)   # first location with >= N stations
     return df.set_index(df['event_id'].astype(str))['map_err_km']
 
 cat = load_reference_catalog(CATALOG)
@@ -140,8 +140,8 @@ for name, (base_rel, cat_file) in CASES.items():
         else pd.read_csv(os.path.join(CS_DATA, name, cat_file))
     cs_cat = cs_cat.rename(columns={'id': 'event_id', 'latitude': 'usgs_lat', 'longitude': 'usgs_lon'})
     cs_cat['event_id'] = cs_cat['event_id'].astype(str)
-    e = pd.concat({'base':  errors_at_n(os.path.join(CS_DIR, name, 'output', base_rel)),
-                   'calib': errors_at_n(os.path.join(CS_DIR, name, 'output', CS_ETAS))}, axis=1).dropna()
+    e = pd.concat({'base':  errors_at_n(os.path.join(CS_DIR, name, 'output', base_rel), os.path.join(CS_DATA, name, 'run_files')),
+                   'calib': errors_at_n(os.path.join(CS_DIR, name, 'output', CS_ETAS), os.path.join(CS_DATA, name, 'run_files'))}, axis=1).dropna()
     e = e.join(cs_cat.set_index('event_id')[['usgs_lat', 'usgs_lon']], how='inner')
     e['delta'] = (100 * (e.calib - e.base) / e.base) if RELATIVE else (e.calib - e.base)
     print(f'{name}: {len(e)} events; median error {e.base.median():.1f} -> {e.calib.median():.1f} km')

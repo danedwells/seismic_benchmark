@@ -56,11 +56,11 @@ if not SC['ready']:
     raise NotImplementedError(f'{SEQUENCE}: no EPIC logs yet (placeholder)')
 
 # -- bEPIC settings --
-GRID_SIZE, GRID_KM = 13, 26          # 2 km spacing, (2*13+1)^2 nodes, 52 x 52 km box
+GRID_SIZE, GRID_KM = 25, 50          # 2 km spacing, (2*13+1)^2 nodes, 52 x 52 km box
 SIGMA_S, EDT_SIGMA_S = SC['sigma_s'], 0.02
 MIN_STATIONS_GRID_SEARCH = 3         # EPIC: below 3 stations no grid search (station / 2:1 point)
 MIGRATE_MIN_STATIONS = 1             # re-centre the grid after every station
-MAX_TRIGS = 30                       # locator trigger cap; high so late versions with 2 triggers/station are not truncated
+MAX_TRIGS = 10                       # locator trigger cap; high so late versions with 2 triggers/station are not truncated
 # -- Knobs to turn (defaults = EPIC-like) --
 ACTIVITY_THRESHOLD = 0.40            # station mask: minimum availability
 SEARCH_DEPTHS = [8.0]                # km
