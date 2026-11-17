@@ -70,7 +70,7 @@ print(f'{len(ev)} events; median error {ev.base.median():.1f} -> {ev.calib.media
 
 #%%
 # ── Pixelate and plot ────────────────────────────────────────────────────────
-def plot_improvement_map(ev, extent, pixel_deg, min_events, figsize, out_name, annotate=False):
+def plot_improvement_map(ev, extent, pixel_deg, min_events, figsize, out_name, annotate=False, inset=False):
     ev = ev.copy()
     lon_edges = np.arange(extent[0], extent[1] + pixel_deg, pixel_deg)
     lat_edges = np.arange(extent[2], extent[3] + pixel_deg, pixel_deg)
@@ -97,12 +97,32 @@ def plot_improvement_map(ev, extent, pixel_deg, min_events, figsize, out_name, a
     ax.scatter(ev.usgs_lon, ev.usgs_lat, s=3, color='k', alpha=0.3, transform=proj, zorder=4)
     gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5, linestyle='--')
     gl.top_labels = gl.right_labels = False
-    cb = fig.colorbar(mesh, ax=ax, orientation='horizontal', shrink=0.7, pad=0.08, extend='both')
-    cb.set_label(f'{STAT.capitalize()} change in location error ({unit})')
+    if inset:   # small colorbar + histogram of the per-event changes, inside the map over the ocean (lower left)
+        cax = ax.inset_axes([0.04, 0.14, 0.32, 0.022], zorder=10)
+        hax = ax.inset_axes([0.04, 0.20, 0.32, 0.12],  zorder=10)
+        cb  = fig.colorbar(mesh, cax=cax, orientation='horizontal', extend='both')
+        cb.ax.tick_params(labelsize=10)
+        cb.set_label(f'{STAT.capitalize()} change in location error ({unit})', fontsize=10)
+        vals = np.clip(ev.delta.values, -lim, lim)    # one value per event; beyond +-lim saturates, like the colorbar
+        edges = np.linspace(-lim, lim, 21)
+        counts, _ = np.histogram(vals, bins=edges)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        hax.bar(centers, counts, width=np.diff(edges), color=cmap(norm(centers)), edgecolor='k', linewidth=0.3)
+        hax.axvline(0, color='k', linewidth=1.2)
+        hax.axvline(np.median(vals), color='k', linestyle='--', linewidth=1.2)
+        hax.set_xlim(-lim, lim)
+        hax.set_xticks([])
+        hax.set_yticks([])
+        hax.set_ylabel('Events', fontsize=10)
+        hax.patch.set_alpha(0.85)
+        hax.spines[['top', 'right']].set_visible(False)
+    else:
+        cb = fig.colorbar(mesh, ax=ax, orientation='horizontal', shrink=0.7, pad=0.08, extend='both')
+        cb.set_label(f'{STAT.capitalize()} change in location error ({unit})')
     # "better / worse" read-out under the colorbar, each end in its own color (blue = error reduced)
     for txt, x, ha, v in (('\u2190 better', 0.0, 'left', -0.8 * lim), ('worse \u2192', 1.0, 'right', 0.8 * lim)):
-        cb.ax.annotate(txt, xy=(x, 0), xycoords='axes fraction', xytext=(0, -48), textcoords='offset points',
-                       ha=ha, va='top', fontsize=16, fontweight='bold', color=cmap(norm(v)))
+        cb.ax.annotate(txt, xy=(x, 0), xycoords='axes fraction', xytext=(0, -56 if inset else -48), textcoords='offset points',
+                       ha=ha, va='top', fontsize=13 if inset else 16, fontweight='bold', color=cmap(norm(v)))
     if annotate:   # reduction in the median error over all events plotted (positive = error reduced)
         # (not the median of per-event changes: ~25% of benchmark events are unchanged, which pins that at 0)
         km  = ev.base.median() - ev.calib.median()
@@ -116,7 +136,7 @@ def plot_improvement_map(ev, extent, pixel_deg, min_events, figsize, out_name, a
     plt.show()
 
 
-plot_improvement_map(ev, EXTENT, PIXEL_DEG, MIN_EVENTS, (10, 11.5), 'improvement_map', annotate=True)
+plot_improvement_map(ev, EXTENT, PIXEL_DEG, MIN_EVENTS, (10, 11.5), 'improvement_map', annotate=True, inset=True)
 
 #%%
 # ── MTJ zoom: benchmark events + MTJ_2024_M7 and Ferndale case studies ───────

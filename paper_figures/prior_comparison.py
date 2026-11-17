@@ -7,14 +7,13 @@
 #
 # Row 1 — statewide priors at the benchmark timewindow_end:
 #   (a) KDE Seismicity        — static kernel-density prior
-#   (b) ETAS — flat background   — ETAS prior with a single scalar mu
-#   (c) ETAS — spatial background — ETAS prior with free_background's
+#   (b) ETAS — spatial background — ETAS prior with free_background's
 #                                   locally-smoothed mu(x, y)
 #
 # Row 2 — zoomed on the 2024 Mendocino Triple Junction M7, illustrating the
 # effect of the ETAS mathematics directly:
-#   (d) ETAS prior immediately before the mainshock
-#   (e) ETAS prior immediately after the mainshock (once it has been fed into
+#   (c) ETAS prior immediately before the mainshock
+#   (d) ETAS prior immediately after the mainshock (once it has been fed into
 #       the rolling catalog) — shows the sharp, localized excitation the
 #       triggering term adds around the new event.
 #
@@ -82,37 +81,30 @@ def _add_basemap(ax):
 
 
 #%%
-# ── Load the three priors (cached) ──────────────────────────────────────────
+# ── Load the two statewide priors (cached) ──────────────────────────────────────────
 ROW1_CACHE = os.path.join(CACHE_DIR, 'row1.pkl')
 
 if not FORCE_RECOMPUTE and os.path.exists(ROW1_CACHE):
     with open(ROW1_CACHE, 'rb') as f:
-        (kde_prior, prior_flat, prior_spatial, forecast_time,
+        (kde_prior, _, prior_spatial, forecast_time,
          grid_lons_masked, grid_lats_masked) = pickle.load(f)
 else:
     kde_prior = SeismicPrior.from_tt3(KDE_TT3)
 
     repair_inversion_json_paths(INVERSION_JSON)
 
-    flat_cfg = dict(config.ETAS_UPDATER_CONFIG)
-    flat_cfg['use_spatial_background']   = False
-    flat_cfg['use_spatial_productivity'] = False
-    flat_cfg['out_of_bounds_fill']       = 1e-8  # panel (b) only; config default is 1e-9
-    flat_updater = EtasPriorUpdater.from_inversion_json(json_path=INVERSION_JSON, **flat_cfg)
-
     spatial_cfg = dict(config.ETAS_UPDATER_CONFIG)
     spatial_cfg['use_spatial_background']   = True
     spatial_cfg['use_spatial_productivity'] = False
     spatial_updater = EtasPriorUpdater.from_inversion_json(json_path=INVERSION_JSON, **spatial_cfg)
 
-    forecast_time = pd.Timestamp(flat_updater.metadata_base['timewindow_end'])
-    prior_flat    = flat_updater.update(forecast_time)
+    forecast_time = pd.Timestamp(spatial_updater.metadata_base['timewindow_end'])
     prior_spatial = spatial_updater.update(forecast_time)
     grid_lons_masked = spatial_updater.grid_lons_masked
     grid_lats_masked = spatial_updater.grid_lats_masked
 
     with open(ROW1_CACHE, 'wb') as f:
-        pickle.dump((kde_prior, prior_flat, prior_spatial, forecast_time,
+        pickle.dump((kde_prior, None, prior_spatial, forecast_time,
                      grid_lons_masked, grid_lats_masked), f)
 
 #%%
@@ -176,17 +168,16 @@ def _norm(obj):
     return mcolors.TwoSlopeNorm(vcenter=c, vmin=c - HALF, vmax=c + HALF)
 
 
-fig, axes = plt.subplots(2, 3, figsize=(15, 9), subplot_kw={'projection': proj})
+fig, axes = plt.subplots(2, 2, figsize=(9.25, 7.35), subplot_kw={'projection': proj})
 
 # -- Row 1: statewide prior comparison ---------------------------------------
 panels = [
     ('KDE Seismicity',            kde_prior),
-    ('ETAS — flat background',    prior_flat),
-    ('ETAS — spatial background', prior_spatial),
+    ('ETAS', prior_spatial),
 ]
 log_grids = [np.log10(obj.grid + EPS) for _, obj in panels]
 
-# Zoom to the ETAS polygon's extent (with padding) — shared across all three
+# Zoom to the ETAS polygon's extent (with padding) — shared across both
 # panels since KDE_Seismicity covers the same California region.
 lon_pad = 1.0
 lat_pad = 1.5
@@ -196,20 +187,26 @@ _extent = [
     grid_lats_masked.min() - lat_pad,
     grid_lats_masked.max() + lat_pad,
 ]
+# Trim the blank strips (no prior data) off the right and bottom edges, then crop the top
+# so the extent keeps its original aspect ratio and the panel size is unchanged.
+_aspect = (_extent[3] - _extent[2]) / (_extent[1] - _extent[0])
+_extent[1] = min(_extent[1], kde_prior.lons.max())
+_extent[2] = max(_extent[2], kde_prior.lats.min())
+_extent[3] = _extent[2] + _aspect * (_extent[1] - _extent[0])
 
-for ax, (title, obj), log_grid, letter in zip(axes[0, :], panels, log_grids, 'abc'):
+for ax, (title, obj), log_grid, letter in zip(axes[0, :], panels, log_grids, 'ab'):
     ax.set_extent(_extent, crs=proj)
     _add_basemap(ax)
     ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=_norm(obj), transform=proj)
-    ax.set_title(title)
+    ax.text(0.02, 0.03, title, transform=ax.transAxes, ha='left', va='bottom',
+            fontsize=13, fontweight='bold',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold',
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
 
 
 # -- Row 2: MTJ 2024 M7 — before vs after the mainshock ----------------------
-axes[1, 2].remove()  # reserved for a future 3rd panel in this row
-
 mtj_panels    = [('Before mainshock', prior_mtj_before), ('After mainshock', prior_mtj_after)]
 mtj_log_grids = [np.log10(obj.grid + EPS) for _, obj in mtj_panels]
 
@@ -218,13 +215,15 @@ _mtj_extent = [
     -127, -123, 39, 42
 ]
 
-for ax, (title, obj), log_grid, letter in zip(axes[1, :2], mtj_panels, mtj_log_grids, 'de'):
+for ax, (title, obj), log_grid, letter in zip(axes[1, :], mtj_panels, mtj_log_grids, 'cd'):
     ax.set_extent(_mtj_extent, crs=proj)
     _add_basemap(ax)
     ax.pcolormesh(obj.lons, obj.lats, log_grid, cmap=cmap, norm=_norm(obj), transform=proj)
     ax.plot(MAINSHOCK_LON, MAINSHOCK_LAT, marker='*', color='gold', markersize=16,
             markeredgecolor='black', markeredgewidth=0.8, transform=proj, zorder=5)
-    ax.set_title(title)
+    ax.text(0.02, 0.03, title, transform=ax.transAxes, ha='left', va='bottom',
+            fontsize=13, fontweight='bold',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
     ax.text(0.02, 0.97, f'({letter})', transform=ax.transAxes,
             ha='left', va='top', fontsize=13, fontweight='bold',
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
@@ -233,11 +232,22 @@ for ax, (title, obj), log_grid, letter in zip(axes[1, :2], mtj_panels, mtj_log_g
 # ── Exact per-panel placement [left, bottom, width, height] (figure fraction) ──
 # Edit these directly to hand-tune the layout — set_position overrides
 # whatever matplotlib's default subplot grid computed above.
-axes[0, 0].set_position([0.06, 0.52, 0.29, 0.42])  # (a) KDE Seismicity
-axes[0, 1].set_position([0.37, 0.52, 0.29, 0.42])  # (b) ETAS — flat background
-axes[0, 2].set_position([0.68, 0.52, 0.29, 0.42])  # (c) ETAS — spatial background
-axes[1, 0].set_position([0.06, 0.04, 0.29, 0.42])  # (d) Before mainshock
-axes[1, 1].set_position([0.37, 0.04, 0.29, 0.42])  # (e) After mainshock
+PANEL_W, GAP, MARGIN = 4.5, 0.12, 0.02   # inches
+_ratio = lambda ax: np.diff(ax.get_extent(crs=proj)[2:])[0] / np.diff(ax.get_extent(crs=proj)[:2])[0]
+h_top, h_bot = PANEL_W * _ratio(axes[0, 0]), PANEL_W * _ratio(axes[1, 0])
+fig_w, fig_h = 2 * PANEL_W + GAP + 2 * MARGIN, h_top + h_bot + GAP + 2 * MARGIN
+fig.set_size_inches(fig_w, fig_h)
+for ax, col, row_h, y0 in ((axes[0, 0], 0, h_top, h_bot + GAP), (axes[0, 1], 1, h_top, h_bot + GAP),
+                           (axes[1, 0], 0, h_bot, 0),           (axes[1, 1], 1, h_bot, 0)):
+    ax.set_position([(MARGIN + col * (PANEL_W + GAP)) / fig_w, (MARGIN + y0) / fig_h,
+                     PANEL_W / fig_w, row_h / fig_h])
+
+# Shared colorbar. Each panel is centred on its own uniform level, so the bar shows
+# log10(prior / uniform): 0 = uniform, +1 = 10x more likely than uniform, etc.
+cax = fig.add_axes([0.28, -0.06, 0.44, 0.02])
+cb = fig.colorbar(plt.cm.ScalarMappable(norm=mcolors.Normalize(-HALF, HALF), cmap=cmap),
+                  cax=cax, orientation='horizontal', extend='both')
+cb.set_label('log$_{10}$ (prior probability / uniform)')
 
 # Axis ticks/labels — commented out for the presentation version (restore for the paper).
 # X-axis ticks/labels — bottom-most panel in each column (axes[0,2] has no
