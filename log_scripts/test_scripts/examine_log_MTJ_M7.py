@@ -19,12 +19,12 @@ import cartopy.feature as cfeature
 import xml.etree.ElementTree as ET
 from obspy.geodetics import gps2dist_azimuth
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from benchmark.usgs import get_usgs_event
 
 RUN = 'MTJ_sigma_and_prior'      # ETAS; 'MTJ_control' is the KDE_Seismicity run
-LOG = Path(__file__).resolve().parents[1] / 'log_files' / 'MTJ-selected' / RUN / 'epic' / 'nc75095651.log'
-OUT = Path(__file__).resolve().parent / 'figures' / f'{RUN}_{LOG.stem}_examine.png'
+LOG = Path(__file__).resolve().parents[2] / 'log_files' / 'MTJ-selected' / RUN / 'epic' / 'nc75095651.log'
+OUT = Path(__file__).resolve().parents[1] / 'figures' / f'{RUN}_{LOG.stem}_examine.png'
 
 #%% Parse
 EVENT_COLS = ('eventid ver evlat evlon dep mag time latu lonu depu magu timeu lk nTb nSb nT nS '

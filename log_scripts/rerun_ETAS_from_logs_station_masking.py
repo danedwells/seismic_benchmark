@@ -41,7 +41,7 @@ from benchmark.runner import make_epic_params
 from benchmark.usgs import get_usgs_event, download_case_study_catalog
 from benchmark.metrics import _haversine_km
 from bEPIC import EPIC_locate_prelim
-import parsing_tools
+from benchmark import parsing_tools
 
 SEQUENCE = 'Ridgecrest'      # 'California' | 'Ridgecrest' | 'MTJ' | 'Testsuite'
 
@@ -78,7 +78,7 @@ LOG_DIR = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_sigma_and_p
 
 #%% Station inventory for the activity mask: one row per net.sta from the collaborators' channels file
 COLS = 'network station location channel latitude longitude elevation samplerate gain units'.split()
-INVENTORY = (pd.read_csv(ROOT / SC['channels'], sep=r'\s+', comment='#', names=COLS, dtype=str, keep_default_na=False)
+INVENTORY = (pd.read_csv(ROOT / 'data' / 'channel_availability' / SC['channels'], sep=r'\s+', comment='#', names=COLS, dtype=str, keep_default_na=False)
              .drop_duplicates(['network', 'station'])[['station', 'network', 'longitude', 'latitude']]
              .astype({'longitude': float, 'latitude': float}).reset_index(drop=True))
 print(f'{len(INVENTORY)} stations in the mask inventory')

@@ -43,8 +43,8 @@ from benchmark.usgs import download_case_study_catalog
 from benchmark.metrics import _haversine_km
 from bEPIC import EPIC_locate_prelim
 
-ROOT  = Path(__file__).resolve().parents[1]
-HERE  = Path(__file__).resolve().parent
+ROOT  = Path(__file__).resolve().parents[2]
+HERE  = Path(__file__).resolve().parents[1]
 CASE, EVENT_ID = 'MTJ_2024_M7', 'nc75095651'
 PRIOR = os.environ.get('PRIOR', 'ETAS')                       # 'ETAS' or 'KDE'
 RUN   = {'ETAS': 'MTJ_sigma_and_prior', 'KDE': 'MTJ_control'}[PRIOR]

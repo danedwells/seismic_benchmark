@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from benchmark.usgs import get_usgs_event
 import benchmark.config_california as config
-import parsing_tools
+from benchmark import parsing_tools
 
 # Sequence -> case-study key in config.FOCUS_EVENTS_MAINSHOCK.  The figure size follows the map extent (see the paper-style cell).
 SEQUENCE = os.environ.get('SEQUENCE', 'MTJ')     # 'MTJ' | 'Ridgecrest' | 'ElMayor' | 'Ferndale'

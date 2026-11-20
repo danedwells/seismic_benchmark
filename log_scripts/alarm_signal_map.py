@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / 'paper_figures'))
 from benchmark.usgs import get_usgs_event
-import parsing_tools
+from benchmark import parsing_tools
 from shakealert_footprint import contour_distance_km
 
 SEQUENCE = os.environ.get('SEQUENCE', 'MTJ')            # 'MTJ' | 'Ridgecrest' | 'ElMayor' | 'Ferndale'

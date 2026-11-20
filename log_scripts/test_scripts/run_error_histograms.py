@@ -15,7 +15,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from obspy.geodetics import gps2dist_azimuth
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from benchmark.usgs import get_usgs_event
 
@@ -26,7 +26,7 @@ WHICH = "sigma_and_prior" # 'sigma_and_prior' 'sigma_only'
 RUN_DIR = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{WHICH}' / 'epic'
 N_TRIGS = 5
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
-USGS_CACHE = Path(__file__).resolve().parent / 'output' / f'usgs_cache_{SEQUENCE}.csv'
+USGS_CACHE = Path(__file__).resolve().parents[1] / 'output' / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 def parse_log(path):
@@ -99,7 +99,7 @@ ax_mag.axvline(0, color='r', ls='--')
 ax_mag.set_xlabel('EPIC mag - USGS mag'); ax_mag.set_ylabel('Events')
 ax_mag.set_title(f'Magnitude error (nS >= {N_TRIGS}, n={len(res)})')
 fig.tight_layout()
-out_path = Path(__file__).resolve().parent / 'figures' / f'{RUN_DIR.parent.name}_error_hist_nS{N_TRIGS}.png'
+out_path = Path(__file__).resolve().parents[1] / 'figures' / f'{RUN_DIR.parent.name}_error_hist_nS{N_TRIGS}.png'
 fig.savefig(out_path, dpi=150)
 print('Saved', out_path)
 

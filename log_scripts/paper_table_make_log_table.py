@@ -14,7 +14,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import benchmark.config_california as config
-import parsing_tools
+from benchmark import parsing_tools
 
 N_TRIGS = int(os.environ.get('N_TRIGS', 4))        # must match the N_TRIGS the results were made with
 CASES = [('MTJ 2024 M7', 'MTJ', 'MTJ_2024_M7'), ('Ridgecrest', 'Ridgecrest', 'Ridgecrest'),

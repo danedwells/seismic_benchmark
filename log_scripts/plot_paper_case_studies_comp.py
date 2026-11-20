@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import benchmark.config_california as config
-import parsing_tools
+from benchmark import parsing_tools
 
 SEQUENCE = os.environ.get('SEQUENCE', 'Ridgecrest')     # 'MTJ' | 'Ridgecrest'
 CASE_KEY = {'Ridgecrest': 'Ridgecrest', 'MTJ': 'MTJ_2024_M7'}[SEQUENCE]

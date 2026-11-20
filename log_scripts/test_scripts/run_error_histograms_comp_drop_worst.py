@@ -24,11 +24,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from obspy.geodetics import gps2dist_azimuth
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from benchmark.usgs import get_usgs_event
-import parsing_tools
+from benchmark import parsing_tools
 
 SEQUENCE = 'MTJ' #'Ridgecrest' # 'MTJ'
 MAINSHOCK_ID = {'Ridgecrest': 'ci38457511', 'MTJ': 'nc75095651'}[SEQUENCE]   # starred on the map
@@ -38,7 +38,7 @@ N_TRIGS = 5
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
 MIN_USGS_MAG = 3.5            # only compare events with USGS magnitude >= this (None = all)
 ALERTS_ONLY = True              # use only versions with Ast == 1 (alert actually sent)
-USGS_CACHE = Path(__file__).resolve().parent / 'output' / f'usgs_cache_{SEQUENCE}.csv'
+USGS_CACHE = Path(__file__).resolve().parents[1] / 'output' / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 all_logs = {}
@@ -117,7 +117,7 @@ TRIGGERS = os.environ.get('TRIGGERS', 'all')   # which E:I:T: rows go to the loc
 TAG = (('drop_worst' if DROP_WORST else 'relocated') + ('_mask' if USE_STATION_MASK else '')
        + ('' if TRIGGERS == 'earliest' else f'_{TRIGGERS}'))   # in output file names; also the suffix of the relocated runs
 SUFFIX = 'drop' if DROP_WORST else 'relocated'
-STATION_FILE = ROOT / f'{SEQUENCE}_channels.dat'
+STATION_FILE = ROOT / 'data' / 'channel_availability' / f'{SEQUENCE}_channels.dat'
 COLS = 'network station location channel latitude longitude elevation samplerate gain units'.split()
 # One row per net.sta (the file has one per channel).  keep_default_na: a station or network named 'NA' must stay a string
 INVENTORY = (pd.read_csv(STATION_FILE, sep=r'\s+', comment='#', names=COLS, dtype=str, keep_default_na=False)
@@ -249,7 +249,7 @@ for which, prior_name in DROP_RUNS.items():          # control (KDE prior) and s
 
     # -- 3. Save and expose the results --
     relocated[which] = pd.DataFrame(out)                                                # one row per event, all columns -> CSV
-    relocated[which].to_csv(Path(__file__).resolve().parent / 'output' / f'{SEQUENCE}_{which}_{TAG}_nS{N_TRIGS}.csv', index=False)
+    relocated[which].to_csv(Path(__file__).resolve().parents[1] / 'output' / f'{SEQUENCE}_{which}_{TAG}_nS{N_TRIGS}.csv', index=False)
     rd = relocated[which].dropna(subset=['loc_err_km'])
     results[f'{which}_{SUFFIX}'] =rd[['anss_id', 'lat', 'lon', 'usgs_lat', 'usgs_lon', 'loc_err_km', 'mag_err']].reset_index(drop=True)   # used by the figures
     print(f'{which} ({prior_name}): median location error (km)  EPIC log {rd.epic_err_km.median():.2f}  '
@@ -388,7 +388,7 @@ ax_map.text(0.98, 0.02, f'EPIC locations at {N_TRIGS} stations', transform=ax_ma
 ax_map.text(0.01, 0.98, '(a)', transform=ax_map.transAxes, ha='left', va='top', fontsize=13, fontweight='bold')
 ax_map.legend(loc='lower left', fontsize=9, framealpha=0.9)
 
-out_stem = Path(__file__).resolve().parent / 'figures' / f'{SEQUENCE}_location_hist_{N_TRIGS}_comp_{TAG}'
+out_stem = Path(__file__).resolve().parents[1] / 'figures' / f'{SEQUENCE}_location_hist_{N_TRIGS}_comp_{TAG}'
 fig.savefig(out_stem.with_suffix('.png'), dpi=300, bbox_inches='tight')
 fig.savefig(out_stem.with_suffix('.pdf'), bbox_inches='tight')
 print('Saved', out_stem)
