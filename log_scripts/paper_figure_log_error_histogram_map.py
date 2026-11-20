@@ -1,17 +1,22 @@
 """
-Comparison of location and magnitude error histograms across the control, sigma_only and
-sigma_and_prior EPIC replay runs of one sequence, overlaid (see run_error_histograms.py
-for the single-run version).
+Comparison of location and magnitude error histograms for one sequence, overlaid (see
+run_error_histograms.py for the single-run version):
+  EPIC     pure EPIC replay logs   (log_files/<SEQUENCE>-selected/<SEQUENCE>_EPIC_50_25_grid)
+  Control  Control EPIC replay logs
+  ETAS     bEPIC re-run (ETAS prior, station mask, calibrated sigma): output/<SEQUENCE>_station_masking.csv, alert rows
+           (run_station_masking.py); missing file -> empty placeholder
+The sigma_only / sigma_and_prior logs are still parsed into log_results_*.csv (used by make_log_table.py and
+improvement_map_logs.py) but are not plotted.
 
-Reads every <anss_id>.log in a run folder (parsing_tools.py), finds the EPIC event that matches the
-USGS/ANSS event (within MAX_ORIGIN_DIFF_S and 100 km), takes that event's first alerted version whose
-station count (nS, the E:I: column) reaches N_TRIGS, and compares its location and magnitude to the
-USGS/ANSS solution.  Events without such a version are skipped.
+For the log runs, reads every <anss_id>.log in a run folder (parsing_tools.py), finds the EPIC event that matches the
+USGS/ANSS event (within MAX_ORIGIN_DIFF_S and 100 km), saves every version of that event whose station count (nS, the E:I: column) reaches N_TRIGS (epic_alerted = 1 if EPIC alerted
+at that version), and plots the first of them that alerted (ALERTS_ONLY; parsing_tools.pick_version).  Events without one are skipped.
 USGS solutions are cached to a CSV so re-runs don't re-query ComCat.
 """
 #%%
 import os
 import sys
+import warnings
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
@@ -26,29 +31,30 @@ from benchmark.usgs import get_usgs_event
 import benchmark.config_california as config
 import parsing_tools
 
-# Sequence -> case-study key in config.FOCUS_EVENTS_MAINSHOCK.  Logs are read from
-# log_files/<SEQUENCE>-selected/<SEQUENCE>_<run>/epic/; the figure size follows the map extent (see the paper-style cell).
-SEQUENCE = os.environ.get('SEQUENCE', 'Ridgecrest')     # 'MTJ' | 'Ridgecrest' | 'ElMayor' | 'Ferndale'
+# Sequence -> case-study key in config.FOCUS_EVENTS_MAINSHOCK.  The figure size follows the map extent (see the paper-style cell).
+SEQUENCE = os.environ.get('SEQUENCE', 'MTJ')     # 'MTJ' | 'Ridgecrest' | 'ElMayor' | 'Ferndale'
 CASE_KEY = {'Ridgecrest': 'Ridgecrest', 'MTJ': 'MTJ_2024_M7', 'ElMayor': 'ElMayor', 'Ferndale': 'Ferndale'}[SEQUENCE]
 MAINSHOCK_ID = config.FOCUS_EVENTS_MAINSHOCK[CASE_KEY]   # starred on the map
-RUNS = {'control': 'gray', 'sigma_only': 'blue', 'sigma_and_prior': 'red'}
-LABELS = {'control': 'Control', 'sigma_only': 'Sigma Only', 'sigma_and_prior': 'Sigma and ETAS'}   # names shown on the paper figure
+RUNS = {'epic': 'gray', 'control': 'blue', 'rerun': 'red'}          # plotted, in draw order
+LABELS = {'epic': 'EPIC', 'control': 'Control', 'rerun': 'ETAS'}   # names shown on the paper figure
+LOG_RUNS = {'epic': 'EPIC_50_25_grid', 'control': 'control', 'sigma_only': 'sigma_only', 'sigma_and_prior': 'sigma_and_prior'}   # run -> log folder suffix
 
 N_TRIGS = 4
 MAX_ORIGIN_DIFF_S = 30          # match log event to USGS origin time within this
 MIN_USGS_MAG = 3.5            # only compare events with USGS magnitude >= this (None = all)
-ALERTS_ONLY = True              # use only versions with Ast == 1 (alert actually sent)
+ALERTS_ONLY = True              # plot the first version with nS >= N_TRIGS that EPIC alerted on (False: first version, alerted or not)
 USGS_CACHE = Path(__file__).resolve().parent / 'output' / f'usgs_cache_{SEQUENCE}.csv'
 
 #%% Parse logs: one row (event, version) per E:I: line with eventid > 0
 all_logs = {}
-for which in RUNS:
-    run_dir = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{which}' / 'epic'
+for which, folder in LOG_RUNS.items():
+    run_dir = ROOT / 'log_files' / f'{SEQUENCE}-selected' / f'{SEQUENCE}_{folder}'
+    run_dir = run_dir / 'epic' if (run_dir / 'epic').is_dir() else run_dir    # some runs still have the nested folder
     if not run_dir.is_dir():
         raise FileNotFoundError(f'No logs for {SEQUENCE}: {run_dir} does not exist')
     all_logs[which] = {p.stem: parsing_tools.read_ei(p) for p in sorted(run_dir.glob('*.log'))}
     logs = all_logs[which]
-    print(f'{which}: {len(logs)} logs; {sum((d.Ast == 1).any() for d in logs.values())} contain an alerted event')
+    print(f'{which}: {len(logs)} logs; {sum((d.nS >= N_TRIGS).any() for d in logs.values())} reach nS >= {N_TRIGS}; {sum((d.Ast == 1).any() for d in logs.values())} contain an alerted event')
 
 #%% USGS solutions (cached)
 def fetch_usgs(anss_id):
@@ -62,7 +68,7 @@ def fetch_usgs(anss_id):
 
 usgs = pd.read_csv(USGS_CACHE, parse_dates=['time']) if USGS_CACHE.exists() else pd.DataFrame(
     columns=['anss_id', 'lat', 'lon', 'mag', 'time'])
-todo = sorted({i for logs in all_logs.values() for i, d in logs.items() if (d.Ast == 1).any()} - set(usgs.anss_id))
+todo = sorted({i for logs in all_logs.values() for i, d in logs.items() if (d.nS >= N_TRIGS).any()} - set(usgs.anss_id))
 if todo:
     with ThreadPoolExecutor(8) as ex:
         new = [r for r in ex.map(fetch_usgs, todo) if r]
@@ -70,32 +76,47 @@ if todo:
     usgs.to_csv(USGS_CACHE, index=False)
 usgs = usgs.set_index('anss_id')
 
-#%% Errors at the first version with nS >= N_TRIGS
-results = {}
+#%% Errors of every version with nS >= N_TRIGS (one row per event and version, like run_station_masking.py)
+all_versions = {}
 for which, logs in all_logs.items():
-    out = []
-    for anss_id, d in logs.items():
-        if d.empty or anss_id not in usgs.index:
+    rows = []
+    for anss_id, log in logs.items():
+        if log.empty or anss_id not in usgs.index:
             continue
-        u = usgs.loc[anss_id]
-        if MIN_USGS_MAG is not None and not u.mag >= MIN_USGS_MAG:
+        usgs_event = usgs.loc[anss_id]
+        if MIN_USGS_MAG is not None and not usgs_event.mag >= MIN_USGS_MAG:
             continue
-        # Several events can be in one log; take the EPIC event that matches USGS, then its first version at N_TRIGS
-        eventid = parsing_tools.match_event(d, u.time, u.lat, u.lon, max_dt_s=MAX_ORIGIN_DIFF_S)
-        r = None if eventid is None else parsing_tools.first_at_stations(d, eventid, N_TRIGS, alerted_only=ALERTS_ONLY)
-        if r is None:
+        # Several events can be in one log; take the EPIC event that matches USGS, then all its versions with enough stations
+        eventid = parsing_tools.match_event(log, usgs_event.time, usgs_event.lat, usgs_event.lon, max_dt_s=MAX_ORIGIN_DIFF_S)
+        if eventid is None:
             continue
-        out.append(dict(anss_id=anss_id, ver=r.ver, nS=r.nS, usgs_mag=u.mag,
-                        loc_err_km=gps2dist_azimuth(u.lat, u.lon, r.lat, r.lon)[0] / 1e3,
-                        mag_err=r.mag - u.mag, lat=r.lat, lon=r.lon, usgs_lat=u.lat, usgs_lon=u.lon))
-    results[which] = pd.DataFrame(out)
-    print(f'{which}: {len(results[which])} events with a matched version at nS >= {N_TRIGS}'
+        event_versions = log[(log.eventid == eventid) & (log.nS >= N_TRIGS)]
+        for _, v in event_versions.iterrows():
+            rows.append(dict(anss_id=anss_id, ver=v.ver, nS=v.nS, epic_alerted=int(v.Ast == 1), usgs_mag=usgs_event.mag,
+                             loc_err_km=gps2dist_azimuth(usgs_event.lat, usgs_event.lon, v.lat, v.lon)[0] / 1e3,
+                             mag=v.mag, mag_err=v.mag - usgs_event.mag, lat=v.lat, lon=v.lon,
+                             usgs_lat=usgs_event.lat, usgs_lon=usgs_event.lon))
+    all_versions[which] = pd.DataFrame(rows)
+    print(f'{which}: {all_versions[which].anss_id.nunique()} events, {len(all_versions[which])} versions with nS >= {N_TRIGS}'
           + (f' and USGS M >= {MIN_USGS_MAG}' if MIN_USGS_MAG is not None else ''))
-    print(results[which][['loc_err_km', 'mag_err']].describe())
 
-# Per-event results of every run, for tables (make_log_table.py)
-pd.concat([r.assign(run=w) for w, r in results.items()]).to_csv(
+# Every version of every log run, for tables and other scripts (they pick the version with parsing_tools.pick_version)
+pd.concat([v.assign(run=w) for w, v in all_versions.items()]).to_csv(
     Path(__file__).resolve().parent / 'output' / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', index=False)
+
+# bEPIC re-run: every version too (run_station_masking.py)
+rerun_csv = Path(__file__).resolve().parent / 'output' / f'{SEQUENCE}_station_masking.csv'
+if rerun_csv.exists():
+    all_versions['rerun'] = pd.read_csv(rerun_csv)
+else:
+    warnings.warn(f'ETAS: {rerun_csv.name} not found; plotting a placeholder')
+    all_versions['rerun'] = pd.DataFrame(columns=all_versions['control'].columns)
+
+# The version plotted for each event: the first with nS >= N_TRIGS, alerted only if ALERTS_ONLY
+results = {which: parsing_tools.pick_version(all_versions[which], N_TRIGS, ALERTS_ONLY) for which in RUNS}
+for which, r in results.items():
+    print(f'{which}: {len(r)} events plotted')
+    print(r[['loc_err_km', 'mag_err']].describe())
 
 #%% Shared magnitude-error bins for the stacked histograms in the figure below
 mag_all = pd.concat([r.mag_err for r in results.values()])

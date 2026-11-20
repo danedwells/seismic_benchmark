@@ -126,6 +126,18 @@ def first_at_stations(ei, eventid, n_stations, alerted_only=True):
     return ev.sort_values('ver').iloc[0] if len(ev) else None
 
 
+def pick_version(versions, n_stations, alerted_only=True):
+    """
+    One row per event from a table with one row per version (columns anss_id, ver, nS, epic_alerted, and run if present):
+    the first version with nS >= n_stations, alerted only if alerted_only (the same rule as first_at_stations).
+    """
+    rows = versions[versions.nS >= n_stations]
+    if alerted_only:
+        rows = rows[rows.epic_alerted == 1]
+    event_keys = [key for key in ('anss_id', 'run') if key in rows.columns]
+    return rows.sort_values('ver').groupby(event_keys).head(1).reset_index(drop=True)
+
+
 def find_solution(path, ref_time, ref_lat, ref_lon, n_stations, alerted_only=True, **match_kw):
     """EPIC solution (row of read_ei) for a reference event at n_stations stations, or None (see summarize for why)."""
     if not Path(path).exists():

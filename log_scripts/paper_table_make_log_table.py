@@ -14,6 +14,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import benchmark.config_california as config
+import parsing_tools
 
 N_TRIGS = int(os.environ.get('N_TRIGS', 4))        # must match the N_TRIGS the results were made with
 CASES = [('MTJ 2024 M7', 'MTJ', 'MTJ_2024_M7'), ('Ridgecrest', 'Ridgecrest', 'Ridgecrest'),
@@ -33,7 +34,7 @@ for name, seq, key in CASES:
     for i, (run, label) in enumerate(RUNS.items()):
         cells = MISSING
         if df is not None:
-            r = df[df.run == run]
+            r = parsing_tools.pick_version(df[df.run == run], N_TRIGS)   # first alerted version with nS >= N_TRIGS
             ms = r[r.anss_id == config.FOCUS_EVENTS_MAINSHOCK[key]].loc_err_km
             cells = [str(len(r)), f'{r.loc_err_km.median():.1f}', f'{r.loc_err_km.min():.1f}', f'{r.loc_err_km.max():.1f}',
                      f'{ms.iloc[0]:.1f}' if len(ms) else '--',

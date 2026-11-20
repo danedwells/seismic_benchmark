@@ -43,7 +43,7 @@ from benchmark.metrics import _haversine_km
 from bEPIC import EPIC_locate_prelim
 import parsing_tools
 
-SEQUENCE = 'MTJ'      # 'California' | 'Ridgecrest' | 'MTJ' | 'Testsuite'
+SEQUENCE = 'Ridgecrest'      # 'California' | 'Ridgecrest' | 'MTJ' | 'Testsuite'
 
 SCENARIOS = {
     'California': dict(ready=False, sigma_s=0.35),    # logs not available yet

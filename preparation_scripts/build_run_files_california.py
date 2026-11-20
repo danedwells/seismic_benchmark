@@ -1,5 +1,8 @@
 # =============================================================================
 # Download and cache background_seismicity
+# NOTE - CALIFORNIA BENCHMAKR HAS SUPPLIED RUN FILES
+# WE DO NOT NEED TO BUILD THEM
+# WE JUST NEED BACKGROUND SEISMICITY
 # =============================================================================
 #%%
 import os

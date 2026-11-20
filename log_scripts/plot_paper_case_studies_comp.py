@@ -1,14 +1,14 @@
 """
 Paper map figure (same style as the figures from run_error_histograms_comp.py) comparing three versions of one sequence:
 
-  EPIC     pure EPIC run                                   output/<SEQUENCE>_epic_pure.csv        (results pending)
+  EPIC     the pure EPIC replay from the log files   output/log_results_<SEQUENCE>_nS4.csv  (run == 'epic')
   Control  the Control EPIC replay from the log files      output/log_results_<SEQUENCE>_nS4.csv  (run == 'control')
   bEPIC    bEPIC re-run: ETAS prior, station mask, calibrated sigma   output/<SEQUENCE>_station_masking.csv (alert rows)
            (run_station_masking.py)
 
 (a) map of the locations with arrows to the USGS location, (b) location-error and (c) magnitude-error histograms.
 A version whose results file is missing gets a warning and is drawn as an empty placeholder, so the figure can be made before
-all results exist.  The pure EPIC file needs the columns anss_id, lat, lon, usgs_lat, usgs_lon, loc_err_km, mag_err.
+all results exist.  
 """
 #%%
 import os
@@ -25,13 +25,17 @@ from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import benchmark.config_california as config
+import parsing_tools
 
-SEQUENCE = os.environ.get('SEQUENCE', 'MTJ')     # 'MTJ' | 'Ridgecrest'
+SEQUENCE = os.environ.get('SEQUENCE', 'Ridgecrest')     # 'MTJ' | 'Ridgecrest'
 CASE_KEY = {'Ridgecrest': 'Ridgecrest', 'MTJ': 'MTJ_2024_M7'}[SEQUENCE]
 MAINSHOCK_ID = config.FOCUS_EVENTS_MAINSHOCK[CASE_KEY]   # starred on the map
+ALERTS_ONLY = True                                       # first version with nS >= N_TRIGS that EPIC alerted on (False: first version, alerted or not)
 N_TRIGS = 4                                              # station count of the log results (the re-run's alert uses the same)
 OUT = Path(__file__).resolve().parent / 'output'
+
 
 RUNS = {'epic': 'gray', 'control': 'blue', 'rerun': 'red'}
 LABELS = {'epic': 'EPIC', 'control': 'Control', 'rerun': 'ETAS'}
@@ -39,17 +43,19 @@ LABELS = {'epic': 'EPIC', 'control': 'Control', 'rerun': 'ETAS'}
 #%% Load the three result sets (empty placeholder + warning when a file is missing)
 COLS = ['anss_id', 'lat', 'lon', 'usgs_lat', 'usgs_lon', 'loc_err_km', 'mag_err']
 
-def load(which, path, rows=None):
+def load(which, path, run=None):
     if not path.exists():
         warnings.warn(f'{LABELS[which]}: results not found ({path.name}); plotting a placeholder')
         return pd.DataFrame(columns=COLS)
-    df = pd.read_csv(path)
-    return (df if rows is None else df[rows(df)])[COLS].reset_index(drop=True)
+    versions = pd.read_csv(path)
+    if run is not None:
+        versions = versions[versions.run == run]
+    return parsing_tools.pick_version(versions, N_TRIGS, ALERTS_ONLY)[COLS]
 
 results = {
-    'epic':    load('epic', OUT / f'{SEQUENCE}_epic_pure.csv'),
-    'control': load('control', OUT / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', lambda d: d.run == 'control'),
-    'rerun':   load('rerun', OUT / f'{SEQUENCE}_station_masking.csv', lambda d: d.alert),
+    'epic':    load('epic', OUT / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', 'epic'),
+    'control': load('control', OUT / f'log_results_{SEQUENCE}_nS{N_TRIGS}.csv', 'control'),
+    'rerun':   load('rerun', OUT / f'{SEQUENCE}_station_masking.csv'),
 }
 for w, r in results.items():
     print(f'{LABELS[w]}: {len(r)} events')
